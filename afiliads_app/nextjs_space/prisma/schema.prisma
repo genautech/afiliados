@@ -1,0 +1,360 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  campaigns     Campaign[]
+  dailyLogs     DailyLog[]
+  keywords      Keyword[]
+  decisions     CampaignDecision[]
+  integrations  Integration[]
+  kbSearches    KnowledgeBaseSearch[]
+  offers        Offer[]
+  testResults   TestResult[]
+  atpSearches   AtpSearch[]
+  productResearch ProductResearch[]
+  agentRuns     AgentRun[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Campaign {
+  id                    String   @id @default(cuid())
+  userId                String
+  name                  String
+  platform              String
+  vertical              String
+  geo                   String
+  channel               String
+  funnel                String   @default("BRIDGE")
+  status                String   @default("EM_TESTE")
+  offerUrl              String?  @db.Text
+  commission            Float    @default(0)
+  refundPct             Float    @default(0)
+  aov                   Float    @default(0)
+  cvrExpected           Float    @default(1.0)
+  commissionNet         Float    @default(0)
+  epcBreakeven          Float    @default(0)
+  cpcMax                Float    @default(0)
+  cpcScale              Float    @default(0)
+  presellUrl            String?  @db.Text
+  flowpageUrl           String?  @db.Text
+  hostingerDomain       String?
+  budgetTest            Float    @default(50)
+  budgetDaily           Float    @default(0)
+  testDuration          String   @default("72h")
+  campaignNameGenerated String?
+  utmString             String?  @db.Text
+  googleCampaignName    String?
+  campaignType          String?
+  bidStrategy           String?
+  utmCampaign           String?
+  qualityScoreNotes     String?
+  postbackUrl           String?  @db.Text
+  clickidToken          String?
+  presellHtml           String?  @db.Text
+  wizardStep            Int      @default(1)
+  wizardCompleted       Boolean  @default(false)
+  loopEnabled           Boolean  @default(false)
+  loopInterval          String   @default("24h")
+  loopAgents            String   @default("ads,compliance")
+  lastLoopRunAt         DateTime?
+  launchedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checklists            CampaignChecklist[]
+  keywords              Keyword[]
+  dailyLogs             DailyLog[]
+  decisions             CampaignDecision[]
+  atpSearches           AtpSearch[]
+  loopRuns              LoopRun[]
+  @@index([userId, status])
+  @@index([userId, platform])
+}
+
+model CampaignChecklist {
+  id         String   @id @default(cuid())
+  campaignId String
+  step       Int
+  itemKey    String
+  itemLabel  String
+  isCritical Boolean  @default(false)
+  isChecked  Boolean  @default(false)
+  checkedAt  DateTime?
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@unique([campaignId, step, itemKey])
+  @@index([campaignId])
+}
+
+model Keyword {
+  id             String   @id @default(cuid())
+  campaignId     String?
+  userId         String
+  keyword        String
+  layer          String   @default("A")
+  matchType      String   @default("phrase")
+  cpcEstimate    Float    @default(0)
+  relevanceScore Int      @default(3)
+  isSelected     Boolean  @default(false)
+  status         String   @default("ativa")
+  clicks         Int      @default(0)
+  cpcReal        Float    @default(0)
+  conversions    Int      @default(0)
+  createdAt      DateTime @default(now())
+  campaign       Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([campaignId])
+}
+
+model DailyLog {
+  id          String   @id @default(cuid())
+  campaignId  String
+  userId      String
+  logDate     DateTime
+  impressions Int      @default(0)
+  spend       Float    @default(0)
+  clicks      Int      @default(0)
+  hops        Int      @default(0)
+  conversions Int      @default(0)
+  revenue     Float    @default(0)
+  refunds     Float    @default(0)
+  network     String?
+  offerName   String?
+  vertical    String?
+  geo         String?
+  channel     String?
+  funnel      String?
+  decision    String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([campaignId, logDate])
+  @@index([campaignId])
+  @@index([userId])
+}
+
+model CampaignDecision {
+  id         String   @id @default(cuid())
+  campaignId String
+  userId     String
+  decision   String
+  rationale  String?  @db.Text
+  createdAt  DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([campaignId])
+}
+
+model Integration {
+  id          String   @id @default(cuid())
+  userId      String
+  serviceName String
+  fieldName   String
+  fieldValue  String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, serviceName, fieldName])
+  @@index([userId, serviceName])
+}
+
+model Offer {
+  id                String   @id @default(cuid())
+  userId            String
+  offerId           String
+  network           String
+  name              String
+  vertical          String
+  geoAllowed        String   @default("US")
+  payoutCommission  String   @default("")
+  model             String   @default("CPA")
+  gravityEpcRef     String   @default("")
+  upsells           String   @default("Não")
+  trademarkBidding  String   @default("Proibido")
+  googleAllowed     String   @default("")
+  funnelRecommended String   @default("Bridge")
+  vendorTermsOk     Boolean  @default(false)
+  hopLink           String?  @db.Text
+  breakevenCpc      Float    @default(0)
+  status            String   @default("Teste")
+  testStartDate     DateTime?
+  result            String?
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, offerId])
+  @@index([userId])
+}
+
+model TestResult {
+  id              String   @id @default(cuid())
+  userId          String
+  testId          String
+  campaignId      String
+  network         String
+  offerName       String
+  hypothesis      String?  @db.Text
+  budgetTest      Float    @default(0)
+  minClicks       Int      @default(0)
+  actualSpend     Float    @default(0)
+  conversions     Int      @default(0)
+  revenue         Float    @default(0)
+  epc             Float    @default(0)
+  avgCpc          Float    @default(0)
+  breakevenCpc    Float    @default(0)
+  result          String   @default("PENDENTE")
+  nextStep        String?
+  learning        String?  @db.Text
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, testId])
+  @@index([userId])
+}
+
+model AtpSearch {
+  id             String   @id @default(cuid())
+  userId         String
+  campaignId     String?
+  keyword        String
+  language       String   @default("en")
+  region         String   @default("us")
+  provider       String   @default("gweb")
+  parentSearchId String?
+  searchId       String?
+  status         String   @default("loading")
+  creditCharged  Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign       Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  @@index([userId])
+  @@index([campaignId])
+}
+
+model LoopRun {
+  id          String   @id @default(cuid())
+  campaignId  String
+  userId      String
+  trigger     String   @default("manual")
+  decision    String   @default("SEM_DADOS")
+  triggers    Json?
+  agentsRun   Json?
+  economics   Json?
+  llmSummary  String?  @db.Text
+  totalTokens Int      @default(0)
+  error       String?  @db.Text
+  createdAt   DateTime @default(now())
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@index([campaignId])
+  @@index([userId, createdAt])
+}
+
+model AgentRun {
+  id               String   @id @default(cuid())
+  userId           String
+  agent            String
+  provider         String   @default("")
+  model            String   @default("")
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  durationMs       Int      @default(0)
+  success          Boolean  @default(true)
+  error            String?  @db.Text
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, agent])
+  @@index([userId, createdAt])
+}
+
+model KnowledgeBaseSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  query     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model ProductResearch {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String
+  network        String   @default("clickbank")
+  vertical       String   @default("")
+  gravity        Float?
+  avgPayout      Float?
+  commissionPct  String   @default("")
+  conversionRate String   @default("")
+  rebill         Boolean  @default(false)
+  score          Int      @default(0)
+  riskLevel      String   @default("medio")
+  source         String   @default("ia")
+  summary        String?  @db.Text
+  tags           Json?
+  keywords       Json?
+  strategy       Json?
+  compliance     Json?
+  hopLink        String?  @db.Text
+  affiliatePageUrl  String? @db.Text
+  affiliateInsights Json?
+  status         String   @default("novo")
+  chosenKeyword  String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, name])
+  @@index([userId])
+}

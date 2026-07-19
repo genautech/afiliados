@@ -1,0 +1,379 @@
+import { prisma } from './prisma';
+
+export interface LlmUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface AgentCallResult {
+  text: string;
+  data: any;
+  usage: LlmUsage;
+  durationMs: number;
+  provider: string;
+  model: string;
+}
+
+interface LlmOptions {
+  systemPrompt: string;
+  userPrompt: string;
+  fallbackKey?: string;
+  agent?: string;
+}
+
+export type Provider = 'anthropic' | 'openai' | 'google' | 'ollama' | 'abacusai';
+// Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade)
+export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'ollama'];
+export type Tier = 'premium' | 'standard' | 'light';
+
+// Tier por agente: premium = raciocínio pesado (qualidade > custo);
+// standard = geração estruturada; light = chat/validações simples.
+export const AGENT_TIERS: Record<string, Tier> = {
+  'compliance-sentinel': 'premium',
+  'compliance': 'premium',
+  'ads-auditor': 'premium',
+  'affiliate-page-analyst': 'premium',
+  'product-hunter': 'standard',
+  'hunter': 'standard',
+  'seo-architect': 'standard',
+  'seo': 'standard',
+  'atp-keyword-analyst': 'standard',
+  'cro-copywriter': 'standard',
+  'analysis-assistant': 'light',
+  'wizard-validator': 'light',
+};
+
+// Ordem de preferência por tier. Claude (anthropic) fica reservado ao tier
+// premium; nos demais entra por último, justamente para poupar tokens Claude.
+const TIER_CHAINS: Record<Tier, Provider[]> = {
+  premium: ['anthropic', 'openai', 'google', 'ollama'],
+  standard: ['google', 'ollama', 'openai', 'anthropic'],
+  light: ['ollama', 'google', 'openai', 'anthropic'],
+};
+
+const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
+  anthropic: { premium: 'claude-opus-4-7', standard: 'claude-opus-4-7', light: 'claude-opus-4-7' },
+  openai: { premium: 'gpt-4o', standard: 'gpt-4o-mini', light: 'gpt-4o-mini' },
+  google: { premium: 'gemini-pro-latest', standard: 'gemini-flash-latest', light: 'gemini-flash-latest' },
+  ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
+  abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
+};
+
+// Orçamento mensal de tokens por provider (0 = ilimitado). Estourou → provider
+// vai para o fim da fila e só é usado se os demais falharem.
+const DEFAULT_BUDGETS: Record<Provider, number> = {
+  anthropic: 2_000_000,
+  openai: 0,
+  google: 0,
+  ollama: 0,
+  abacusai: 0,
+};
+
+interface RoutingContext {
+  mode: 'auto' | 'manual';
+  manualProvider: Provider | null;
+  keys: Partial<Record<Provider, string>>;
+  models: Partial<Record<Provider, string>>;
+  budgets: Record<Provider, number>;
+  monthUsage: Record<Provider, number>;
+  disabled: Set<Provider>;
+}
+
+async function getLlmIntegrations(userId: string): Promise<Record<string, string>> {
+  const rows = await prisma.integration.findMany({
+    where: { userId, serviceName: 'llm' },
+  });
+  const map: Record<string, string> = {};
+  for (const r of rows) if (r.fieldValue) map[r.fieldName] = r.fieldValue;
+  return map;
+}
+
+async function getMonthUsage(userId: string): Promise<Record<Provider, number>> {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const grouped = await prisma.agentRun.groupBy({
+    by: ['provider'],
+    where: { userId, createdAt: { gte: monthStart }, success: true },
+    _sum: { totalTokens: true },
+  });
+  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, ollama: 0, abacusai: 0 };
+  for (const g of grouped) {
+    if (g.provider in usage) usage[g.provider as Provider] = g._sum.totalTokens ?? 0;
+  }
+  return usage;
+}
+
+export async function getRoutingContext(userId: string, fallbackKey?: string): Promise<RoutingContext> {
+  const map = await getLlmIntegrations(userId);
+  const keys: Partial<Record<Provider, string>> = {};
+  const envKeys: Partial<Record<Provider, string | undefined>> = {
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    google: process.env.GEMINI_API_KEY,
+    ollama: process.env.OLLAMA_API_KEY,
+  };
+  for (const p of ACTIVE_PROVIDERS) {
+    const k = map[`api_key_${p}`] || envKeys[p];
+    if (k) keys[p] = k;
+  }
+  const models: Partial<Record<Provider, string>> = {};
+  for (const p of ACTIVE_PROVIDERS) {
+    if (map[`model_${p}`]) models[p] = map[`model_${p}`];
+  }
+  const disabled = new Set<Provider>(
+    (map['disabled_providers'] ?? '')
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean) as Provider[]
+  );
+  const budgets: Record<Provider, number> = { ...DEFAULT_BUDGETS };
+  for (const p of Object.keys(budgets) as Provider[]) {
+    const b = map[`budget_tokens_${p}`];
+    if (b !== undefined && !Number.isNaN(Number(b))) budgets[p] = Number(b);
+  }
+  const mode = map['routing'] === 'manual' ? 'manual' : 'auto';
+  const manualProvider = (map['provider'] as Provider) || null;
+  const monthUsage = await getMonthUsage(userId);
+  return { mode, manualProvider, keys, models, budgets, monthUsage, disabled };
+}
+
+export function buildChain(ctx: RoutingContext, tier: Tier): { provider: Provider; model: string; overBudget: boolean }[] {
+  const base = ctx.mode === 'manual' && ctx.manualProvider
+    ? [ctx.manualProvider, ...TIER_CHAINS[tier].filter(p => p !== ctx.manualProvider)]
+    : [...TIER_CHAINS[tier]];
+  let available = base.filter(p => ctx.keys[p] && !ctx.disabled.has(p));
+  // Se tudo foi desativado, ignora o disable para não derrubar o app
+  if (available.length === 0) available = base.filter(p => ctx.keys[p]);
+  const inBudget = available.filter(p => !ctx.budgets[p] || ctx.monthUsage[p] < ctx.budgets[p]);
+  const overBudget = available.filter(p => ctx.budgets[p] && ctx.monthUsage[p] >= ctx.budgets[p]);
+  return [...inBudget, ...overBudget].map(p => ({
+    provider: p,
+    model: ctx.models[p] ?? DEFAULT_MODELS[p][tier],
+    overBudget: overBudget.includes(p),
+  }));
+}
+
+async function callProvider(
+  provider: Provider,
+  model: string,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string; usage: LlmUsage; model: string }> {
+  switch (provider) {
+    case 'openai': {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do OpenAI: ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens ?? 0,
+          completionTokens: data?.usage?.completion_tokens ?? 0,
+          totalTokens: data?.usage?.total_tokens ?? 0,
+        },
+        model: data?.model ?? model,
+      };
+    }
+
+    case 'anthropic': {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Anthropic: ${await response.text()}`);
+      const data = await response.json();
+      const inp = data?.usage?.input_tokens ?? 0;
+      const out = data?.usage?.output_tokens ?? 0;
+      return {
+        text: data?.content?.[0]?.text || '',
+        usage: { promptTokens: inp, completionTokens: out, totalTokens: inp + out },
+        model: data?.model ?? model,
+      };
+    }
+
+    case 'google': {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Gemini: ${await response.text()}`);
+      const data = await response.json();
+      const um = data?.usageMetadata ?? {};
+      return {
+        text: data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? '').join('') || '',
+        usage: {
+          promptTokens: um?.promptTokenCount ?? 0,
+          completionTokens: um?.candidatesTokenCount ?? 0,
+          totalTokens: um?.totalTokenCount ?? ((um?.promptTokenCount ?? 0) + (um?.candidatesTokenCount ?? 0)),
+        },
+        model,
+      };
+    }
+
+    case 'ollama': {
+      // Com API key → Ollama Cloud (ollama.com); sem key → servidor local
+      const baseUrl = process.env.OLLAMA_BASE_URL || (apiKey && apiKey !== 'local' ? 'https://ollama.com/v1' : 'http://localhost:11434/v1');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey && apiKey !== 'local') headers['Authorization'] = `Bearer ${apiKey}`;
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Ollama: ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens ?? 0,
+          completionTokens: data?.usage?.completion_tokens ?? 0,
+          totalTokens: data?.usage?.total_tokens ?? 0,
+        },
+        model: data?.model ?? model,
+      };
+    }
+
+    case 'abacusai':
+    default: {
+      const response = await fetch('https://apps.abacus.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Abacus.ai: ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens ?? 0,
+          completionTokens: data?.usage?.completion_tokens ?? 0,
+          totalTokens: data?.usage?.total_tokens ?? 0,
+        },
+        model: data?.model ?? model,
+      };
+    }
+  }
+}
+
+function logRun(userId: string, agent: string, provider: string, model: string, usage: LlmUsage, durationMs: number, success: boolean, error?: string) {
+  prisma.agentRun.create({
+    data: {
+      userId,
+      agent,
+      provider,
+      model,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      durationMs,
+      success,
+      error: error?.slice(0, 2000) ?? null,
+    },
+  }).catch((e) => console.error('AgentRun log error:', e));
+}
+
+export function parseAgentJson(text: string): any {
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch { return null; }
+    }
+    return null;
+  }
+}
+
+export async function callAgent(
+  userId: string,
+  opts: LlmOptions & { agent: string; json?: boolean; validate?: (data: any, text: string) => string | null }
+): Promise<AgentCallResult> {
+  const tier = AGENT_TIERS[opts.agent] ?? 'standard';
+  const ctx = await getRoutingContext(userId, opts.fallbackKey);
+  const chain = buildChain(ctx, tier);
+  if (chain.length === 0) throw new Error('Nenhuma API key de LLM configurada (Anthropic, OpenAI, Google ou Abacus).');
+
+  const emptyUsage: LlmUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let lastError: any = null;
+  let userPrompt = opts.userPrompt;
+  let validationRetried = false;
+
+  for (let i = 0; i < chain.length; i++) {
+    const step = chain[i];
+    const start = Date.now();
+    try {
+      const { text, usage, model } = await callProvider(step.provider, step.model, ctx.keys[step.provider]!, opts.systemPrompt, userPrompt);
+      const durationMs = Date.now() - start;
+      const data = opts.json === false ? null : parseAgentJson(text);
+
+      // Auto-correção: uma retentativa no MESMO provider com o erro de validação anexado
+      const validationError = opts.validate ? opts.validate(data, text) : null;
+      if (validationError) {
+        logRun(userId, opts.agent, step.provider, model, usage, durationMs, false, `validação: ${validationError}`);
+        if (!validationRetried) {
+          validationRetried = true;
+          userPrompt = `${opts.userPrompt}\n\nATENÇÃO: sua resposta anterior foi rejeitada pela validação: "${validationError}". Corrija exatamente esse problema e responda de novo.`;
+          i--;
+          continue;
+        }
+        throw new Error(`Resposta do agente reprovada na validação: ${validationError}`);
+      }
+
+      logRun(userId, opts.agent, step.provider, model, usage, durationMs, true);
+      return { text, data, usage, durationMs, provider: step.provider, model };
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      if (!String(err?.message ?? '').startsWith('Resposta do agente reprovada')) {
+        logRun(userId, opts.agent, step.provider, step.model, emptyUsage, durationMs, false, err?.message);
+      }
+      lastError = err;
+      if (String(err?.message ?? '').startsWith('Resposta do agente reprovada')) throw err;
+    }
+  }
+  throw lastError ?? new Error('Todos os provedores de LLM falharam.');
+}
+
+export async function callLLM(userId: string, opts: LlmOptions): Promise<string> {
+  const result = await callAgent(userId, { ...opts, agent: opts.agent ?? 'desconhecido', json: false });
+  return result.text;
+}
