@@ -49,6 +49,33 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true);
   const [auditing, setAuditing] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(null);
+  const [syncingGads, setSyncingGads] = useState(false);
+
+  const runGadsSync = async (direction: 'pull' | 'push', customUpdates?: any) => {
+    setSyncingGads(true);
+    try {
+      const res = await fetch('/api/google-ads/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId: params?.id,
+          direction,
+          updates: customUpdates,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Sincronização realizada com sucesso!');
+        await fetchCampaign(); // Refresh campaign details
+      } else {
+        toast.error(data.error || 'Erro na sincronização com o Google Ads');
+      }
+    } catch {
+      toast.error('Erro de rede ao sincronizar com Google Ads');
+    } finally {
+      setSyncingGads(false);
+    }
+  };
 
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [loopInterval, setLoopInterval] = useState('24h');
@@ -205,6 +232,14 @@ export default function CampaignDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={() => runGadsSync('pull')}
+            disabled={syncingGads}
+            className="bg-slate-700 hover:bg-slate-600 text-white gap-2"
+          >
+            {syncingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Sincronizar Google Ads
+          </Button>
           <Button onClick={runAudit} disabled={auditing} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
             {auditing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
             {auditing ? 'Auditando...' : 'Auditoria IA'}

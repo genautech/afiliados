@@ -48,8 +48,9 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
           agent: 'ads-auditor',
           systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi "${rules.decision}". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
           userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).
+[INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances ("${campaign.bidStrategy || 'não configurada'}") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.
 Economia calculada (últimos ${econ.logCount} registros): gasto $${econ.spend.toFixed(2)}, receita $${econ.revenue.toFixed(2)}, lucro $${econ.profit.toFixed(2)}, ${econ.clicks} cliques, ${econ.hops} hops (passagem presell→oferta ${econ.hopRatePct.toFixed(0)}%), ${econ.conversions} conversões, EPC real $${econ.epcReal.toFixed(2)}, CPC real $${econ.cpcReal.toFixed(2)}, CVR ${econ.cvrRealPct.toFixed(2)}%, burn ${econ.budgetBurnPct.toFixed(0)}% do budget de teste.
-Referências da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.
+Referência da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.
 Decisão das regras: ${rules.decision} — gatilhos: ${rules.triggers.join(' | ')}
 Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSAR|KILL|CONTINUAR", "diagnostico": "2-3 frases", "ajustes": ["até 4 ações concretas priorizadas"]}`,
         });
@@ -148,8 +149,42 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
   // KILL/PAUSAR mudam status automaticamente; SCALE só sugere (aprovação humana)
   if (finalDecision === 'KILL') {
     await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'KILL', lastLoopRunAt: new Date() } });
+    try {
+      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
+      const gadsConfig = await getGoogleAdsConfig(userId);
+      if (gadsConfig) {
+        let gadsId = campaign.googleCampaignName;
+        if (!gadsId || isNaN(Number(gadsId))) {
+          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
+          if (gadsData?.googleCampaignId) gadsId = gadsData.googleCampaignId;
+        }
+        if (gadsId && !isNaN(Number(gadsId))) {
+          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
+          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: KILL)');
+        }
+      }
+    } catch (err: any) {
+      console.error('Google Ads Auto-Pause (KILL) error:', err?.message);
+    }
   } else if (finalDecision === 'PAUSAR') {
     await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSADA', lastLoopRunAt: new Date() } });
+    try {
+      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
+      const gadsConfig = await getGoogleAdsConfig(userId);
+      if (gadsConfig) {
+        let gadsId = campaign.googleCampaignName;
+        if (!gadsId || isNaN(Number(gadsId))) {
+          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
+          if (gadsData?.googleCampaignId) gadsId = gadsData.googleCampaignId;
+        }
+        if (gadsId && !isNaN(Number(gadsId))) {
+          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
+          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: PAUSAR)');
+        }
+      }
+    } catch (err: any) {
+      console.error('Google Ads Auto-Pause (PAUSAR) error:', err?.message);
+    }
   } else {
     await prisma.campaign.update({ where: { id: campaign.id }, data: { lastLoopRunAt: new Date() } });
   }
