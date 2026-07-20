@@ -15,7 +15,6 @@ const SERVICES = [
     name: 'Google Ads',
     key: 'google_ads',
     link: 'https://ads.google.com',
-    wired: false,
     fields: [
       { name: 'customer_id', label: 'Customer ID', placeholder: 'xxx-xxx-xxxx' },
       { name: 'developer_token', label: 'Developer Token', placeholder: 'Token', sensitive: true },

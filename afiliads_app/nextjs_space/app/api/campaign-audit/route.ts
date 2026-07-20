@@ -95,7 +95,9 @@ ANALISE a campanha e responda com JSON:
 }`;
 
     const userPrompt = `Audite esta campanha de afiliado:
-[INFO GOOGLE ADS SYNC]: As configurações de status, orçamento diário ($${campaign.budgetDaily}) e estratégias de lances ("${campaign.bidStrategy || 'não configurada'}") foram sincronizadas em tempo real via API do Google Ads e refletem o estado real de entrega atual.
+${campaign.bidStrategy
+  ? `[GOOGLE ADS SYNC]: dados de status/orçamento/lances ("${campaign.bidStrategy}") vieram do último pull da API do Google Ads — podem estar defasados desde então.`
+  : `[GOOGLE ADS SYNC]: esta campanha NUNCA foi sincronizada com a API do Google Ads — os dados abaixo são o registro local; trate divergências com o Google Ads como possíveis.`}
 
 **Dados da Campanha:**
 - Nome: ${campaign.name}

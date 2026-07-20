@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import {
   PackageSearch, Search, Sparkles, Loader2, CheckCircle2, XCircle, Circle,
   ShieldCheck, ShieldAlert, AlertTriangle, Bot, MessageCircle, Send, X,
-  Save, Wand2, Tag, KeyRound, Target, Scale, ArrowRight, RefreshCw,
+  Save, Wand2, Tag, KeyRound, Target, Scale, ArrowRight, RefreshCw, FileText,
   Handshake, ExternalLink, HelpCircle,
 } from 'lucide-react';
 import { affiliateMarketplaceUrl } from '@/lib/marketplace';
@@ -232,6 +232,39 @@ export default function BuscaProdutosPage() {
       setSelected(updated);
       loadProducts();
       toast.success(`${p.name} marcado como escolhido`);
+    }
+  }
+
+  const [presellGenerating, setPresellGenerating] = useState(false);
+
+  async function generatePresellFor(p: Product) {
+    let hop = p.hopLink ?? '';
+    if (!hop) {
+      hop = window.prompt('HopLink de afiliado (https://... — pegue na página de afiliado do produtor):') ?? '';
+    }
+    if (!hop || !/^https?:\/\//.test(hop)) { toast.error('HopLink válido é obrigatório'); return; }
+    setPresellGenerating(true);
+    try {
+      const r = await fetch('/api/presells', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: p.name,
+          productId: p.id,
+          hopLink: hop,
+          trackingId: p.strategy?.campanha?.naming ?? '',
+          geo: 'US',
+        }),
+      });
+      const data = await r.json();
+      if (r.ok) {
+        toast.success('Presell publicada!');
+        window.open(data.url, '_blank');
+      } else {
+        toast.error(data?.error ?? 'Erro ao gerar presell');
+      }
+    } finally {
+      setPresellGenerating(false);
     }
   }
 
@@ -485,6 +518,9 @@ export default function BuscaProdutosPage() {
                     <Target className="h-4 w-4" /> Escolher produto
                   </Button>
                 )}
+                <Button variant="secondary" className="gap-1 bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30" onClick={() => generatePresellFor(selected)} disabled={presellGenerating}>
+                  {presellGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Gerar Presell
+                </Button>
                 <Button variant="secondary" className="gap-1 bg-[#0f172a] border border-[#334155] text-slate-200" onClick={() => saveAsOffer(selected)}>
                   <Save className="h-4 w-4" /> Salvar como Oferta
                 </Button>

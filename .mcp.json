@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "afiliads": {
+      "command": "node",
+      "args": [
+        "/Users/genautech/afiliados/mcp-afiliads/index.mjs"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql://postgres:kpiDAYSQeNByyrIOtjwCnVJPAauUSgQE@tokaido.proxy.rlwy.net:50955/railway",
+        "AFILIADS_APP_URL": "https://afiliads-app-production.up.railway.app",
+        "AFILIADS_MCP_TOKEN": "256000a22b5c0601068a64f9e1f009838590402402a8292f",
+        "AFILIADS_USER_EMAIL": "genau@yoobe.co"
+      }
+    }
+  }
+}

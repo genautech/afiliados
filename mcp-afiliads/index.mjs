@@ -4,7 +4,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import pg from 'pg';
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://genautech@localhost:5432/afiliads';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) { console.error('DATABASE_URL não definida — configure no settings.json do MCP (o app usa Postgres na nuvem)'); process.exit(1); }
 const APP_URL = process.env.AFILIADS_APP_URL || 'http://localhost:3001';
 const MCP_TOKEN = process.env.AFILIADS_MCP_TOKEN || '';
 const USER_EMAIL = process.env.AFILIADS_USER_EMAIL || 'genaujunior@gmail.com';
@@ -234,6 +235,29 @@ server.tool(
     });
     const data = await res.json();
     return text(data);
+  }
+);
+
+server.tool(
+  'gerar_presell',
+  'Gera e publica uma página de presell (bridge page compliance-friendly, template editorial) para um produto. Retorna a URL pública /p/<slug>. Requer hopLink de afiliado real.',
+  {
+    produto: z.string().describe('Nome do produto'),
+    hoplink: z.string().url().describe('HopLink de afiliado (https://...)'),
+    tracking_id: z.string().optional().describe('TID da campanha (ex.: CB_SURV_US_SEARCH_BRIDGE_v1) — vira &tid= no hoplink'),
+    angulo: z.enum(['review', 'advertorial', 'quiz']).default('review'),
+    geo: z.string().default('US'),
+  },
+  async ({ produto, hoplink, tracking_id, angulo, geo }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    const res = await fetch(`${APP_URL}/api/presells`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
+      body: JSON.stringify({ productName: produto, hopLink: hoplink, trackingId: tracking_id, angle: angulo, geo }),
+    });
+    const data = await res.json();
+    if (!res.ok) return text(`Erro ${res.status}: ${JSON.stringify(data)}`);
+    return text({ ...data, urlCompleta: `${APP_URL}${data.url}` });
   }
 );
 
