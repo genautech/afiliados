@@ -160,11 +160,16 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     const k = map[`api_key_${p}`] || envKeys[p];
     if (k) keys[p] = k;
   }
-  // Claude e Gemini rodam via Vertex AI (GCP) quando a service account está configurada,
-  // no lugar das chaves diretas da Anthropic/Google AI Studio.
+  // Gemini roda via Vertex AI (GCP) quando a service account está configurada, no lugar
+  // da chave direta do Google AI Studio — testado e funcionando (2026-07-20).
+  // Claude via Vertex NÃO é usado por padrão: o projeto GCP mkt-4unik teve os 4 pedidos de
+  // cota (anthropic-claude-opus-4-7 e anthropic-claude-fable) NEGADOS pelo Google em 2026-07-20
+  // (não é cota zero temporária, é negação — ver console.cloud.google.com/iam-admin/quotas/qirs).
+  // Sem isso, Claude segue usando a chave direta da Anthropic normalmente. Se a cota for
+  // aprovada no futuro, defina Integration llm/vertex_claude_enabled = "on" para reativar.
   if (process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON) {
-    keys.anthropic = 'vertex';
     keys.google = 'vertex';
+    if (map['vertex_claude_enabled'] === 'on') keys.anthropic = 'vertex';
   }
   const models: Partial<Record<Provider, string>> = {};
   for (const p of ACTIVE_PROVIDERS) {
