@@ -28,6 +28,46 @@ function vertexHost(location: string) {
   return location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
 }
 
+// Endpoint MaaS genérico do Vertex (OpenAI-compatible) — serve qualquer modelo aberto/parceiro
+// hospedado como "Model as a Service" (Grok, DeepSeek, Mistral, Qwen, Llama...), sempre no
+// formato model: "<publisher>/<model>". Um único helper cobre todos, basta trocar o model id.
+async function callVertexMaas(
+  publisherModel: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string; usage: LlmUsage; model: string }> {
+  const project = process.env.GCP_PROJECT_ID;
+  const location = process.env.GCP_VERTEX_LOCATION || 'global';
+  const token = await getVertexAccessToken();
+  const response = await fetch(
+    `https://${vertexHost(location)}/v1/projects/${project}/locations/${location}/endpoints/openapi/chat/completions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        model: publisherModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 4000,
+        stream: false,
+      }),
+    }
+  );
+  if (!response.ok) throw new Error(`Erro na API do Vertex MaaS (${publisherModel}): ${await response.text()}`);
+  const data = await response.json();
+  return {
+    text: data?.choices?.[0]?.message?.content || '',
+    usage: {
+      promptTokens: data?.usage?.prompt_tokens ?? 0,
+      completionTokens: data?.usage?.completion_tokens ?? 0,
+      totalTokens: data?.usage?.total_tokens ?? 0,
+    },
+    model: data?.model ?? publisherModel,
+  };
+}
+
 export interface LlmUsage {
   promptTokens: number;
   completionTokens: number;
@@ -50,9 +90,9 @@ interface LlmOptions {
   agent?: string;
 }
 
-export type Provider = 'anthropic' | 'openai' | 'google' | 'ollama' | 'abacusai';
+export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai';
 // Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade)
-export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'ollama'];
+export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama'];
 export type Tier = 'premium' | 'standard' | 'light';
 
 // Tier por agente: premium = raciocínio pesado (qualidade > custo);
@@ -72,18 +112,27 @@ export const AGENT_TIERS: Record<string, Tier> = {
   'wizard-validator': 'light',
 };
 
-// Ordem de preferência por tier. Claude (anthropic) fica reservado ao tier
-// premium; nos demais entra por último, justamente para poupar tokens Claude.
+// Ordem de preferência por tier, otimizada por custo real no Vertex (2026-07):
+// - premium (compliance/auditoria): Claude direto lidera; Grok 4.20 Reasoning entra em seguida
+//   ($1.25/$2.50 por 1M tokens, baixa taxa de alucinação, ótimo pra analisar claims de compliance
+//   — e mais barato que Opus $5/$25 ou a saída do Gemini Pro $12); Google e OpenAI reforçam;
+//   Ollama é o último recurso grátis.
+// - standard (keywords, score de produto, RSA): Grok 4.1 Fast Reasoning lidera — $0.20/$0.50,
+//   tool-calling forte, mais barato que o Gemini Flash; Google como reforço estabelecido;
+//   Ollama grátis como rede de segurança.
+// - light (chat, validação simples): Ollama grátis lidera; Grok non-reasoning (barato, baixa
+//   latência) como fallback pago antes de subir pra Gemini/Claude.
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'openai', 'google', 'ollama'],
-  standard: ['google', 'ollama', 'openai', 'anthropic'],
-  light: ['ollama', 'google', 'openai', 'anthropic'],
+  premium: ['anthropic', 'grok', 'google', 'openai', 'ollama'],
+  standard: ['grok', 'google', 'ollama', 'openai', 'anthropic'],
+  light: ['ollama', 'grok', 'google', 'openai', 'anthropic'],
 };
 
 const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   anthropic: { premium: 'claude-opus-4-8', standard: 'claude-fable-5', light: 'claude-fable-5' },
   openai: { premium: 'gpt-4o', standard: 'gpt-4o-mini', light: 'gpt-4o-mini' },
   google: { premium: 'gemini-2.5-pro', standard: 'gemini-3.5-flash', light: 'gemini-3.5-flash' },
+  grok: { premium: 'grok-4.20-reasoning', standard: 'grok-4.1-fast-reasoning', light: 'grok-4.1-fast-non-reasoning' },
   ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
 };
@@ -108,6 +157,7 @@ const DEFAULT_BUDGETS: Record<Provider, number> = {
   anthropic: 2_000_000,
   openai: 0,
   google: 0,
+  grok: 0,
   ollama: 0,
   abacusai: 0,
 };
@@ -140,7 +190,7 @@ async function getMonthUsage(userId: string): Promise<Record<Provider, number>> 
     where: { userId, createdAt: { gte: monthStart }, success: true },
     _sum: { totalTokens: true },
   });
-  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, ollama: 0, abacusai: 0 };
+  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0 };
   for (const g of grouped) {
     if (g.provider in usage) usage[g.provider as Provider] = g._sum.totalTokens ?? 0;
   }
@@ -154,14 +204,17 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     anthropic: process.env.ANTHROPIC_API_KEY,
     openai: process.env.OPENAI_API_KEY,
     google: process.env.GEMINI_API_KEY,
+    grok: process.env.XAI_API_KEY,
     ollama: process.env.OLLAMA_API_KEY,
   };
   for (const p of ACTIVE_PROVIDERS) {
     const k = map[`api_key_${p}`] || envKeys[p];
     if (k) keys[p] = k;
   }
-  // Gemini roda via Vertex AI (GCP) quando a service account está configurada, no lugar
-  // da chave direta do Google AI Studio — testado e funcionando (2026-07-20).
+  // Gemini e Grok (xAI) rodam via Vertex AI (GCP) quando a service account está configurada,
+  // no lugar de chave direta — testado e funcionando (2026-07-20). Se `keys.grok` já veio de
+  // uma chave direta da xAI (api.x.ai), essa segue valendo; o sentinela só entra se não houver
+  // chave direta configurada.
   // Claude via Vertex NÃO é usado por padrão: o projeto GCP mkt-4unik teve os 4 pedidos de
   // cota (anthropic-claude-opus-4-7 e anthropic-claude-fable) NEGADOS pelo Google em 2026-07-20
   // (não é cota zero temporária, é negação — ver console.cloud.google.com/iam-admin/quotas/qirs).
@@ -169,6 +222,7 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
   // aprovada no futuro, defina Integration llm/vertex_claude_enabled = "on" para reativar.
   if (process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON) {
     keys.google = 'vertex';
+    if (!keys.grok) keys.grok = 'vertex';
     if (map['vertex_claude_enabled'] === 'on') keys.anthropic = 'vertex';
   }
   const models: Partial<Record<Provider, string>> = {};
@@ -342,6 +396,35 @@ async function callProvider(
           totalTokens: um?.totalTokenCount ?? ((um?.promptTokenCount ?? 0) + (um?.candidatesTokenCount ?? 0)),
         },
         model,
+      };
+    }
+
+    case 'grok': {
+      if (apiKey === 'vertex') {
+        // Modelos xAI no Vertex usam o endpoint MaaS único (OpenAI-compatible), formato "xai/<modelo>"
+        return callVertexMaas(`xai/${model}`, systemPrompt, userPrompt);
+      }
+      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Grok (xAI): ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens ?? 0,
+          completionTokens: data?.usage?.completion_tokens ?? 0,
+          totalTokens: data?.usage?.total_tokens ?? 0,
+        },
+        model: data?.model ?? model,
       };
     }
 

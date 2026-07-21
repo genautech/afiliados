@@ -28,6 +28,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Claude',
   openai: 'GPT',
   google: 'Gemini',
+  grok: 'Grok',
   ollama: 'Ollama (grátis)',
 };
 
