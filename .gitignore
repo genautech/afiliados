@@ -18,6 +18,9 @@ web_modules/
 **/.env
 **/.env*
 
+# Claude Code local settings (may contain secrets/env vars)
+.claude/settings.local.json
+
 # OS files
 .DS_Store
 Thumbs.db
