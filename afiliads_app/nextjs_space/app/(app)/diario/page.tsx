@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarDays, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { CalendarDays, Save, TrendingUp, TrendingDown, Minus, DollarSign, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import dynamic from 'next/dynamic';
 
@@ -75,14 +76,13 @@ export default function DiarioPage() {
   const totalSpend = filteredLogs.reduce((s: number, l: any) => s + (l?.spend ?? 0), 0);
   const totalRevenue = filteredLogs.reduce((s: number, l: any) => s + (l?.revenue ?? 0), 0);
   const profit = totalRevenue - totalSpend;
-  const healthStatus = profit > 0 ? 'LUCRATIVO' : profit === 0 ? 'NO BREAK-EVEN' : 'PREJUÍZO';
-  const healthColor = profit > 0 ? 'text-green-400' : profit === 0 ? 'text-yellow-400' : 'text-red-400';
+  const healthStatus = profit > 0 ? 'LUCRATIVO' : profit === 0 ? 'BREAK-EVEN' : 'PREJUÍZO';
   const healthPct = totalSpend > 0 ? ((profit / totalSpend) * 100) : 0;
 
   const inputCls = "bg-[#0f172a] border-[#334155] text-white placeholder:text-slate-500";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-display font-bold text-white tracking-tight flex items-center gap-2">
           <CalendarDays className="h-6 w-6 text-blue-400" /> Diário de Acompanhamento
@@ -93,13 +93,13 @@ export default function DiarioPage() {
       {/* Campaign selector */}
       <div className="flex gap-4 flex-wrap">
         <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
-          <SelectTrigger className={`w-80 ${inputCls}`}><SelectValue placeholder="Selecione uma campanha" /></SelectTrigger>
+          <SelectTrigger className={`w-full sm:w-96 ${inputCls}`}><SelectValue placeholder="Selecione uma campanha" /></SelectTrigger>
           <SelectContent className="bg-[#1e293b] border-[#334155]">
             {(campaigns ?? []).map((c: any) => <SelectItem key={c?.id} value={c?.id} className="text-white">{c?.name} ({c?.platform})</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className={`w-36 ${inputCls}`}><SelectValue /></SelectTrigger>
+          <SelectTrigger className={`w-full sm:w-44 ${inputCls}`}><SelectValue /></SelectTrigger>
           <SelectContent className="bg-[#1e293b] border-[#334155]">
             <SelectItem value="7" className="text-white">Últimos 7 dias</SelectItem>
             <SelectItem value="14" className="text-white">Últimos 14 dias</SelectItem>
@@ -110,39 +110,59 @@ export default function DiarioPage() {
 
       {selectedCampaign && (
         <>
-          {/* Health indicator */}
-          <Card className="bg-[#1e293b] border-[#334155]">
-            <CardContent className="p-5 flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                {profit > 0 ? <TrendingUp className="h-6 w-6 text-green-400" /> : profit < 0 ? <TrendingDown className="h-6 w-6 text-red-400" /> : <Minus className="h-6 w-6 text-yellow-400" />}
-                <div>
-                  <span className={`text-lg font-bold ${healthColor}`}>{healthStatus}</span>
-                  <p className="text-xs text-slate-400">Lucro: ${profit?.toFixed?.(2)} ({healthPct?.toFixed?.(1)}%)</p>
-                </div>
-              </div>
-              <div className="flex gap-6 text-sm">
-                <div><span className="text-slate-400">Gasto:</span> <span className="text-white font-mono">${totalSpend?.toFixed?.(2)}</span></div>
-                <div><span className="text-slate-400">Receita:</span> <span className="text-green-400 font-mono">${totalRevenue?.toFixed?.(2)}</span></div>
-                {campaign && <div><span className="text-slate-400">BE:</span> <span className="text-yellow-400 font-mono">${campaign?.epcBreakeven?.toFixed?.(4)}</span></div>}
-              </div>
-            </CardContent>
-          </Card>
+          {/* Health / period KPIs */}
+          <StatGrid cols={4}>
+            <StatCard
+              label="Saúde do período"
+              value={healthStatus}
+              hint={`Lucro ${healthPct?.toFixed?.(1)}% sobre o gasto`}
+              tone={profit > 0 ? 'positive' : profit < 0 ? 'negative' : 'warning'}
+              icon={profit > 0 ? <TrendingUp className="h-5 w-5" /> : profit < 0 ? <TrendingDown className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
+            />
+            <StatCard
+              label="Gasto"
+              value={`$${totalSpend?.toFixed?.(2)}`}
+              hint={`Últimos ${period} dias`}
+              tone="negative"
+              icon={<DollarSign className="h-5 w-5" />}
+            />
+            <StatCard
+              label="Receita"
+              value={`$${totalRevenue?.toFixed?.(2)}`}
+              hint={`Lucro $${profit?.toFixed?.(2)}`}
+              tone="positive"
+              icon={<TrendingUp className="h-5 w-5" />}
+            />
+            <StatCard
+              label="EPC Break-even"
+              value={`$${campaign?.epcBreakeven?.toFixed?.(4) ?? '0.0000'}`}
+              hint="Meta mínima por clique"
+              tone="warning"
+              icon={<Target className="h-5 w-5" />}
+            />
+          </StatGrid>
 
           {/* Form */}
           <Card className="bg-[#1e293b] border-[#334155]">
-            <CardHeader className="pb-3"><CardTitle className="text-base text-white">Registrar Dados</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-                <div><Label className="text-slate-300 text-xs">Data</Label><Input type="date" value={logDate} onChange={(e:any) => setLogDate(e?.target?.value ?? '')} className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Gasto (USD)</Label><Input type="number" value={spend} onChange={(e:any) => setSpend(e?.target?.value ?? '')} placeholder="0.00" className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Cliques</Label><Input type="number" value={clicks} onChange={(e:any) => setClicks(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Impressões</Label><Input type="number" value={impressions} onChange={(e:any) => setImpressions(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Hops (cliques no hoplink)</Label><Input type="number" value={hops} onChange={(e:any) => setHops(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Conv.</Label><Input type="number" value={conversions} onChange={(e:any) => setConversions(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
-                <div><Label className="text-slate-300 text-xs">Receita (USD)</Label><Input type="number" value={revenue} onChange={(e:any) => setRevenue(e?.target?.value ?? '')} placeholder="0.00" className={inputCls} /></div>
-                <div className="flex items-end"><Button onClick={handleSave} loading={saving} className="bg-green-600 hover:bg-green-700 text-white w-full gap-1"><Save className="h-3 w-3" /> Salvar</Button></div>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-white">Registrar Dados do Dia</CardTitle>
+              <p className="text-sm text-slate-400">Preencha as métricas para manter o acompanhamento atualizado</p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Data</Label><Input type="date" value={logDate} onChange={(e:any) => setLogDate(e?.target?.value ?? '')} className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Gasto (USD)</Label><Input type="number" value={spend} onChange={(e:any) => setSpend(e?.target?.value ?? '')} placeholder="0.00" className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Cliques</Label><Input type="number" value={clicks} onChange={(e:any) => setClicks(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Impressões</Label><Input type="number" value={impressions} onChange={(e:any) => setImpressions(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Hops (hoplink)</Label><Input type="number" value={hops} onChange={(e:any) => setHops(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Conversões</Label><Input type="number" value={conversions} onChange={(e:any) => setConversions(e?.target?.value ?? '')} placeholder="0" className={inputCls} /></div>
+                <div className="space-y-1.5"><Label className="text-slate-300 text-sm">Receita (USD)</Label><Input type="number" value={revenue} onChange={(e:any) => setRevenue(e?.target?.value ?? '')} placeholder="0.00" className={inputCls} /></div>
+                <div className="flex items-end"><Button onClick={handleSave} loading={saving} className="bg-green-600 hover:bg-green-700 text-white w-full h-10 gap-2"><Save className="h-4 w-4" /> Salvar dia</Button></div>
               </div>
-              <div className="mt-3"><Input value={notes} onChange={(e:any) => setNotes(e?.target?.value ?? '')} placeholder="Notas do dia (opcional)" className={inputCls} /></div>
+              <div className="space-y-1.5">
+                <Label className="text-slate-300 text-sm">Notas</Label>
+                <Input value={notes} onChange={(e:any) => setNotes(e?.target?.value ?? '')} placeholder="Observações do dia (opcional)" className={inputCls} />
+              </div>
             </CardContent>
           </Card>
 
@@ -151,34 +171,45 @@ export default function DiarioPage() {
 
           {/* Log history */}
           <Card className="bg-[#1e293b] border-[#334155]">
-            <CardHeader className="pb-3"><CardTitle className="text-base text-white">Histórico</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-white">Histórico diário</CardTitle>
+              <p className="text-sm text-slate-400">Linha a linha do período selecionado</p>
+            </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-[#334155] text-slate-400 text-xs">
-                    <th className="text-left py-2">Data</th><th className="text-right">Gasto</th><th className="text-right">Cliques</th>
-                    <th className="text-right">Conv.</th><th className="text-right">Receita</th><th className="text-right">EPC</th><th className="text-right">CPC</th><th className="text-left">Notas</th>
-                  </tr></thead>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="border-b border-[#334155] text-slate-400 text-xs uppercase tracking-wide">
+                      <th className="text-left py-3 px-2">Data</th>
+                      <th className="text-right py-3 px-2">Gasto</th>
+                      <th className="text-right py-3 px-2">Cliques</th>
+                      <th className="text-right py-3 px-2">Conv.</th>
+                      <th className="text-right py-3 px-2">Receita</th>
+                      <th className="text-right py-3 px-2">EPC</th>
+                      <th className="text-right py-3 px-2">CPC</th>
+                      <th className="text-left py-3 px-2">Notas</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {filteredLogs.map((log: any) => {
                       const epc = (log?.clicks ?? 0) > 0 ? (log?.revenue ?? 0) / log.clicks : 0;
                       const cpc = (log?.clicks ?? 0) > 0 ? (log?.spend ?? 0) / log.clicks : 0;
                       return (
                         <tr key={log?.id} className="border-b border-[#334155]/50 hover:bg-[#0f172a]/50">
-                          <td className="py-2 text-white">{new Date(log?.logDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</td>
-                          <td className="text-right text-white font-mono">${(log?.spend ?? 0)?.toFixed?.(2)}</td>
-                          <td className="text-right text-white font-mono">{log?.clicks ?? 0}</td>
-                          <td className="text-right text-white font-mono">{log?.conversions ?? 0}</td>
-                          <td className="text-right text-green-400 font-mono">${(log?.revenue ?? 0)?.toFixed?.(2)}</td>
-                          <td className="text-right text-white font-mono">${epc?.toFixed?.(3)}</td>
-                          <td className="text-right text-white font-mono">${cpc?.toFixed?.(3)}</td>
-                          <td className="text-slate-400 text-xs max-w-[150px] truncate">{log?.notes ?? ''}</td>
+                          <td className="py-3.5 px-2 text-white font-medium">{new Date(log?.logDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</td>
+                          <td className="py-3.5 px-2 text-right text-white font-mono">${(log?.spend ?? 0)?.toFixed?.(2)}</td>
+                          <td className="py-3.5 px-2 text-right text-white font-mono">{log?.clicks ?? 0}</td>
+                          <td className="py-3.5 px-2 text-right text-white font-mono">{log?.conversions ?? 0}</td>
+                          <td className="py-3.5 px-2 text-right text-green-400 font-mono">${(log?.revenue ?? 0)?.toFixed?.(2)}</td>
+                          <td className="py-3.5 px-2 text-right text-white font-mono">${epc?.toFixed?.(3)}</td>
+                          <td className="py-3.5 px-2 text-right text-white font-mono">${cpc?.toFixed?.(3)}</td>
+                          <td className="py-3.5 px-2 text-slate-400 text-sm max-w-[220px] truncate">{log?.notes ?? '—'}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                {filteredLogs.length === 0 && <p className="text-center text-slate-500 py-8">Sem registros</p>}
+                {filteredLogs.length === 0 && <p className="text-center text-slate-500 py-10">Sem registros</p>}
               </div>
             </CardContent>
           </Card>

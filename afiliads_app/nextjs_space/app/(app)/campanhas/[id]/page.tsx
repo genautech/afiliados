@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   ArrowLeft, Shield, AlertTriangle, CheckCircle2, XCircle, Loader2,
   ExternalLink, TrendingUp, TrendingDown, Target, DollarSign,
-  BarChart3, Zap, Eye, Copy, RefreshCw, Play
+  BarChart3, Zap, Eye, Copy, RefreshCw, Play, MousePointerClick
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -253,32 +254,50 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">Gasto</p>
-          <p className="text-lg font-bold text-white font-mono">${totalSpend.toFixed(2)}</p>
-        </CardContent></Card>
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">Receita</p>
-          <p className="text-lg font-bold text-green-400 font-mono">${totalRevenue.toFixed(2)}</p>
-        </CardContent></Card>
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">Lucro</p>
-          <p className={`text-lg font-bold font-mono ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>${profit.toFixed(2)}</p>
-        </CardContent></Card>
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">ROAS</p>
-          <p className={`text-lg font-bold font-mono ${roas >= 1 ? 'text-green-400' : 'text-red-400'}`}>{roas.toFixed(2)}x</p>
-        </CardContent></Card>
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">EPC</p>
-          <p className="text-lg font-bold text-yellow-400 font-mono">${epc.toFixed(4)}</p>
-        </CardContent></Card>
-        <Card className="bg-[#1e293b] border-[#334155]"><CardContent className="p-4 text-center">
-          <p className="text-xs text-slate-400">CPC</p>
-          <p className="text-lg font-bold text-orange-400 font-mono">${cpc.toFixed(4)}</p>
-        </CardContent></Card>
-      </div>
+      <StatGrid cols={6}>
+        <StatCard
+          label="Gasto"
+          value={`$${totalSpend.toFixed(2)}`}
+          hint={`${totalClicks} cliques`}
+          tone="negative"
+          icon={<DollarSign className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Receita"
+          value={`$${totalRevenue.toFixed(2)}`}
+          hint={`${totalConversions} conversões`}
+          tone="positive"
+          icon={<TrendingUp className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Lucro"
+          value={`$${profit.toFixed(2)}`}
+          hint={profit >= 0 ? 'No positivo' : 'No negativo'}
+          tone={profit >= 0 ? 'positive' : 'negative'}
+          icon={profit >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+        />
+        <StatCard
+          label="ROAS"
+          value={`${roas.toFixed(2)}x`}
+          hint="Receita ÷ gasto"
+          tone={roas >= 1 ? 'positive' : 'negative'}
+          icon={<Target className="h-5 w-5" />}
+        />
+        <StatCard
+          label="EPC"
+          value={`$${epc.toFixed(4)}`}
+          hint="Receita por clique"
+          tone="warning"
+          icon={<MousePointerClick className="h-5 w-5" />}
+        />
+        <StatCard
+          label="CPC"
+          value={`$${cpc.toFixed(4)}`}
+          hint="Custo por clique"
+          tone="info"
+          icon={<BarChart3 className="h-5 w-5" />}
+        />
+      </StatGrid>
 
       {/* EPC/CPC Indicator + Risk */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
