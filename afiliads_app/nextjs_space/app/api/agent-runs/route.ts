@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest) {
       by: ['agent'],
       where: { userId },
       _count: { _all: true },
-      _sum: { totalTokens: true, promptTokens: true, completionTokens: true },
+      _sum: { totalTokens: true, promptTokens: true, completionTokens: true, costUsd: true },
       _avg: { durationMs: true },
       _max: { createdAt: true },
     });
@@ -31,6 +31,7 @@ export async function GET(_request: NextRequest) {
       totalTokens: g._sum.totalTokens ?? 0,
       promptTokens: g._sum.promptTokens ?? 0,
       completionTokens: g._sum.completionTokens ?? 0,
+      costUsd: g._sum.costUsd ?? 0,
       avgDurationMs: Math.round(g._avg.durationMs ?? 0),
       failures: failMap.get(g.agent) ?? 0,
       lastRunAt: g._max.createdAt,
@@ -40,13 +41,38 @@ export async function GET(_request: NextRequest) {
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { id: true, agent: true, provider: true, model: true, totalTokens: true, promptTokens: true, completionTokens: true, durationMs: true, success: true, createdAt: true },
+      select: { id: true, agent: true, provider: true, model: true, totalTokens: true, promptTokens: true, completionTokens: true, costUsd: true, keySource: true, durationMs: true, success: true, createdAt: true },
     });
 
     const totals = byAgent.reduce(
-      (acc, a) => ({ runs: acc.runs + a.runs, totalTokens: acc.totalTokens + a.totalTokens }),
-      { runs: 0, totalTokens: 0 }
+      (acc, a) => ({ runs: acc.runs + a.runs, totalTokens: acc.totalTokens + a.totalTokens, costUsd: acc.costUsd + a.costUsd }),
+      { runs: 0, totalTokens: 0, costUsd: 0 }
     );
+
+    // Extrato do mês corrente: separa uso via chave da plataforma (a pagar ao admin)
+    // do uso via chave própria (BYOK, sem cobrança) — mesmos números do painel admin.
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const period = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
+    const monthBySource = await prisma.agentRun.groupBy({
+      by: ['keySource'],
+      where: { userId, createdAt: { gte: monthStart } },
+      _count: { _all: true },
+      _sum: { totalTokens: true, costUsd: true },
+    });
+    const sourceTotals = { platform: { runs: 0, totalTokens: 0, costUsd: 0 }, byok: { runs: 0, totalTokens: 0, costUsd: 0 } };
+    for (const g of monthBySource) {
+      const key = g.keySource === 'byok' ? 'byok' : 'platform';
+      sourceTotals[key].runs += g._count._all;
+      sourceTotals[key].totalTokens += g._sum.totalTokens ?? 0;
+      sourceTotals[key].costUsd += g._sum.costUsd ?? 0;
+    }
+    const payment = await prisma.usagePayment.findUnique({
+      where: { userId_period: { userId, period } },
+      select: { amountUsd: true, status: true, paidAt: true, notes: true },
+    });
+    const statement = { period, ...sourceTotals, payment };
 
     // Problemas acionáveis: falhas das últimas 24h agrupadas por agente+causa
     const dayAgo = new Date(Date.now() - 24 * 3600_000);
@@ -71,7 +97,7 @@ export async function GET(_request: NextRequest) {
     }
     const problems = Array.from(problemMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
 
-    return NextResponse.json({ byAgent, recent, totals, problems });
+    return NextResponse.json({ byAgent, recent, totals, statement, problems });
   } catch (err: any) {
     console.error('GET agent-runs error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

@@ -3,7 +3,12 @@ import { prisma } from '../lib/prisma';
 
 async function main() {
   const campaignId = 'cmrqprg0j0003360rvvrks4ot';
-  const user = await prisma.user.findFirst({ where: { email: 'genaujunior@gmail.com' } });
+  const email = process.env.AFILIADS_MCP_USER_EMAIL || process.env.ADMIN_EMAIL;
+  if (!email) {
+    console.error('Defina AFILIADS_MCP_USER_EMAIL ou ADMIN_EMAIL para indicar a conta de teste');
+    return;
+  }
+  const user = await prisma.user.findFirst({ where: { email } });
   if (!user) {
     console.error('User not found');
     return;
