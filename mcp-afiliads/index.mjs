@@ -8,7 +8,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('DATABASE_URL não definida — configure no settings.json do MCP (o app usa Postgres na nuvem)'); process.exit(1); }
 const APP_URL = process.env.AFILIADS_APP_URL || 'http://localhost:3001';
 const MCP_TOKEN = process.env.AFILIADS_MCP_TOKEN || '';
-const USER_EMAIL = process.env.AFILIADS_USER_EMAIL || 'genaujunior@gmail.com';
+const USER_EMAIL = process.env.AFILIADS_USER_EMAIL;
+if (!USER_EMAIL) { console.error('AFILIADS_USER_EMAIL não definida — configure o e-mail da conta que o MCP deve operar'); process.exit(1); }
 
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 

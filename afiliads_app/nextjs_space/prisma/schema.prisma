@@ -9,28 +9,34 @@ datasource db {
 }
 
 model User {
-  id              String                @id @default(cuid())
-  name            String?
-  email           String                @unique
-  emailVerified   DateTime?
-  image           String?
-  password        String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  accounts        Account[]
-  sessions        Session[]
-  campaigns       Campaign[]
-  dailyLogs       DailyLog[]
-  keywords        Keyword[]
-  decisions       CampaignDecision[]
-  integrations    Integration[]
-  kbSearches      KnowledgeBaseSearch[]
-  offers          Offer[]
-  testResults     TestResult[]
-  atpSearches     AtpSearch[]
-  productResearch ProductResearch[]
-  agentRuns       AgentRun[]
-  Presell         Presell[]
+  id                String                @id @default(cuid())
+  name              String?
+  email             String                @unique
+  emailVerified     DateTime?
+  image             String?
+  password          String?
+  role              String                @default("USER") // USER | ADMIN
+  isActive          Boolean               @default(true)
+  metaReceitaMensal Float                 @default(0)
+  metaRoi           Float                 @default(0)
+  budgetMensalAds   Float                 @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  accounts          Account[]
+  sessions          Session[]
+  campaigns         Campaign[]
+  dailyLogs         DailyLog[]
+  keywords          Keyword[]
+  decisions         CampaignDecision[]
+  integrations      Integration[]
+  kbSearches        KnowledgeBaseSearch[]
+  offers            Offer[]
+  testResults       TestResult[]
+  atpSearches       AtpSearch[]
+  productResearch   ProductResearch[]
+  agentRuns         AgentRun[]
+  Presell           Presell[]
+  usagePayments     UsagePayment[]
 }
 
 model Account {
@@ -323,6 +329,8 @@ model AgentRun {
   promptTokens     Int      @default(0)
   completionTokens Int      @default(0)
   totalTokens      Int      @default(0)
+  costUsd          Float    @default(0)
+  keySource        String   @default("platform") // platform = chave global (a pagar ao admin) | byok = chave própria do usuário
   durationMs       Int      @default(0)
   success          Boolean  @default(true)
   error            String?  @db.Text
@@ -331,6 +339,24 @@ model AgentRun {
 
   @@index([userId, agent])
   @@index([userId, createdAt])
+}
+
+// Fechamento mensal do uso de agentes com chave da plataforma: o admin gera a cobrança
+// do período e marca como paga quando o usuário quitar por fora do sistema.
+model UsagePayment {
+  id        String    @id @default(cuid())
+  userId    String
+  period    String // "YYYY-MM"
+  amountUsd Float     @default(0)
+  status    String    @default("PENDENTE") // PENDENTE | PAGO
+  notes     String?   @db.Text
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, period])
+  @@index([userId])
 }
 
 model KnowledgeBaseSearch {

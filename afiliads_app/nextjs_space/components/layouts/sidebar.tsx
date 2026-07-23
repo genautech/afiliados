@@ -2,11 +2,12 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import {
   BarChart3, LayoutDashboard, Wand2, ListTodo, CalendarDays,
-  Search, Settings, BookOpen, FileText, LogOut, Menu, X, ChevronLeft, FileSpreadsheet, Bot, Radar, PackageSearch
+  Search, Settings, BookOpen, FileText, LogOut, Menu, X, ChevronLeft, FileSpreadsheet, Bot, Radar, PackageSearch,
+  UserCircle2, ShieldCheck
 } from 'lucide-react';
 
 const navItems = [
@@ -21,11 +22,17 @@ const navItems = [
   { href: '/rsa', label: 'Gerador RSA', icon: FileText },
   { href: '/planilhas', label: 'Planilhas', icon: FileSpreadsheet },
   { href: '/conhecimento', label: 'Conhecimento', icon: BookOpen },
+  { href: '/perfil', label: 'Meu Perfil', icon: UserCircle2 },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
+const adminItem = { href: '/admin', label: 'Administração', icon: ShieldCheck };
+
 export function Sidebar() {
   const pathname = usePathname() ?? '';
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as any)?.role === 'ADMIN';
+  const items = isAdmin ? [...navItems, adminItem] : navItems;
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -73,7 +80,7 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-          {navItems?.map((item: any) => {
+          {items?.map((item: any) => {
             const Icon = item?.icon;
             const isActive = pathname === item?.href || pathname?.startsWith?.(item?.href + '/');
             return (

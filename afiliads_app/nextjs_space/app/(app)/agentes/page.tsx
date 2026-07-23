@@ -75,6 +75,11 @@ function fmtTokens(n: number | undefined | null): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
+function fmtUsd(n: number | undefined | null): string {
+  const v = n ?? 0;
+  return `$${v.toFixed(v > 0 && v < 0.01 ? 4 : 2)}`;
+}
+
 export default function AgentesPage() {
   const [activeProvider, setActiveProvider] = useState<string>('abacusai');
   const [providerConfigured, setProviderConfigured] = useState<boolean>(false);
@@ -156,6 +161,56 @@ export default function AgentesPage() {
 
       <LlmRoutingPanel />
 
+      {/* Extrato do mês: transparência de custo com agentes */}
+      {runStats?.statement && (
+        <Card className="bg-[#1e293b] border-[#334155]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-white flex items-center gap-2">
+              <Coins className="h-4 w-4 text-green-400" /> Extrato de agentes — {runStats.statement.period}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-[#0f172a] rounded-lg p-4 border border-yellow-500/20">
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Uso com chave da plataforma</p>
+                <p className="text-2xl font-bold text-yellow-400 font-mono mt-1">{fmtUsd(runStats.statement.platform?.costUsd)}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {runStats.statement.platform?.runs ?? 0} execuções · {fmtTokens(runStats.statement.platform?.totalTokens)} tokens — valor a pagar ao admin
+                </p>
+              </div>
+              <div className="bg-[#0f172a] rounded-lg p-4 border border-[#334155]">
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Uso com chave própria</p>
+                <p className="text-2xl font-bold text-slate-200 font-mono mt-1">{fmtUsd(runStats.statement.byok?.costUsd)}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {runStats.statement.byok?.runs ?? 0} execuções · {fmtTokens(runStats.statement.byok?.totalTokens)} tokens — pago direto ao provedor, sem cobrança
+                </p>
+              </div>
+              <div className="bg-[#0f172a] rounded-lg p-4 border border-[#334155]">
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Status do pagamento</p>
+                {runStats.statement.payment ? (
+                  <>
+                    <p className="mt-1">
+                      {runStats.statement.payment.status === 'PAGO'
+                        ? <Badge className="bg-green-500/20 text-green-400">PAGO</Badge>
+                        : <Badge className="bg-yellow-500/20 text-yellow-400">PENDENTE</Badge>}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1.5">
+                      Cobrança gerada: <span className="font-mono text-slate-300">{fmtUsd(runStats.statement.payment.amountUsd)}</span>
+                      {runStats.statement.payment.paidAt && ` · pago em ${new Date(runStats.statement.payment.paidAt).toLocaleDateString('pt-BR')}`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-500 mt-2">Cobrança do mês ainda não gerada pelo admin.</p>
+                )}
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              O custo é calculado por execução (tokens de entrada/saída × preço do modelo) e é exatamente o mesmo número que o admin vê — transparência total.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Status geral (dados reais) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-[#1e293b] border-[#334155] md:col-span-2">
@@ -200,7 +255,7 @@ export default function AgentesPage() {
             <div className="flex items-center gap-3">
               {runStats?.totals && (
                 <span className="text-sm text-slate-300">
-                  Total: <span className="font-mono text-yellow-400">{fmtTokens(runStats.totals.totalTokens)}</span> tokens em <span className="font-mono">{runStats.totals.runs}</span> execuções
+                  Total: <span className="font-mono text-yellow-400">{fmtTokens(runStats.totals.totalTokens)}</span> tokens · <span className="font-mono text-green-400">{fmtUsd(runStats.totals.costUsd)}</span> em <span className="font-mono">{runStats.totals.runs}</span> execuções
                 </span>
               )}
               <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={loadRuns}>
@@ -216,7 +271,7 @@ export default function AgentesPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-[#334155] text-slate-400 text-xs">
-                  <th className="text-left py-2">Agente</th><th className="text-right">Execuções</th><th className="text-right">Tokens (total)</th><th className="text-right">Entrada</th><th className="text-right">Saída</th><th className="text-right">Duração média</th><th className="text-right">Falhas</th><th className="text-right">Última</th>
+                  <th className="text-left py-2">Agente</th><th className="text-right">Execuções</th><th className="text-right">Tokens (total)</th><th className="text-right">Custo (USD)</th><th className="text-right">Entrada</th><th className="text-right">Saída</th><th className="text-right">Duração média</th><th className="text-right">Falhas</th><th className="text-right">Última</th>
                 </tr></thead>
                 <tbody>
                   {runStats.byAgent.map((a: any) => (
@@ -224,6 +279,7 @@ export default function AgentesPage() {
                       <td className="py-2 text-white">{agentName(a.agent)}</td>
                       <td className="text-right text-slate-300 font-mono">{a.runs}</td>
                       <td className="text-right text-yellow-400 font-mono">{fmtTokens(a.totalTokens)}</td>
+                      <td className="text-right text-green-400 font-mono">{fmtUsd(a.costUsd)}</td>
                       <td className="text-right text-slate-400 font-mono">{fmtTokens(a.promptTokens)}</td>
                       <td className="text-right text-slate-400 font-mono">{fmtTokens(a.completionTokens)}</td>
                       <td className="text-right text-slate-300 font-mono">{(a.avgDurationMs / 1000).toFixed(1)}s</td>

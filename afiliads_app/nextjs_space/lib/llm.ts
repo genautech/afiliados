@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { GoogleAuth } from 'google-auth-library';
+import { estimateCostUsd } from './llm-pricing';
 
 let vertexAuth: GoogleAuth | null = null;
 let vertexClientPromise: Promise<any> | null = null;
@@ -162,10 +163,16 @@ const DEFAULT_BUDGETS: Record<Provider, number> = {
   abacusai: 0,
 };
 
+// Origem da chave usada em cada provider: 'byok' = chave configurada pelo próprio
+// usuário em Configurações (sem cobrança do admin); 'platform' = chave global do
+// ambiente/Vertex compartilhada pelo dono da plataforma (uso a pagar ao admin).
+export type KeySource = 'platform' | 'byok';
+
 interface RoutingContext {
   mode: 'auto' | 'manual';
   manualProvider: Provider | null;
   keys: Partial<Record<Provider, string>>;
+  keySources: Partial<Record<Provider, KeySource>>;
   models: Partial<Record<Provider, string>>;
   budgets: Record<Provider, number>;
   monthUsage: Record<Provider, number>;
@@ -207,9 +214,14 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     grok: process.env.XAI_API_KEY,
     ollama: process.env.OLLAMA_API_KEY,
   };
+  const keySources: Partial<Record<Provider, KeySource>> = {};
   for (const p of ACTIVE_PROVIDERS) {
-    const k = map[`api_key_${p}`] || envKeys[p];
-    if (k) keys[p] = k;
+    const own = map[`api_key_${p}`];
+    const k = own || envKeys[p];
+    if (k) {
+      keys[p] = k;
+      keySources[p] = own ? 'byok' : 'platform';
+    }
   }
   // Gemini e Grok (xAI) rodam via Vertex AI (GCP) quando a service account está configurada,
   // no lugar de chave direta — testado e funcionando (2026-07-20). Se `keys.grok` já veio de
@@ -221,9 +233,11 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
   // Sem isso, Claude segue usando a chave direta da Anthropic normalmente. Se a cota for
   // aprovada no futuro, defina Integration llm/vertex_claude_enabled = "on" para reativar.
   if (process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON) {
+    // Vertex usa a service account do ambiente (dona da plataforma) → sempre 'platform'
     keys.google = 'vertex';
-    if (!keys.grok) keys.grok = 'vertex';
-    if (map['vertex_claude_enabled'] === 'on') keys.anthropic = 'vertex';
+    keySources.google = 'platform';
+    if (!keys.grok) { keys.grok = 'vertex'; keySources.grok = 'platform'; }
+    if (map['vertex_claude_enabled'] === 'on') { keys.anthropic = 'vertex'; keySources.anthropic = 'platform'; }
   }
   const models: Partial<Record<Provider, string>> = {};
   for (const p of ACTIVE_PROVIDERS) {
@@ -243,7 +257,7 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
   const mode = map['routing'] === 'manual' ? 'manual' : 'auto';
   const manualProvider = (map['provider'] as Provider) || null;
   const monthUsage = await getMonthUsage(userId);
-  return { mode, manualProvider, keys, models, budgets, monthUsage, disabled };
+  return { mode, manualProvider, keys, keySources, models, budgets, monthUsage, disabled };
 }
 
 export function buildChain(ctx: RoutingContext, tier: Tier): { provider: Provider; model: string; overBudget: boolean }[] {
@@ -485,7 +499,7 @@ async function callProvider(
   }
 }
 
-function logRun(userId: string, agent: string, provider: string, model: string, usage: LlmUsage, durationMs: number, success: boolean, error?: string) {
+function logRun(userId: string, agent: string, provider: string, model: string, usage: LlmUsage, durationMs: number, success: boolean, keySource: KeySource, error?: string) {
   prisma.agentRun.create({
     data: {
       userId,
@@ -495,6 +509,8 @@ function logRun(userId: string, agent: string, provider: string, model: string, 
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
+      costUsd: estimateCostUsd(provider, model, usage.promptTokens, usage.completionTokens),
+      keySource,
       durationMs,
       success,
       error: error?.slice(0, 2000) ?? null,
@@ -538,6 +554,7 @@ export async function callAgent(
       ? Array.from(new Set([step.model, ...ANTHROPIC_MODEL_FALLBACKS[tier]]))
       : [step.model];
 
+    const keySource: KeySource = ctx.keySources[step.provider] ?? 'platform';
     let movedToNextProvider = false;
     for (const modelAttempt of modelAttempts) {
       const start = Date.now();
@@ -549,7 +566,7 @@ export async function callAgent(
         // Auto-correção: uma retentativa no MESMO provider/modelo com o erro de validação anexado
         const validationError = opts.validate ? opts.validate(data, text) : null;
         if (validationError) {
-          logRun(userId, opts.agent, step.provider, model, usage, durationMs, false, `validação: ${validationError}`);
+          logRun(userId, opts.agent, step.provider, model, usage, durationMs, false, keySource, `validação: ${validationError}`);
           if (!validationRetried) {
             validationRetried = true;
             userPrompt = `${opts.userPrompt}\n\nATENÇÃO: sua resposta anterior foi rejeitada pela validação: "${validationError}". Corrija exatamente esse problema e responda de novo.`;
@@ -560,13 +577,13 @@ export async function callAgent(
           throw new Error(`Resposta do agente reprovada na validação: ${validationError}`);
         }
 
-        logRun(userId, opts.agent, step.provider, model, usage, durationMs, true);
+        logRun(userId, opts.agent, step.provider, model, usage, durationMs, true, keySource);
         return { text, data, usage, durationMs, provider: step.provider, model };
       } catch (err: any) {
         const durationMs = Date.now() - start;
         const message = err?.message ?? '';
         if (!message.startsWith('Resposta do agente reprovada')) {
-          logRun(userId, opts.agent, step.provider, modelAttempt, emptyUsage, durationMs, false, message);
+          logRun(userId, opts.agent, step.provider, modelAttempt, emptyUsage, durationMs, false, keySource, message);
         }
         lastError = err;
         if (message.startsWith('Resposta do agente reprovada')) throw err;
