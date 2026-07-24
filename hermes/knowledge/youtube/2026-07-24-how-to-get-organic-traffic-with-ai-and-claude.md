@@ -7,8 +7,9 @@ source_url: https://www.youtube.com/watch?v=YUmxgLVi4IM
 author: 
 tags: [afiliados, seo, presell, organic, claude, arvo]
 ingested_at: 2026-07-24
-status: raw
-distilled: false
+status: distilled
+distilled: true
+insight: hermes/knowledge/insights/2026-07-24-organic-trend-interweave-presell.md
 ---
 
 # How to Get Organic Traffic with AI and Claude
