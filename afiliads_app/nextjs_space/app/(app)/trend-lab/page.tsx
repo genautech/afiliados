@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, ExternalLink, FileText, Loader2, Radar, ShieldCheck, Sparkles } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { ArrowRight, CheckCircle2, ExternalLink, FileText, Loader2, Radar, ShieldCheck, Sparkles, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,20 @@ type Result = {
   usage?: { totalTokens?: number };
 };
 
+type ResearchProduct = {
+  id: string; name: string; vertical: string; score: number; hopLink?: string | null;
+  summary?: string | null; strategy?: any;
+};
+
+type DraftCampaign = {
+  id: string; name: string; vertical: string; geo: string; channel: string; funnel: string;
+  offerUrl?: string | null; presellUrl?: string | null;
+};
+
+const GEN_VALUES = { trend: '', productName: '', hopLink: '', angle: '', evidence: '', geo: 'BR', language: 'pt-BR' };
+
 export default function TrendLabPage() {
+  const searchParams = useSearchParams();
   const [trend, setTrend] = useState('');
   const [productName, setProductName] = useState('');
   const [hopLink, setHopLink] = useState('');
@@ -38,18 +52,118 @@ export default function TrendLabPage() {
   const [result, setResult] = useState<Result | null>(null);
   const [reviewed, setReviewed] = useState(false);
 
-  async function generate() {
-    if (!trend.trim()) return toast.error('Informe a tendência ou insight');
-    if (!productName.trim()) return toast.error('Informe o produto afiliado');
-    if (!/^https?:\/\//i.test(hopLink.trim())) return toast.error('Informe um link de afiliado válido');
+  const [researchProducts, setResearchProducts] = useState<ResearchProduct[]>([]);
+  const [draftCampaigns, setDraftCampaigns] = useState<DraftCampaign[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState('');
+  const [sourceProductId, setSourceProductId] = useState<string | null>(null);
+  const [sourceCampaignId, setSourceCampaignId] = useState<string | null>(null);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [listsLoaded, setListsLoaded] = useState({ products: false, campaigns: false });
+
+  useEffect(() => {
+    fetch('/api/products').then(r => r.ok ? r.json() : [])
+      .then(d => setResearchProducts(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setListsLoaded(prev => ({ ...prev, products: true })));
+    fetch('/api/campaigns').then(r => r.ok ? r.json() : [])
+      .then(d => setDraftCampaigns(Array.isArray(d) ? d.filter((c: any) => !c.presellUrl) : []))
+      .catch(() => {})
+      .finally(() => setListsLoaded(prev => ({ ...prev, campaigns: true })));
+  }, []);
+
+  useEffect(() => {
+    const prId = searchParams?.get('productResearchId');
+    const cId = searchParams?.get('campaignId');
+    if (!prId && !cId) return;
+    setAutoLoading(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!autoLoading) return;
+    if (!listsLoaded.products || !listsLoaded.campaigns) return; // aguarda os dois fetches concluírem
+    const prId = searchParams?.get('productResearchId');
+    const cId = searchParams?.get('campaignId');
+    if (cId) {
+      applySource(`campaign:${cId}`, true);
+    } else if (prId) {
+      applySource(`product:${prId}`, true);
+    }
+    setAutoLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoading, listsLoaded]);
+
+  function applySource(value: string, autoGenerate: boolean) {
+    setSelectedSourceId(value);
+    if (value.startsWith('product:')) {
+      const id = value.slice('product:'.length);
+      const p = researchProducts.find((x) => x.id === id);
+      if (!p) return;
+      setSourceProductId(id);
+      setSourceCampaignId(null);
+      const vals = {
+        trend: `Interesse crescente em ${p.vertical || 'soluções para esse público'} — produto pesquisado com score ${p.score}/100.${p.summary ? ' ' + p.summary : ''}`,
+        productName: p.name,
+        hopLink: p.hopLink || '',
+        angle: p.strategy?.presell?.motivo || `Ângulo editorial para ${p.name}, destacando ${p.vertical || 'o problema do público'} de forma honesta e verificável.`,
+        evidence: p.summary || '',
+        geo: 'BR',
+        language: 'pt-BR',
+      };
+      setTrend(vals.trend); setProductName(vals.productName); setHopLink(vals.hopLink);
+      setAngle(vals.angle); setEvidence(vals.evidence); setGeo(vals.geo); setLanguage(vals.language);
+      if (!vals.hopLink) {
+        toast.warning(`"${p.name}" ainda não tem HopLink cadastrado — preencha antes de gerar.`);
+        return;
+      }
+      if (autoGenerate) runGenerate(vals, id, null);
+    } else if (value.startsWith('campaign:')) {
+      const id = value.slice('campaign:'.length);
+      const c = draftCampaigns.find((x) => x.id === id);
+      if (!c) return;
+      setSourceCampaignId(id);
+      setSourceProductId(null);
+      const supportedGeo = ['BR', 'US', 'UK', 'AU'].includes(c.geo) ? c.geo : 'US';
+      const vals = {
+        trend: `Campanha em andamento "${c.name}" — vertical ${c.vertical}, geo ${c.geo}, canal ${c.channel}.`,
+        productName: c.name,
+        hopLink: c.offerUrl || '',
+        angle: `Conteúdo editorial de apoio para a campanha ${c.name}, alinhado ao funil ${c.funnel}.`,
+        evidence: '',
+        geo: supportedGeo,
+        language: supportedGeo === 'BR' ? 'pt-BR' : 'en',
+      };
+      setTrend(vals.trend); setProductName(vals.productName); setHopLink(vals.hopLink);
+      setAngle(vals.angle); setEvidence(vals.evidence); setGeo(vals.geo); setLanguage(vals.language);
+      if (!vals.hopLink) {
+        toast.warning(`A campanha "${c.name}" ainda não tem URL de oferta — preencha o HopLink antes de gerar.`);
+        return;
+      }
+      if (autoGenerate) runGenerate(vals, null, id);
+    }
+  }
+
+  async function runGenerate(vals?: Partial<typeof GEN_VALUES>, productId?: string | null, campaignId?: string | null) {
+    const t = vals?.trend ?? trend;
+    const pn = vals?.productName ?? productName;
+    const hl = vals?.hopLink ?? hopLink;
+    const ag = vals?.angle ?? angle;
+    const ev = vals?.evidence ?? evidence;
+    const gg = vals?.geo ?? geo;
+    const lg = vals?.language ?? language;
+    const pid = productId !== undefined ? productId : sourceProductId;
+    const cid = campaignId !== undefined ? campaignId : sourceCampaignId;
+
+    if (!t.trim()) return toast.error('Informe a tendência ou insight');
+    if (!pn.trim()) return toast.error('Informe o produto afiliado');
+    if (!/^https?:\/\//i.test(hl.trim())) return toast.error('Informe um link de afiliado válido');
 
     setLoading(true);
     setResult(null);
     setReviewed(false);
     try {
-      const context = `INSIGHT/TENDÊNCIA: ${trend.trim()}
-RELAÇÃO COM O PRODUTO: ${angle.trim() || 'Explique de forma editorial e verificável por que o produto é relevante para o tema.'}
-EVIDÊNCIAS E OBSERVAÇÕES: ${evidence.trim() || 'Nenhuma evidência adicional fornecida; não invente dados.'}
+      const context = `INSIGHT/TENDÊNCIA: ${t.trim()}
+RELAÇÃO COM O PRODUTO: ${ag.trim() || 'Explique de forma editorial e verificável por que o produto é relevante para o tema.'}
+EVIDÊNCIAS E OBSERVAÇÕES: ${ev.trim() || 'Nenhuma evidência adicional fornecida; não invente dados.'}
 
 Requisitos:
 - Produza conteúdo útil que funcione mesmo sem o clique afiliado.
@@ -62,11 +176,12 @@ Requisitos:
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productName: productName.trim(),
-          hopLink: hopLink.trim(),
-          angle: angle.trim() || `conteúdo editorial relacionado a ${trend.trim()}`,
-          geo,
-          language,
+          productName: pn.trim(),
+          productId: pid || undefined,
+          hopLink: hl.trim(),
+          angle: ag.trim() || `conteúdo editorial relacionado a ${t.trim()}`,
+          geo: gg,
+          language: lg,
           trackingId: `trend-${Date.now()}`,
           context,
         }),
@@ -75,12 +190,23 @@ Requisitos:
       if (!response.ok) throw new Error(data?.error || `Erro ${response.status}`);
       setResult(data);
       toast.success('Presell contextualizada criada e salva');
+
+      if (cid) {
+        fetch(`/api/campaigns/${cid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ presellUrl: data.url }),
+        }).catch(() => {});
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao gerar a presell');
     } finally {
       setLoading(false);
     }
   }
+
+  const nextHref = sourceCampaignId ? `/campanhas/${sourceCampaignId}` : sourceProductId ? `/wizard?productResearchId=${sourceProductId}` : '/wizard';
+  const nextLabel = sourceCampaignId ? 'Voltar para a campanha' : '4. Criar campanha aprovada';
 
   return (
     <div className="space-y-6 pb-12">
@@ -99,11 +225,41 @@ Requisitos:
         </Badge>
       </div>
 
+      {(researchProducts.length > 0 || draftCampaigns.length > 0) && (
+        <Card className="border-purple-500/20 bg-purple-500/5">
+          <CardContent className="space-y-2 p-4">
+            <Label className="flex items-center gap-1.5 text-purple-300"><Bot className="h-4 w-4" /> Carregar de um produto pesquisado ou campanha em andamento</Label>
+            <Select value={selectedSourceId} onValueChange={(v) => applySource(v, true)} disabled={loading || autoLoading}>
+              <SelectTrigger className={inputClass}><SelectValue placeholder="Escolha para preencher e gerar a presell automaticamente..." /></SelectTrigger>
+              <SelectContent className="bg-[#1e293b] border-[#334155] max-h-72">
+                {researchProducts.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-slate-500">Produtos pesquisados</div>
+                    {researchProducts.map((p) => (
+                      <SelectItem key={`product:${p.id}`} value={`product:${p.id}`} className="text-white">{p.name} — {p.vertical || 'sem vertical'} (score {p.score})</SelectItem>
+                    ))}
+                  </>
+                )}
+                {draftCampaigns.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-slate-500">Campanhas sem presell</div>
+                    {draftCampaigns.map((c) => (
+                      <SelectItem key={`campaign:${c.id}`} value={`campaign:${c.id}`} className="text-white">{c.name} — {c.vertical} · {c.geo}</SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+            {autoLoading && <p className="flex items-center gap-1.5 text-xs text-purple-300"><Loader2 className="h-3 w-3 animate-spin" /> Carregando e gerando a presell automaticamente...</p>}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
         <Card className="border-[#334155] bg-[#1e293b]">
           <CardHeader>
             <CardTitle className="text-white">1. Contextualize a oportunidade</CardTitle>
-            <CardDescription className="text-slate-400">Preencha na ordem. Nenhum conteúdo será publicado automaticamente.</CardDescription>
+            <CardDescription className="text-slate-400">Preencha na ordem, ou carregue de um produto/campanha acima. Nenhum conteúdo será publicado automaticamente.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -144,7 +300,7 @@ Requisitos:
                 </Select>
               </div>
             </div>
-            <Button onClick={generate} disabled={loading} className="w-full bg-purple-600 text-white hover:bg-purple-700">
+            <Button onClick={() => runGenerate()} disabled={loading} className="w-full bg-purple-600 text-white hover:bg-purple-700">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               2. Gerar presell para revisão
             </Button>
@@ -156,7 +312,7 @@ Requisitos:
             <CardHeader><CardTitle className="text-base text-white">Fluxo utilizado</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {[
-                ['1', 'Insight', 'Você fornece tendência e evidências'],
+                ['1', 'Insight', 'Você fornece tendência e evidências (ou carrega de um produto/campanha)'],
                 ['2', 'Presell Builder', 'Gera conteúdo editorial estruturado'],
                 ['3', 'Compliance', 'Aplica disclaimers e limita claims'],
                 ['4', 'Rastreamento', 'Adiciona identificação própria ao link'],
@@ -202,7 +358,7 @@ Requisitos:
 
       <div className="flex justify-end">
         {result && reviewed
-          ? <Button asChild className="bg-green-600 text-white hover:bg-green-700"><Link href="/wizard">4. Criar campanha aprovada <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+          ? <Button asChild className="bg-green-600 text-white hover:bg-green-700"><Link href={nextHref}>{nextLabel} <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
           : <Button disabled variant="outline" className="border-[#334155] bg-[#0f172a] text-slate-500">Revise e confirme para liberar a campanha <ArrowRight className="ml-2 h-4 w-4" /></Button>}
       </div>
     </div>

@@ -136,6 +136,21 @@ export const AGENT_REGISTRY: AgentDef[] = [
     },
   },
   {
+    id: 'campaign-strategist',
+    name: 'Campaign Setup Strategist',
+    role: 'Preenchimento automático do Wizard',
+    description: 'Lê o dossiê de um produto pesquisado (ou uma campanha em andamento) e preenche todos os campos operacionais do Wizard — plataforma, vertical, geo, canal, funil, economia, budget e keywords — com os melhores valores e uma justificativa por campo, para o afiliado partir direto para a pré-sell.',
+    route: '/api/wizard-autofill',
+    page: '/wizard',
+    pageLabel: 'Nova Campanha',
+    skills: ['Normalização de Campos', 'Seleção de Keywords do Dossiê', 'Justificativa por Campo'],
+    testTask: {
+      describe: 'Preenche campos de campanha a partir de um dossiê resumido',
+      systemPrompt: 'Você é o Campaign Setup Strategist do AfiliAds. Preencha campos operacionais de campanha de afiliados a partir do dossiê de um produto, escolhendo sempre valores dentro das opções permitidas. Responda APENAS com JSON válido.',
+      userPrompt: 'Produto: "SleepWell Pro", vertical Health, payout médio $85, comissão 70%, risco baixo, melhor keyword "sleepwell pro review". Retorne JSON: {"platform": "ClickBank", "vertical": "Health", "geo": "US", "channel": "SEARCH", "funnel": "BRIDGE", "commission": 85, "refundPct": 10}',
+    },
+  },
+  {
     id: 'wizard-validator',
     name: 'Wizard Validator',
     role: 'Validação de campos da nova campanha',

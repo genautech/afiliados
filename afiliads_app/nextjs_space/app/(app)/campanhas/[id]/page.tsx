@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   ArrowLeft, Shield, AlertTriangle, CheckCircle2, XCircle, Loader2,
   ExternalLink, TrendingUp, TrendingDown, Target, DollarSign,
-  BarChart3, Zap, Eye, Copy, RefreshCw, Play
+  BarChart3, Zap, Eye, Copy, RefreshCw, Play, Wand2, Sparkles
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -232,6 +232,20 @@ export default function CampaignDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {!campaign.wizardCompleted && (
+            <Link href={`/wizard?campaignId=${params?.id}`}>
+              <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
+                <Wand2 className="h-4 w-4" /> Continuar no Wizard
+              </Button>
+            </Link>
+          )}
+          {!campaign.presellUrl && (
+            <Link href={`/trend-lab?campaignId=${params?.id}`}>
+              <Button variant="outline" className="border-purple-500/30 text-purple-300 gap-2">
+                <Sparkles className="h-4 w-4" /> Gerar Presell
+              </Button>
+            </Link>
+          )}
           <Button
             onClick={() => runGadsSync('pull')}
             disabled={syncingGads}

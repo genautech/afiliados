@@ -524,7 +524,7 @@ export default function BuscaProdutosPage() {
                 <Button variant="secondary" className="gap-1 bg-[#0f172a] border border-[#334155] text-slate-200" onClick={() => saveAsOffer(selected)}>
                   <Save className="h-4 w-4" /> Salvar como Oferta
                 </Button>
-                <Button className="bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => router.push('/wizard')}>
+                <Button className="bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => router.push(`/wizard?productResearchId=${selected.id}`)}>
                   <Wand2 className="h-4 w-4" /> Criar Campanha no Wizard
                 </Button>
               </div>

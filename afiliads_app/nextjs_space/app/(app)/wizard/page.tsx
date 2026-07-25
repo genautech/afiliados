@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import {
   Wand2, ArrowRight, ArrowLeft, ShieldCheck, FileText, Search, Tag,
   Settings, Radio, Rocket, CheckCircle2, Copy, ExternalLink, AlertTriangle, Info,
-  Eye, Loader2, Shield, XCircle, Sparkles, TrendingUp, Save, Zap, Play
+  Eye, Loader2, Shield, XCircle, Sparkles, TrendingUp, Save, Zap, Play, Bot
 } from 'lucide-react';
 import {
   PLATFORMS, VERTICALS, CHANNELS, GEOS, CVR_DEFAULTS, ANTISTRIKE_ITEMS,
@@ -162,6 +162,8 @@ const FIELD_HELP: Record<string, {
   }
 };
 
+const AutofillContext = React.createContext<Record<string, string>>({});
+
 const AgentHelp = ({
   fieldKey,
   fieldValue,
@@ -174,6 +176,8 @@ const AgentHelp = ({
   const help = FIELD_HELP[fieldKey];
   const [analysing, setAnalysing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const autofillRationale = React.useContext(AutofillContext);
+  const autoSuggestion = autofillRationale?.[fieldKey];
 
   if (!help) return null;
 
@@ -242,6 +246,12 @@ const AgentHelp = ({
                 <strong>Onde encontrar:</strong> {help.apiKeyHelp}
               </div>
             )}
+            {autoSuggestion && (
+              <div className="bg-purple-500/10 border border-purple-500/20 p-2 rounded text-[11px] text-purple-200 mt-2">
+                <strong className="text-purple-300 block mb-0.5">💡 Sugestão do agente (já aplicada):</strong>
+                {autoSuggestion}
+              </div>
+            )}
             {result && (
               <div className="mt-3 bg-[#0f172a] border border-[#334155]/60 p-3 rounded-lg text-[11px] leading-relaxed space-y-1 text-slate-300">
                 <span className="text-green-400 font-bold block mb-1">🤖 Análise do Agente:</span>
@@ -257,9 +267,17 @@ const AgentHelp = ({
 
 export default function WizardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+
+  const [autofilling, setAutofilling] = useState(false);
+  const [autofillRationale, setAutofillRationale] = useState<Record<string, string>>({});
+  const [autofillSummary, setAutofillSummary] = useState<string | null>(null);
+  const [aiNegatives, setAiNegatives] = useState<string[] | null>(null);
+  const [sourceProductResearchId, setSourceProductResearchId] = useState<string | null>(null);
+  const [researchProducts, setResearchProducts] = useState<Array<{ id: string; name: string; score: number; vertical: string }>>([]);
 
   const [auditing, setAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -425,6 +443,147 @@ export default function WizardPage() {
     } catch (err) { console.error(err); }
   };
 
+  const hydrateFromCampaign = (c: any) => {
+    setCampaignId(c?.id ?? null);
+    setName(c?.name ?? '');
+    setPlatform(c?.platform ?? 'ClickBank');
+    setVertical(c?.vertical ?? 'Weight Loss');
+    setGeo(c?.geo ?? 'US');
+    setChannel(c?.channel ?? 'SEARCH');
+    setFunnel(c?.funnel ?? 'BRIDGE');
+    setCommission(c?.commission ? String(c.commission) : '');
+    setRefundPct(c?.refundPct ? String(c.refundPct) : '');
+    setAov(c?.aov ? String(c.aov) : '');
+    setOfferUrl(c?.offerUrl ?? '');
+    setCvrExpected(c?.cvrExpected ? String(c.cvrExpected) : '');
+    setPresellUrl(c?.presellUrl ?? '');
+    setFlowpageUrl(c?.flowpageUrl ?? '');
+    setHostingerDomain(c?.hostingerDomain ?? '');
+    setPresellHtml(c?.presellHtml ?? '');
+    setPostbackUrl(c?.postbackUrl ?? '');
+    setClickidToken(c?.clickidToken ?? 'clickid');
+    setBudgetTest(c?.budgetTest ? String(c.budgetTest) : '50');
+    setTestDuration(c?.testDuration ?? '72h');
+    setLoopEnabled(!!c?.loopEnabled);
+    setLoopInterval(c?.loopInterval ?? '24h');
+    setLoopAgents(c?.loopAgents ?? 'ads,compliance');
+    if (Array.isArray(c?.keywords) && c.keywords.length > 0) {
+      setSelectedKeywords(c.keywords.map((k: any) => ({
+        keyword: k.keyword, layer: k.layer, matchType: k.matchType, relevance: k.relevanceScore, selected: k.isSelected,
+      })));
+    }
+    if (typeof c?.wizardStep === 'number' && c.wizardStep >= 1 && c.wizardStep <= 9) setStep(c.wizardStep);
+  };
+
+  // `baseline` traz os valores conhecidos ANTES do autofill (ex.: os da campanha recém-hidratada).
+  // Necessário porque o estado do React ainda não reflete a hidratação síncrona anterior quando
+  // este autofill roda logo em seguida dentro do mesmo efeito assíncrono — ler os setters de estado
+  // via closure aqui pegaria valores desatualizados (stale) e sobrescreveria dados reais da campanha.
+  const applyAutofill = (data: any, opts?: { onlyIfEmpty?: boolean; baseline?: Record<string, any>; existingKeywordsCount?: number }) => {
+    const onlyIfEmpty = !!opts?.onlyIfEmpty;
+    const baseline = opts?.baseline ?? {};
+    const setIf = (key: string, setter: (v: string) => void, value: any) => {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      if (onlyIfEmpty) {
+        const cur = baseline[key];
+        if (cur !== undefined && cur !== null && String(cur).trim().length > 0) return;
+      }
+      setter(String(value));
+    };
+    setIf('name', setName, data.name);
+    setIf('platform', setPlatform, data.platform);
+    setIf('vertical', setVertical, data.vertical);
+    setIf('geo', setGeo, data.geo);
+    setIf('channel', setChannel, data.channel);
+    setIf('funnel', setFunnel, data.funnel);
+    setIf('commission', setCommission, data.commission);
+    setIf('refundPct', setRefundPct, data.refundPct);
+    setIf('aov', setAov, data.aov);
+    setIf('offerUrl', setOfferUrl, data.offerUrl);
+    setIf('cvrExpected', setCvrExpected, data.cvrExpected);
+    setIf('budgetTest', setBudgetTest, data.budgetTest);
+    setIf('testDuration', setTestDuration, data.testDuration);
+    if (Array.isArray(data.keywords) && data.keywords.length > 0 && (!onlyIfEmpty || !opts?.existingKeywordsCount)) {
+      setSelectedKeywords(data.keywords);
+    }
+    if (Array.isArray(data.negatives) && data.negatives.length > 0) setAiNegatives(data.negatives);
+    if (data.rationale) setAutofillRationale((prev) => ({ ...prev, ...data.rationale }));
+    if (data.summary) setAutofillSummary(data.summary);
+  };
+
+  const runAutofill = async (params: { productResearchId?: string; campaignId?: string; baseline?: Record<string, any>; existingKeywordsCount?: number }) => {
+    setAutofilling(true);
+    try {
+      const res = await fetch('/api/wizard-autofill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productResearchId: params.productResearchId, campaignId: params.campaignId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error ?? 'Erro ao gerar sugestões do agente');
+        return;
+      }
+      applyAutofill(data, {
+        onlyIfEmpty: !params.productResearchId && !!params.campaignId,
+        baseline: params.baseline,
+        existingKeywordsCount: params.existingKeywordsCount,
+      });
+      toast.success('Wizard preenchido pelo Campaign Setup Strategist — revise e ajuste conforme necessário.');
+    } catch {
+      toast.error('Erro de rede ao consultar o agente.');
+    } finally {
+      setAutofilling(false);
+    }
+  };
+
+  useEffect(() => {
+    const prId = searchParams?.get('productResearchId') ?? undefined;
+    const cId = searchParams?.get('campaignId') ?? undefined;
+    if (!prId && !cId) return;
+    (async () => {
+      if (cId) {
+        try {
+          const res = await fetch(`/api/campaigns/${cId}`);
+          if (res.ok) {
+            const c = await res.json();
+            hydrateFromCampaign(c);
+            toast.success('Campanha carregada — continue de onde parou.');
+            await runAutofill({
+              campaignId: cId,
+              existingKeywordsCount: Array.isArray(c?.keywords) ? c.keywords.length : 0,
+              baseline: {
+                name: c?.name, platform: c?.platform, vertical: c?.vertical, geo: c?.geo,
+                channel: c?.channel, funnel: c?.funnel, commission: c?.commission, refundPct: c?.refundPct,
+                aov: c?.aov, offerUrl: c?.offerUrl, cvrExpected: c?.cvrExpected,
+                budgetTest: c?.budgetTest, testDuration: c?.testDuration,
+              },
+            });
+            return;
+          }
+        } catch { /* segue sem hidratar */ }
+      }
+      if (prId) {
+        setSourceProductResearchId(prId);
+        await runAutofill({ productResearchId: prId });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/products')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setResearchProducts(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const loadFromResearch = async (id: string) => {
+    if (!id) return;
+    setSourceProductResearchId(id);
+    await runAutofill({ productResearchId: id });
+  };
+
   const canAdvance = () => {
     if (step === 1) return name.trim().length > 0 && commVal > 0;
     if (step === 3 && platform === 'ClickBank') {
@@ -471,7 +630,11 @@ export default function WizardPage() {
       }
     }
     toast.success('Campanha lançada com sucesso! 🚀');
-    router.push('/campanhas');
+    if (sourceProductResearchId && campaignId) {
+      router.push(`/trend-lab?campaignId=${campaignId}&productResearchId=${sourceProductResearchId}`);
+    } else {
+      router.push('/campanhas');
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -540,6 +703,7 @@ export default function WizardPage() {
   const inputCls = "bg-[#0f172a] border-[#334155] text-white placeholder:text-slate-500";
 
   return (
+    <AutofillContext.Provider value={autofillRationale}>
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -555,6 +719,23 @@ export default function WizardPage() {
           </Button>
         )}
       </div>
+
+      {autofilling && (
+        <div className="flex items-center gap-4 bg-gradient-to-r from-purple-600/10 to-green-600/10 border border-purple-500/30 rounded-lg p-4">
+          <Loader2 className="h-6 w-6 text-purple-400 animate-spin shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-white flex items-center gap-1.5"><Bot className="h-4 w-4 text-purple-400" /> Analisando produto...</p>
+            <p className="text-xs text-slate-400 mt-0.5">O Campaign Setup Strategist está estudando o dossiê do produto e preenchendo o wizard com as melhores práticas.</p>
+          </div>
+        </div>
+      )}
+
+      {!autofilling && autofillSummary && (
+        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 flex items-start gap-2">
+          <Sparkles className="h-4 w-4 text-green-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-green-200">{autofillSummary} Passe o mouse no ícone <Sparkles className="inline h-3 w-3" /> ao lado de cada campo para ver a justificativa do agente.</p>
+        </div>
+      )}
 
       {showAuditDialog && auditResult && (
         <Dialog open={showAuditDialog} onOpenChange={setShowAuditDialog}>
@@ -661,6 +842,19 @@ export default function WizardPage() {
           {step === 1 && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white">Dados da Oferta</h2>
+              {researchProducts.length > 0 && (
+                <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <Label className="text-purple-300 text-xs shrink-0 flex items-center gap-1"><Bot className="h-3.5 w-3.5" /> Carregar de um produto pesquisado</Label>
+                  <Select value={sourceProductResearchId ?? ''} onValueChange={loadFromResearch} disabled={autofilling}>
+                    <SelectTrigger className={`${inputCls} flex-1`}><SelectValue placeholder="Escolha um produto já analisado em Busca de Produtos..." /></SelectTrigger>
+                    <SelectContent className="bg-[#1e293b] border-[#334155] max-h-72">
+                      {researchProducts.map(p => (
+                        <SelectItem key={p.id} value={p.id} className="text-white">{p.name} — {p.vertical || 'sem vertical'} (score {p.score})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">Nome da Campanha *</Label><AgentHelp fieldKey="name" fieldValue={name} context={{ platform, vertical, geo }} /></div><Input value={name} onChange={(e:any) => setName(e?.target?.value ?? '')} placeholder="Ex: WL Supplement Alpha" className={inputCls} /></div>
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} /></div>
@@ -1034,13 +1228,13 @@ export default function WizardPage() {
               )}
               {/* Negatives */}
               <div className="mt-4">
-                <h3 className="text-sm font-medium text-white mb-2">Negativas Sugeridas ({vertical})</h3>
+                <h3 className="text-sm font-medium text-white mb-2">Negativas Sugeridas ({vertical}){aiNegatives && <span className="text-purple-400 font-normal"> · geradas pelo agente para este produto</span>}</h3>
                 <div className="flex flex-wrap gap-2">
-                  {(NEGATIVES_BY_VERTICAL[vertical] ?? NEGATIVES_BY_VERTICAL['Outro'] ?? []).map((neg: string) => (
+                  {(aiNegatives ?? NEGATIVES_BY_VERTICAL[vertical] ?? NEGATIVES_BY_VERTICAL['Outro'] ?? []).map((neg: string) => (
                     <Badge key={neg} className="bg-red-500/10 text-red-300 text-xs">-{neg}</Badge>
                   ))}
                 </div>
-                <Button size="sm" variant="outline" className="mt-2 border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard((NEGATIVES_BY_VERTICAL[vertical] ?? []).join('\n'))}>
+                <Button size="sm" variant="outline" className="mt-2 border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard((aiNegatives ?? NEGATIVES_BY_VERTICAL[vertical] ?? []).join('\n'))}>
                   <Copy className="h-3 w-3" /> Copiar Negativas
                 </Button>
               </div>
@@ -1267,5 +1461,6 @@ export default function WizardPage() {
         )}
       </div>
     </div>
+    </AutofillContext.Provider>
   );
 }
