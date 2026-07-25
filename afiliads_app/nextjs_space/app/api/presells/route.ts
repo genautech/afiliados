@@ -54,9 +54,13 @@ export async function POST(request: NextRequest) {
       productId: body?.productId,
       googleAdsId: body?.googleAdsId,
       context: body?.context,
+      destino: body?.destino === 'wordpress' ? 'wordpress' : 'railway',
+      dominio: body?.dominio,
     });
     return NextResponse.json({
-      id: presell.id, slug: presell.slug, title: presell.title, url: `/p/${presell.slug}`,
+      id: presell.id, slug: presell.slug, title: presell.title,
+      url: presell.publishTarget === 'wordpress' ? presell.publishedUrl : `/p/${presell.slug}`,
+      publishTarget: presell.publishTarget,
       usage, provider, model,
     }, { status: 201 });
   } catch (err: any) {

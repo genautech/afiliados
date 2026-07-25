@@ -419,6 +419,9 @@ model Presell {
   views       Int      @default(0)
   ctaClicks   Int      @default(0)
   googleAdsId String   @default("")
+  publishTarget String @default("railway")
+  wpDomain      String @default("")
+  publishedUrl  String @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)

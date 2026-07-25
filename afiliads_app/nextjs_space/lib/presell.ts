@@ -96,6 +96,28 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   return t;
 }
 
+function wpSites(): Record<string, { user: string; appPassword: string }> {
+  try {
+    return JSON.parse(process.env.WP_SITES_JSON ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string }) {
+  const site = wpSites()[opts.domain];
+  if (!site) throw new Error(`Domínio WordPress "${opts.domain}" não configurado em WP_SITES_JSON`);
+  const auth = Buffer.from(`${site.user}:${site.appPassword}`).toString('base64');
+  const res = await fetch(`https://${opts.domain}/wp-json/wp/v2/pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({ title: opts.title, slug: opts.slug, content: html, status: 'publish' }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Erro ao publicar no WordPress (${opts.domain}): ${data?.message ?? res.status}`);
+  return data.link as string;
+}
+
 export async function generatePresell(userId: string, args: {
   productName: string;
   hopLink: string;
@@ -106,6 +128,8 @@ export async function generatePresell(userId: string, args: {
   productId?: string;
   googleAdsId?: string;
   context?: string;
+  destino?: 'railway' | 'wordpress';
+  dominio?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
@@ -140,6 +164,13 @@ export async function generatePresell(userId: string, args: {
   let slug = baseSlug;
   for (let i = 2; await prisma.presell.findUnique({ where: { slug } }); i++) slug = `${baseSlug}-${i}`;
 
+  const destino = args.destino ?? 'railway';
+  let publishedUrl = '';
+  if (destino === 'wordpress') {
+    if (!args.dominio) throw new Error('dominio é obrigatório quando destino=wordpress');
+    publishedUrl = await publishToWordPress(html, { domain: args.dominio, title: content.titulo_pagina, slug });
+  }
+
   const presell = await prisma.presell.create({
     data: {
       userId,
@@ -156,6 +187,9 @@ export async function generatePresell(userId: string, args: {
       content: content as any,
       status: 'publicada',
       googleAdsId: args.googleAdsId ?? '',
+      publishTarget: destino,
+      wpDomain: destino === 'wordpress' ? args.dominio! : '',
+      publishedUrl,
     },
   });
   return { presell, usage: res.usage, provider: res.provider, model: res.model };
