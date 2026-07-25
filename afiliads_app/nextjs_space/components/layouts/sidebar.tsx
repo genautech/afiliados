@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import {
   BarChart3, LayoutDashboard, Wand2, ListTodo, CalendarDays,
   Search, Settings, BookOpen, FileText, LogOut, Menu, X, ChevronLeft, FileSpreadsheet, Bot, Radar, PackageSearch,
-  UserCircle2, ShieldCheck
+  UserCircle2, ShieldCheck, Sparkles
 } from 'lucide-react';
 
 const navItems = [
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/wizard', label: 'Nova Campanha', icon: Wand2 },
   { href: '/agentes', label: 'Agentes', icon: Bot },
   { href: '/busca-produtos', label: 'Busca de Produtos', icon: PackageSearch },
+  { href: '/trend-lab', label: 'Trend Lab', icon: Sparkles },
   { href: '/campanhas', label: 'Campanhas', icon: ListTodo },
   { href: '/diario', label: 'Diário', icon: CalendarDays },
   { href: '/keywords', label: 'Keywords', icon: Search },
