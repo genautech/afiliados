@@ -185,7 +185,7 @@ export default function CampanhasPage() {
                       <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10" onClick={() => setDecisionModal({ id: c?.id, decision: 'OTIMIZAR', name: c?.name })}>
                         <Zap className="h-3 w-3 mr-1" /> Otimizar
                       </Button>
-                      <Button size="sm" variant="outline" className="border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => setDecisionModal({ id: c?.id, decision: 'SCALE', name: c?.name })}>
+                      <Button size="sm" variant="outline" className="border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => setDecisionModal({ id: c?.id, decision: 'SCALE', name: c?.name, budgetScale: c?.budgetScale, googleCampaignId: c?.googleCampaignId })}>
                         <TrendingUp className="h-3 w-3 mr-1" /> Scale
                       </Button>
                     </div>
@@ -247,6 +247,11 @@ export default function CampanhasPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {decisionModal?.decision === 'SCALE' && decisionModal?.googleCampaignId && decisionModal?.budgetScale > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-amber-300 text-sm">
+                  ⚠️ Confirmar SCALE aqui aplica ${decisionModal.budgetScale.toFixed(2)}/dia como orçamento real e ATIVA a campanha no Google Ads — gasto de verdade começa imediatamente.
+                </div>
+              )}
               <div>
                 <label className="text-sm text-slate-300 mb-1 block">Anotação / Motivo (opcional)</label>
                 <textarea className="w-full bg-[#0f172a] border border-[#334155] rounded-lg p-3 text-white text-sm resize-none" rows={3} value={rationale} onChange={(e: any) => setRationale(e?.target?.value ?? '')} placeholder="Por que essa decisão?" />
