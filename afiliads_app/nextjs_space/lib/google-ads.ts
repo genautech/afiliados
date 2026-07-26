@@ -33,6 +33,7 @@ export interface GoogleAdsCredentials {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  loginCustomerId?: string;
 }
 
 export interface SyncedCampaignData {
@@ -67,7 +68,21 @@ export async function getGoogleAdsConfig(userId: string): Promise<GoogleAdsCrede
     clientId: map['client_id']?.trim() || '',
     clientSecret: map['client_secret']?.trim() || '',
     refreshToken: map['refresh_token']?.trim() || '',
+    loginCustomerId: map['login_customer_id']?.replace(/-/g, '').trim() || undefined,
   };
+}
+
+// Cabeçalhos comuns para chamadas REST da Google Ads API. `login-customer-id` é obrigatório
+// quando as credenciais são de uma conta MCC (gerenciadora) operando sobre uma conta filha —
+// sem ele a API responde USER_PERMISSION_DENIED mesmo com token/developer-token válidos.
+function apiHeaders(token: string, config: GoogleAdsCredentials): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    'developer-token': config.developerToken,
+  };
+  if (config.loginCustomerId) headers['login-customer-id'] = config.loginCustomerId;
+  return headers;
 }
 
 // Verifica se está rodando em modo Mock/Sandbox
@@ -145,11 +160,7 @@ export async function fetchGoogleCampaign(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'developer-token': config.developerToken,
-    },
+    headers: apiHeaders(token, config),
     body: JSON.stringify({ query }),
   });
 
@@ -206,11 +217,7 @@ export async function mutateGoogleCampaign(
     const url = `https://googleads.googleapis.com/v17/customers/${config.customerId}/campaigns:mutate`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'developer-token': config.developerToken,
-      },
+      headers: apiHeaders(token, config),
       body: JSON.stringify({
         operations: [
           {
@@ -241,11 +248,7 @@ export async function mutateGoogleCampaign(
     const query = `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = '${googleCampaignId}' LIMIT 1`;
     const searchRes = await fetch(searchUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'developer-token': config.developerToken,
-      },
+      headers: apiHeaders(token, config),
       body: JSON.stringify({ query }),
     });
 
@@ -259,11 +262,7 @@ export async function mutateGoogleCampaign(
         
         const budgetRes = await fetch(mutateBudgetUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'developer-token': config.developerToken,
-          },
+          headers: apiHeaders(token, config),
           body: JSON.stringify({
             operations: [
               {
@@ -324,11 +323,7 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
   // --- REAL API MODE ---
   const token = await getAccessToken(config);
   const base = `https://googleads.googleapis.com/v17/customers/${config.customerId}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-    'developer-token': config.developerToken,
-  };
+  const headers = apiHeaders(token, config);
 
   async function mutate(resource: string, operations: any[]): Promise<any> {
     const res = await fetch(`${base}/${resource}:mutate`, { method: 'POST', headers, body: JSON.stringify({ operations }) });

@@ -16,11 +16,12 @@ const SERVICES = [
     key: 'google_ads',
     link: 'https://ads.google.com',
     fields: [
-      { name: 'customer_id', label: 'Customer ID', placeholder: 'xxx-xxx-xxxx' },
+      { name: 'customer_id', label: 'Customer ID (conta que vai rodar as campanhas)', placeholder: 'xxx-xxx-xxxx' },
+      { name: 'login_customer_id', label: 'Login Customer ID — só se usar MCC (ID da conta gerenciadora, sem hífen)', placeholder: 'Opcional — ID da MCC' },
       { name: 'developer_token', label: 'Developer Token', placeholder: 'Token', sensitive: true },
-      { name: 'client_id', label: 'Client ID', placeholder: 'Client ID', sensitive: true },
-      { name: 'client_secret', label: 'Client Secret', placeholder: 'Secret', sensitive: true },
-      { name: 'refresh_token', label: 'Refresh Token', placeholder: 'Token', sensitive: true },
+      { name: 'client_id', label: 'Client ID (OAuth, Google Cloud Console)', placeholder: 'Client ID', sensitive: true },
+      { name: 'client_secret', label: 'Client Secret (OAuth, Google Cloud Console)', placeholder: 'Secret', sensitive: true },
+      { name: 'refresh_token', label: 'Refresh Token (gerado no OAuth Playground)', placeholder: 'Token', sensitive: true },
     ],
   },
   {
