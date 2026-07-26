@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import pg from 'pg';
+import { listarEmails, lerEmail, criarRascunhoResposta } from './gmail.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('DATABASE_URL não definida — configure no settings.json do MCP (o app usa Postgres na nuvem)'); process.exit(1); }
@@ -263,6 +264,40 @@ server.tool(
     if (!res.ok) return text(`Erro ${res.status}: ${JSON.stringify(data)}`);
     const urlCompleta = data.publishTarget === 'wordpress' ? data.url : `${APP_URL}${data.url}`;
     return text({ ...data, urlCompleta });
+  }
+);
+
+server.tool(
+  'gmail_listar_emails',
+  'Lista e-mails da caixa genaujunior@gmail.com (a conta usada para falar com afiliados/ClickBank). Por padrão traz os não lidos; use query no formato de busca do Gmail (ex.: "from:clickbank.com", "is:unread label:afiliados") para filtrar. Só leitura — não marca como lido nem move nada.',
+  {
+    query: z.string().default('is:unread').describe('Filtro no formato de busca do Gmail'),
+    max: z.number().int().min(1).max(50).default(10),
+  },
+  async ({ query, max }) => {
+    const emails = await listarEmails({ query, max });
+    if (!emails.length) return text('Nenhum e-mail encontrado para esse filtro.');
+    return text(emails);
+  }
+);
+
+server.tool(
+  'gmail_ler_email',
+  'Lê o corpo completo de um e-mail específico (use o "id" retornado por gmail_listar_emails).',
+  { id: z.string().describe('ID da mensagem') },
+  async ({ id }) => text(await lerEmail(id))
+);
+
+server.tool(
+  'gmail_criar_rascunho_resposta',
+  'Cria uma RESPOSTA EM RASCUNHO (não envia) para um e-mail de afiliado, na thread correta. O rascunho fica salvo em Rascunhos no Gmail de genaujunior@gmail.com para revisão e envio manual — este tool nunca envia e-mail sozinho (a conexão não tem escopo de envio).',
+  {
+    id: z.string().describe('ID da mensagem original a responder (de gmail_listar_emails/gmail_ler_email)'),
+    corpo: z.string().describe('Texto da resposta (texto puro)'),
+  },
+  async ({ id, corpo }) => {
+    const draft = await criarRascunhoResposta({ messageId: id, corpo });
+    return text(`Rascunho criado para ${draft.para} — assunto "${draft.assunto}". Revise e envie manualmente pelo Gmail (draftId: ${draft.draftId}).`);
   }
 );
 

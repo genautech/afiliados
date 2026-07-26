@@ -13,7 +13,7 @@ interromido por mudanças de infraestrutura.
 | --- | --- |
 | `afiliads_app/nextjs_space/` | App Next.js (dashboard, wizard, RSA, auditoria) |
 | `afiliado-google-ads-pro/` | Skill + referências + scripts de afiliados/Google Ads |
-| `mcp-afiliads/` | MCP server (Postgres + APIs do app) |
+| `mcp-afiliads/` | MCP server (Postgres + APIs do app + Gmail de genaujunior@gmail.com só-leitura/rascunho) |
 | `SKILL.md` | Skill raiz de estratégias multi-rede |
 | `hermes/` | Camada de organização Hermes (registry, knowledge, ingestão) |
 
