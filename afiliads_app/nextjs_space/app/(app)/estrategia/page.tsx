@@ -205,6 +205,18 @@ export default function EstrategiaPage() {
               <h4 className="font-semibold">Resultado da Tarefa do Agente:</h4>
               <p>{agentTaskResult.message}</p>
               <p>Agente Despachado: {agentTaskResult.dispatchedAgent}</p>
+              {agentTaskResult.presellUrl && (
+                <p className="mt-2">
+                  <a href={agentTaskResult.presellUrl} target="_blank" rel="noopener" className="text-blue-600 underline">
+                    Abrir preview da presell gerada
+                  </a>
+                </p>
+              )}
+              {agentTaskResult.draft && (
+                <pre className="mt-2 bg-white border border-gray-300 rounded p-3 text-xs overflow-auto max-h-96">
+                  {JSON.stringify(agentTaskResult.draft, null, 2)}
+                </pre>
+              )}
             </div>
           )}
         </div>
