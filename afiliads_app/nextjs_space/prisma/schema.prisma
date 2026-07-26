@@ -101,6 +101,8 @@ model Campaign {
   campaignNameGenerated String?
   utmString             String?             @db.Text
   googleCampaignName    String?
+  googleCampaignId      String?
+  googleAdGroupId       String?
   campaignType          String?
   bidStrategy           String?
   utmCampaign           String?

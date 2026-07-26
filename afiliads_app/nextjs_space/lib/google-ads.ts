@@ -1,5 +1,32 @@
 import { prisma } from './prisma';
 
+// IDs públicos de geoTargetConstant/languageConstant do Google Ads (estáveis, documentados pelo Google).
+const GEO_TARGET_CONSTANTS: Record<string, string> = {
+  US: '2840', UK: '2826', GB: '2826', AU: '2036', CA: '2124', BR: '2076',
+  DE: '2276', FR: '2250', ES: '2724', IT: '2380', MX: '2484',
+};
+const LANGUAGE_CONSTANTS: Record<string, string> = { en: '1000', pt: '1014', es: '1003' };
+
+export interface CreateCampaignInput {
+  name: string;
+  budgetDaily: number;
+  geo: string;
+  finalUrl: string;
+  keywords: Array<{ text: string; matchType: 'EXACT' | 'PHRASE' | 'BROAD' }>;
+  negativeKeywords?: string[];
+  headlines: string[];
+  descriptions: string[];
+  cpcBidMicros?: number;
+}
+
+export interface CreateCampaignResult {
+  success: boolean;
+  mock: boolean;
+  googleCampaignId?: string;
+  googleAdGroupId?: string;
+  logs: string[];
+}
+
 export interface GoogleAdsCredentials {
   customerId: string;
   developerToken: string;
@@ -264,4 +291,132 @@ export async function mutateGoogleCampaign(
     success: true,
     log: logs.join(', ') || 'Nenhuma atualização enviada',
   };
+}
+
+// Cria uma campanha nova do zero: budget -> campanha -> segmentação -> ad group -> keywords -> negativas -> RSA.
+// A campanha é SEMPRE criada como PAUSED — ativar (gastar de verdade) é uma ação manual separada,
+// feita depois via mutateGoogleCampaign/push ou direto no painel do Google Ads.
+export async function createGoogleCampaign(userId: string, input: CreateCampaignInput): Promise<CreateCampaignResult> {
+  const config = await getGoogleAdsConfig(userId);
+  if (!config) {
+    throw new Error('Configuração do Google Ads não encontrada para o usuário.');
+  }
+  const logs: string[] = [];
+
+  // --- MOCK MODE ---
+  if (isMockMode(config)) {
+    console.log(`[Google Ads Mock] Criando campanha "${input.name}"`, input);
+    logs.push(`[Simulação] Budget diário criado: $${input.budgetDaily.toFixed(2)}`);
+    logs.push(`[Simulação] Campanha "${input.name}" criada como PAUSED (Search)`);
+    logs.push(`[Simulação] Segmentação geográfica (${input.geo}) e de idioma configurada`);
+    logs.push(`[Simulação] Ad group criado com ${input.keywords.length} keyword(s)`);
+    if (input.negativeKeywords?.length) logs.push(`[Simulação] ${input.negativeKeywords.length} negativa(s) adicionada(s)`);
+    logs.push(`[Simulação] RSA criado com ${input.headlines.length} títulos e ${input.descriptions.length} descrições`);
+    return {
+      success: true,
+      mock: true,
+      googleCampaignId: `MOCK-CAMPAIGN-${Date.now()}`,
+      googleAdGroupId: `MOCK-ADGROUP-${Date.now()}`,
+      logs,
+    };
+  }
+
+  // --- REAL API MODE ---
+  const token = await getAccessToken(config);
+  const base = `https://googleads.googleapis.com/v17/customers/${config.customerId}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    'developer-token': config.developerToken,
+  };
+
+  async function mutate(resource: string, operations: any[]): Promise<any> {
+    const res = await fetch(`${base}/${resource}:mutate`, { method: 'POST', headers, body: JSON.stringify({ operations }) });
+    if (!res.ok) throw new Error(`Erro em ${resource}:mutate — ${await res.text()}`);
+    return res.json();
+  }
+
+  // 1. Orçamento diário
+  const budgetRes = await mutate('campaignBudgets', [{
+    create: { name: `${input.name} - Budget`, amountMicros: String(Math.round(input.budgetDaily * 1_000_000)), deliveryMethod: 'STANDARD' },
+  }]);
+  const budgetResourceName = budgetRes.results[0].resourceName;
+  logs.push(`Orçamento diário criado: $${input.budgetDaily.toFixed(2)}`);
+
+  // 2. Campanha (Search, sempre PAUSED)
+  const campaignRes = await mutate('campaigns', [{
+    create: {
+      name: input.name,
+      status: 'PAUSED',
+      advertisingChannelType: 'SEARCH',
+      campaignBudget: budgetResourceName,
+      manualCpc: {},
+      networkSettings: { targetGoogleSearch: true, targetSearchNetwork: false, targetContentNetwork: false, targetPartnerSearchNetwork: false },
+      geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE', negativeGeoTargetType: 'PRESENCE' },
+    },
+  }]);
+  const campaignResourceName = campaignRes.results[0].resourceName;
+  const googleCampaignId = String(campaignResourceName).split('/').pop();
+  logs.push(`Campanha "${input.name}" criada como PAUSED — ative manualmente quando estiver pronta para gastar`);
+
+  // 3. Segmentação geográfica + idioma
+  const criteriaOps: any[] = [];
+  const geoConstId = GEO_TARGET_CONSTANTS[input.geo?.toUpperCase()];
+  if (geoConstId) {
+    criteriaOps.push({ create: { campaign: campaignResourceName, location: { geoTargetConstant: `geoTargetConstants/${geoConstId}` } } });
+  }
+  const langId = input.geo === 'BR' ? LANGUAGE_CONSTANTS.pt : input.geo === 'ES' ? LANGUAGE_CONSTANTS.es : LANGUAGE_CONSTANTS.en;
+  criteriaOps.push({ create: { campaign: campaignResourceName, language: { languageConstant: `languageConstants/${langId}` } } });
+  await mutate('campaignCriteria', criteriaOps);
+  logs.push(`Segmentação geográfica (${input.geo}) e de idioma configurada — "presença apenas"`);
+
+  // 4. Ad group
+  const adGroupRes = await mutate('adGroups', [{
+    create: {
+      name: `${input.name} - AG1`,
+      campaign: campaignResourceName,
+      status: 'ENABLED',
+      type: 'SEARCH_STANDARD',
+      cpcBidMicros: String(Math.round(input.cpcBidMicros ?? 1_000_000)),
+    },
+  }]);
+  const adGroupResourceName = adGroupRes.results[0].resourceName;
+  const googleAdGroupId = String(adGroupResourceName).split('/').pop();
+  logs.push('Ad group criado');
+
+  // 5. Keywords positivas
+  if (input.keywords.length > 0) {
+    const kwOps = input.keywords.map(k => ({
+      create: { adGroup: adGroupResourceName, status: 'ENABLED', keyword: { text: k.text, matchType: k.matchType } },
+    }));
+    await mutate('adGroupCriteria', kwOps);
+    logs.push(`${input.keywords.length} keyword(s) adicionada(s) ao ad group`);
+  }
+
+  // 6. Negativas (nível de campanha)
+  if (input.negativeKeywords?.length) {
+    const negOps = input.negativeKeywords.map(n => ({
+      create: { campaign: campaignResourceName, negative: true, keyword: { text: n, matchType: 'BROAD' } },
+    }));
+    await mutate('campaignCriteria', negOps);
+    logs.push(`${input.negativeKeywords.length} negativa(s) adicionada(s) à campanha`);
+  }
+
+  // 7. Anúncio responsivo de pesquisa (RSA)
+  await mutate('adGroupAds', [{
+    create: {
+      adGroup: adGroupResourceName,
+      status: 'ENABLED',
+      ad: {
+        finalUrls: [input.finalUrl],
+        responsiveSearchAd: {
+          headlines: input.headlines.map(h => ({ text: h })),
+          descriptions: input.descriptions.map(d => ({ text: d })),
+        },
+      },
+    },
+  }]);
+  logs.push(`Anúncio responsivo de pesquisa criado com ${input.headlines.length} títulos e ${input.descriptions.length} descrições`);
+
+  return { success: true, mock: false, googleCampaignId, googleAdGroupId, logs };
 }

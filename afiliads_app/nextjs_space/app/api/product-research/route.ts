@@ -39,9 +39,11 @@ Responda APENAS JSON:
 const COMPLIANCE_PROMPT = `Você é o Compliance Sentinel, auditor de políticas Google Ads para afiliados ClickBank.
 Dado o produto, vertical e keywords, aponte riscos de: claims de saúde/renda, trademark bidding, verticais restritas (health in personalized ads), necessidade de bridge page, cloaking.
 Também defina a estratégia recomendada.
+Se a vertical for sensível (saúde, corpo, finanças, relacionamentos, fases da vida), gere de 3 a 8 pares de substituição de linguagem: frases/claims que NÃO podem aparecer na presell (diagnóstico, cura, garantia de resultado, termos médicos/explícitos) e a reescrita segura equivalente focada em benefício/experiência condicional. Se a vertical não for sensível, retorne "regras_reescrita": [].
 Responda APENAS JSON:
 { "risco_geral": "baixo|medio|alto",
   "alertas": [{ "nivel": "info|atencao|critico", "texto": "..." }],
+  "regras_reescrita": [{ "evitar": "claim ou termo proibido", "usar": "reescrita segura equivalente" }],
   "presell": { "tipo": "review|advertorial|quiz|vsl-bridge", "motivo": "1 frase", "elementos": ["4-6 elementos obrigatórios da página"] },
   "tipo_venda": { "funil": "bridge|direct|search-intent|youtube", "motivo": "1 frase" },
   "campanha": { "naming": "CB_<VERT>_<GEO>_<CANAL>_<FUNIL>_v1 preenchido", "tipo": "Search|PMax|Demand Gen", "lances": "estratégia de lances inicial", "cpc_max_usd": 0.0, "cpc_scale_usd": 0.0 },
@@ -134,7 +136,7 @@ export async function POST(request: NextRequest) {
             tags: hunter?.tags ?? [],
             keywords: seo,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
-            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [] },
+            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [], regras_reescrita: comp?.regras_reescrita ?? [] },
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },
@@ -153,7 +155,7 @@ export async function POST(request: NextRequest) {
             tags: hunter?.tags ?? [],
             keywords: seo,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
-            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [] },
+            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [], regras_reescrita: comp?.regras_reescrita ?? [] },
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },

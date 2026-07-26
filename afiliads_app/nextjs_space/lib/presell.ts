@@ -28,15 +28,28 @@ export interface PresellContent {
 }
 
 const BUILDER_PROMPT = `Você é o Presell Builder do AfiliAds: redator de páginas de pré-venda (bridge pages) para afiliados ClickBank que precisam ser APROVADAS pelo Google Ads.
-Regras invioláveis:
+
+Regras invioláveis (valem para QUALQUER produto/nicho):
 - Conteúdo editorial genuíno (review honesto/advertorial informativo), NUNCA "doorway page".
-- Zero claims absolutos de saúde/renda ("cura", "garantido", "perca X kg em Y dias"). Linguagem condicional.
+- Zero claims absolutos ou de diagnóstico/cura/garantia de resultado ("cura", "elimina", "garantido", "perca X kg em Y dias", "livre-se de"). Reescreva SEMPRE para linguagem condicional e focada em benefício/experiência (ex.: "pode apoiar", "ajuda a promover conforto", "contribui para o bem-estar") — nunca prometa o resultado, descreva o suporte que o produto oferece.
+- Para nichos sensíveis (saúde, corpo, finanças, relacionamentos, fases da vida como menopausa/envelhecimento): trate o tema com empatia, dignidade e respeito. Sem linguagem explícita, constrangedora ou de mau gosto. Foque em qualidade de vida, confiança e bem-estar do leitor.
 - Inclua contras reais na seção de pontos fortes/fracos.
 - Prova social apenas verificável (garantia oficial, nº de avaliações públicas).
+- CTA visível, direto e persuasivo, mas sem promessa de resultado (ex.: "Descubra Como Funciona", "Veja a Análise Completa").
+- Se o contexto abaixo trouxer riscos de compliance específicos do produto (seção "RISCOS DE COMPLIANCE A EVITAR"), reescreva o conteúdo especificamente para não incorrer em NENHUM deles.
 - Idioma conforme solicitado (en para US/UK/AU, pt-BR para Brasil).
 Responda APENAS JSON válido com exatamente estas chaves:
 {"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;
+
+const HEALTH_NICHE_RE = /health|sa[uú]de|nutra|beauty|beleza|wellness|bem-estar|supplement|suplemento|weight loss|emagrec|menopaus|urin[aá]r|incontin/i;
+
+function detectHealthNiche(vertical?: string | null, tags?: unknown, extra?: string): boolean {
+  const tagsStr = Array.isArray(tags) ? tags.join(' ') : '';
+  return HEALTH_NICHE_RE.test(`${vertical ?? ''} ${tagsStr} ${extra ?? ''}`);
+}
+
+const DISCLAIMER_SAUDE_HTML = '<br>Este produto não se destina a diagnosticar, tratar, curar ou prevenir qualquer doença.<br>Sempre consulte um profissional de saúde antes de iniciar qualquer novo suplemento ou programa de bem-estar.';
 
 function esc(s: string): string {
   return String(s ?? '');
@@ -47,7 +60,7 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean }): string {
   const templatePath = path.join(process.cwd(), 'lib', 'presell-template.html');
   let t = fs.readFileSync(templatePath, 'utf8');
 
@@ -92,6 +105,7 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
 
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
   if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
+  t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
 
   return t;
 }
@@ -137,10 +151,25 @@ export async function generatePresell(userId: string, args: {
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
 
   let productCtx = args.context ?? '';
+  let isHealthNiche = detectHealthNiche(undefined, undefined, `${angle} ${args.context ?? ''}`);
   if (args.productId) {
     const p = await prisma.productResearch.findFirst({ where: { id: args.productId, userId } });
     if (p) {
-      productCtx += `\nDossiê: vertical ${p.vertical}; resumo: ${p.summary}; melhor keyword: ${p.chosenKeyword}; compliance: ${JSON.stringify(p.compliance)}`;
+      isHealthNiche = detectHealthNiche(p.vertical, p.tags, `${angle} ${args.context ?? ''}`);
+      productCtx += `\nDossiê: vertical ${p.vertical}; resumo: ${p.summary}; melhor keyword: ${p.chosenKeyword}`;
+      const strategy = p.strategy as any;
+      if (strategy?.presell?.elementos?.length) {
+        productCtx += `\nELEMENTOS OBRIGATÓRIOS DA PRESELL (definidos na análise do produto): ${strategy.presell.elementos.join('; ')}`;
+      }
+      const alertas = (p.compliance as any)?.alertas as Array<{ nivel: string; texto: string }> | undefined;
+      const criticos = alertas?.filter(a => a.nivel === 'critico').map(a => a.texto) ?? [];
+      if (criticos.length > 0) {
+        productCtx += `\nRISCOS DE COMPLIANCE A EVITAR (críticos, apontados na análise deste produto):\n- ${criticos.join('\n- ')}`;
+      }
+      const rewriteRules = (p.compliance as any)?.regras_reescrita as Array<{ evitar: string; usar: string }> | undefined;
+      if (rewriteRules?.length) {
+        productCtx += `\nSUBSTITUIÇÕES OBRIGATÓRIAS DE LINGUAGEM (evitar → usar):\n${rewriteRules.map(r => `- "${r.evitar}" → "${r.usar}"`).join('\n')}`;
+      }
     }
   }
 
@@ -158,7 +187,7 @@ export async function generatePresell(userId: string, args: {
     finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(args.trackingId.slice(0, 24));
   }
 
-  const html = renderPresellHtml(content, { productName, hopLink: finalHop, googleAdsId: args.googleAdsId });
+  const html = renderPresellHtml(content, { productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche });
 
   const baseSlug = slugify(`${productName}-${angle}`);
   let slug = baseSlug;

@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   ArrowLeft, Shield, AlertTriangle, CheckCircle2, XCircle, Loader2,
   ExternalLink, TrendingUp, TrendingDown, Target, DollarSign,
-  BarChart3, Zap, Eye, Copy, RefreshCw, Play, Wand2, Sparkles
+  BarChart3, Zap, Eye, Copy, RefreshCw, Play, Wand2, Sparkles, Rocket
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -50,6 +50,32 @@ export default function CampaignDetailPage() {
   const [auditing, setAuditing] = useState(false);
   const [audit, setAudit] = useState<AuditResult | null>(null);
   const [syncingGads, setSyncingGads] = useState(false);
+  const [creatingGads, setCreatingGads] = useState(false);
+  const [gadsCreateResult, setGadsCreateResult] = useState<{ mock: boolean; logs: string[]; googleCampaignId?: string } | null>(null);
+
+  const createInGoogleAds = async () => {
+    setCreatingGads(true);
+    setGadsCreateResult(null);
+    try {
+      const res = await fetch('/api/google-ads/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: params?.id }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGadsCreateResult(data);
+        toast.success(data.mock ? 'Campanha criada em modo simulação (credenciais reais do Google Ads não configuradas)' : 'Campanha criada no Google Ads como PAUSED — ative manualmente quando estiver pronta');
+        await fetchCampaign();
+      } else {
+        toast.error(data.error || 'Erro ao criar campanha no Google Ads');
+      }
+    } catch {
+      toast.error('Erro de rede ao criar campanha no Google Ads');
+    } finally {
+      setCreatingGads(false);
+    }
+  };
 
   const runGadsSync = async (direction: 'pull' | 'push', customUpdates?: any) => {
     setSyncingGads(true);
@@ -246,14 +272,25 @@ export default function CampaignDetailPage() {
               </Button>
             </Link>
           )}
-          <Button
-            onClick={() => runGadsSync('pull')}
-            disabled={syncingGads}
-            className="bg-slate-700 hover:bg-slate-600 text-white gap-2"
-          >
-            {syncingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Sincronizar Google Ads
-          </Button>
+          {!campaign.googleCampaignId ? (
+            <Button
+              onClick={createInGoogleAds}
+              disabled={creatingGads}
+              className="bg-green-600 hover:bg-green-700 text-white gap-2"
+            >
+              {creatingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+              {creatingGads ? 'Criando...' : 'Criar no Google Ads'}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => runGadsSync('pull')}
+              disabled={syncingGads}
+              className="bg-slate-700 hover:bg-slate-600 text-white gap-2"
+            >
+              {syncingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Sincronizar Google Ads
+            </Button>
+          )}
           <Button onClick={runAudit} disabled={auditing} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
             {auditing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
             {auditing ? 'Auditando...' : 'Auditoria IA'}
@@ -265,6 +302,22 @@ export default function CampaignDetailPage() {
           </Link>
         </div>
       </div>
+
+      {gadsCreateResult && (
+        <Card className={gadsCreateResult.mock ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-green-500/30 bg-green-500/5'}>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              {gadsCreateResult.mock ? <AlertTriangle className="h-4 w-4 text-yellow-400" /> : <CheckCircle2 className="h-4 w-4 text-green-400" />}
+              <p className="text-sm font-semibold text-white">
+                {gadsCreateResult.mock ? 'Criada em modo simulação — credenciais reais do Google Ads não configuradas' : `Campanha criada no Google Ads (ID ${gadsCreateResult.googleCampaignId}) como PAUSED`}
+              </p>
+            </div>
+            <ul className="text-xs text-slate-400 space-y-0.5 pl-6 list-disc">
+              {gadsCreateResult.logs.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
