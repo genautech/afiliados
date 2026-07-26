@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
@@ -47,6 +48,9 @@ interface Product {
   hopLink?: string | null;
   affiliatePageUrl?: string | null;
   affiliateInsights?: any;
+  assetsUrl?: string | null;
+  vendorPageUrl?: string | null;
+  confirmedAt?: string | null;
 }
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
@@ -94,6 +98,7 @@ function ValBadge({ label, value }: { label: string; value: boolean | null | und
 
 export default function BuscaProdutosPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [query, setQuery] = useState('');
@@ -127,6 +132,19 @@ export default function BuscaProdutosPage() {
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  useEffect(() => {
+    const wantId = searchParams?.get('productId');
+    if (!wantId || products.length === 0) return;
+    const found = products.find(p => p.id === wantId);
+    if (found) {
+      openProduct(found);
+      if (!found.confirmedAt) {
+        toast.warning('Confirme as regras do vendor abaixo antes de criar a campanha no Wizard.');
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -233,6 +251,27 @@ export default function BuscaProdutosPage() {
       loadProducts();
       toast.success(`${p.name} marcado como escolhido`);
     }
+  }
+
+  const [confirming, setConfirming] = useState(false);
+
+  async function confirmProduct(p: Product) {
+    setConfirming(true);
+    try {
+      const r = await fetch('/api/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, confirmedAt: new Date().toISOString() }),
+      });
+      if (r.ok) {
+        const updated = await r.json();
+        setSelected(updated);
+        loadProducts();
+        toast.success('Regras do vendor confirmadas — produto liberado para campanha');
+      } else {
+        toast.error('Erro ao confirmar produto');
+      }
+    } catch { toast.error('Erro ao confirmar produto'); } finally { setConfirming(false); }
   }
 
   const [presellGenerating, setPresellGenerating] = useState(false);
@@ -529,6 +568,59 @@ export default function BuscaProdutosPage() {
                 </Button>
               </div>
             </div>
+
+            {(() => {
+              const ai = selected.affiliateInsights ?? {};
+              const val = ai?.campaignValidation ?? {};
+              const criticalAlerts = (selected.compliance?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
+              const items = [
+                { key: 'search', label: 'Canal Google Search verificado', ok: val?.googleSearchAllowed === true, critical: true },
+                { key: 'vendor', label: 'Página do vendor lida', ok: !!selected.vendorPageUrl, critical: false },
+                { key: 'assets', label: 'Assets localizados', ok: !!selected.assetsUrl, critical: false },
+                { key: 'claims', label: 'Restrições de claims revisadas', ok: criticalAlerts.length === 0, critical: true },
+              ];
+              const doneCount = items.filter(i => i.ok).length;
+              return (
+                <div className="bg-[#0f172a] border border-[#334155] rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-12 h-12 shrink-0">
+                        <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                          <circle cx="24" cy="24" r="20" fill="none" stroke="#334155" strokeWidth="3" />
+                          <circle cx="24" cy="24" r="20" fill="none" stroke={items.filter(i => i.critical).every(i => i.ok) ? '#22c55e' : '#f59e0b'} strokeWidth="3" strokeDasharray={`${(doneCount / items.length) * 125.6} 125.6`} strokeLinecap="round" />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">{doneCount}/{items.length}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm text-white font-semibold">Confirmação de regras do vendor</p>
+                        <p className="text-xs text-slate-500">
+                          {selected.confirmedAt
+                            ? `Confirmado em ${new Date(selected.confirmedAt).toLocaleString('pt-BR')}`
+                            : 'Revise o checklist e confirme antes de liberar este produto para uma campanha'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      className={cn('gap-1.5', selected.confirmedAt ? 'bg-green-600/20 border border-green-500/30 text-green-300 hover:bg-green-600/30' : 'bg-green-600 hover:bg-green-700 text-white')}
+                      onClick={() => confirmProduct(selected)}
+                      disabled={confirming}
+                    >
+                      {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {selected.confirmedAt ? 'Reconfirmar' : 'Confirmar e liberar para campanha'}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {items.map(item => (
+                      <div key={item.key} className={cn('flex items-center gap-2 p-2 rounded-md', item.ok ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5 border border-red-500/20' : 'bg-[#131e33] border border-[#334155]')}>
+                        <Checkbox checked={item.ok} disabled className="pointer-events-none" />
+                        <span className={cn('text-sm', item.ok ? 'text-green-300' : 'text-slate-300')}>{item.label}</span>
+                        {item.critical && !item.ok && <Badge className="ml-auto bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <Tabs defaultValue="keywords">
               <TabsList className="bg-[#0f172a] border border-[#334155]">

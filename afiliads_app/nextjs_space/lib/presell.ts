@@ -40,6 +40,17 @@ Regras invioláveis (valem para QUALQUER produto/nicho):
 - Idioma conforme solicitado (en para US/UK/AU, pt-BR para Brasil).
 - Tipos de página curtos (pogo, vsl) só exibem headline/subheadline/abertura/prova/cta — capriche
   nesses campos especificamente, mesmo respondendo o JSON completo abaixo.
+
+TÉCNICAS DE BRIDGE PAGE (não são decorativas — aplicar sempre):
+- Coerência de jornada: headline e ângulo aqui devem ecoar a promessa do anúncio/keyword de origem
+  (contexto abaixo) — o leitor não pode sentir que caiu num lugar diferente do que clicou.
+- Venda o PRÓXIMO CLIQUE, não o produto inteiro: o objetivo desta página é fazer o leitor querer
+  ver a oferta, não fechar a venda aqui. Uma curiosidade/lacuna genuína resolvida só no CTA.
+- Uma única ação óbvia: todo o texto empurra pra UM CTA, nunca dilui atenção com múltiplos caminhos.
+- "abertura" mostra que você entende a dor do leitor ANTES de mencionar a solução — sem isso a
+  página lê como anúncio, não como conteúdo editorial (é o que reprova no Google Ads).
+- Pontos fracos reais na seção 3 não são só "compliance" — aumentam conversão porque parecem
+  honestos; um review sem nenhum contra soa falso.
 Responda APENAS JSON válido com exatamente estas chaves:
 {"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;

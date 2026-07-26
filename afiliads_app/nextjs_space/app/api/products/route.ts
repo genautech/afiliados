@@ -53,8 +53,8 @@ export async function PATCH(request: NextRequest) {
     const { id, ...data } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
     const allowed: any = {};
-    for (const k of ['status', 'chosenKeyword', 'hopLink', 'notes', 'affiliatePageUrl', 'assetsUrl', 'affiliateInsights']) {
-      if (data[k] !== undefined) allowed[k] = data[k];
+    for (const k of ['status', 'chosenKeyword', 'hopLink', 'notes', 'affiliatePageUrl', 'assetsUrl', 'affiliateInsights', 'vendorPageUrl', 'confirmedAt']) {
+      if (data[k] !== undefined) allowed[k] = data[k] === null ? null : (k === 'confirmedAt' ? new Date(data[k]) : data[k]);
     }
     const product = await prisma.productResearch.update({
       where: { id, userId } as any,

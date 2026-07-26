@@ -308,7 +308,7 @@ export default function WizardPage() {
   const [autofillSummary, setAutofillSummary] = useState<string | null>(null);
   const [aiNegatives, setAiNegatives] = useState<string[] | null>(null);
   const [sourceProductResearchId, setSourceProductResearchId] = useState<string | null>(null);
-  const [researchProducts, setResearchProducts] = useState<Array<{ id: string; name: string; score: number; vertical: string }>>([]);
+  const [researchProducts, setResearchProducts] = useState<Array<{ id: string; name: string; score: number; vertical: string; confirmedAt?: string | null }>>([]);
 
   const [auditing, setAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -608,6 +608,12 @@ export default function WizardPage() {
         } catch { /* segue sem hidratar */ }
       }
       if (prId) {
+        const product = await requireConfirmedProduct(prId);
+        if (!product?.confirmedAt) {
+          toast.error('Confirme as regras do vendor na Busca de Produtos antes de carregar este produto.');
+          router.push(`/busca-produtos?productId=${prId}`);
+          return;
+        }
         setSourceProductResearchId(prId);
         await runAutofill({ productResearchId: prId });
       }
@@ -622,8 +628,25 @@ export default function WizardPage() {
       .catch(() => {});
   }, []);
 
+  const requireConfirmedProduct = async (id: string): Promise<{ confirmedAt?: string | null } | null> => {
+    const cached = researchProducts.find(p => p.id === id);
+    if (cached) return cached;
+    try {
+      const res = await fetch('/api/products');
+      if (!res.ok) return null;
+      const list = await res.json();
+      return Array.isArray(list) ? (list.find((p: any) => p.id === id) ?? null) : null;
+    } catch { return null; }
+  };
+
   const loadFromResearch = async (id: string) => {
     if (!id) return;
+    const product = await requireConfirmedProduct(id);
+    if (!product?.confirmedAt) {
+      toast.error('Confirme as regras do vendor na Busca de Produtos antes de carregar este produto.');
+      router.push(`/busca-produtos?productId=${id}`);
+      return;
+    }
     setSourceProductResearchId(id);
     await runAutofill({ productResearchId: id });
   };

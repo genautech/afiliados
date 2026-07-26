@@ -20,7 +20,8 @@ Responda APENAS JSON válido:
   "summary": "resumo em 2-3 frases: o que é, para quem, por que (não) promover",
   "tags": ["5 a 10 tags do produto/nicho/ângulo"],
   "funil": "descrição curta do funil do vendor (VSL, upsells, quiz...)",
-  "affiliate_page_url_guess": "melhor chute da URL real da página de afiliados/JV do vendor (ex.: https://dominio.com/affiliates ou https://dominio.com/help/affiliates.php) — sem isso o Compliance Sentinel não consegue confirmar restrições de canal"
+  "affiliate_page_url_guess": "melhor chute da URL real da página de afiliados/JV do vendor (ex.: https://dominio.com/affiliates ou https://dominio.com/help/affiliates.php) — sem isso o Compliance Sentinel não consegue confirmar restrições de canal",
+  "vendor_sales_page_url_guess": "melhor chute da URL da página de vendas principal do vendor (a landing page que o comprador vê, ex.: https://dominio.com/) — usada como referência de headline/prova/ângulo real pro Presell Builder"
 }
 Score 0-100 pondera: payout, conversão esperada, momentum, competição e risco de compliance. Se não conhecer o produto, estime pela vertical e diga isso no summary.`;
 
@@ -45,11 +46,14 @@ Se a vertical for sensível (saúde, corpo, finanças, relacionamentos, fases da
 REGRA CRÍTICA (aprendida do caso FemiCore, não repetir): a maioria dos vendors de nutra/saúde de ticket alto no ClickBank PROÍBE Google Search/AdWords inteiramente nas próprias regras de tráfego — não é só brand bidding, é o canal inteiro. Isso costuma ficar numa cláusula tipo "Use for any purpose Google Search Advertising" ou "does not allow ... any traffic from Google unless it is Display or YouTube", separada dos claims de saúde. NUNCA assuma que Google Search é permitido só porque a vertical em si é ok — isso é uma decisão comercial do vendor, não uma política do Google.
 Se o texto real da página de afiliados do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE AFILIADOS"), baseie "google_search_permitido" NELE, citando a frase exata como fonte. Se NÃO foi fornecido (fetch falhou), responda "google_search_permitido": "nao_verificado" e gere um alerta nível "critico" mandando o usuário confirmar manualmente na página de afiliados/advertising rules do vendor antes de gastar em Search — nunca responda true/false sem fonte real.
 
+Se o texto real da página de vendas do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE VENDAS DO VENDOR"), extraia dela "elementos_presell_referencia": headline real, ângulo/promessa principal, prova social real (números, garantia, depoimentos citados) — dados verificáveis que o Presell Builder vai usar como referência de estrutura/ângulo (nunca copiar texto literal, é só referência). Se não foi fornecida, retorne "elementos_presell_referencia" como array vazio.
+
 Responda APENAS JSON:
 { "risco_geral": "baixo|medio|alto",
   "alertas": [{ "nivel": "info|atencao|critico", "texto": "..." }],
   "regras_reescrita": [{ "evitar": "claim ou termo proibido", "usar": "reescrita segura equivalente" }],
   "canais": { "google_search_permitido": true|false|"nao_verificado", "fonte": "URL + trecho exato que embasa a resposta, ou 'página de afiliados não encontrada'", "canais_permitidos": ["..."], "canais_proibidos": ["..."] },
+  "elementos_presell_referencia": [{ "tipo": "headline|angulo|prova_social", "texto": "..." }],
   "presell": { "tipo": "review|advertorial|quiz|vsl-bridge", "motivo": "1 frase", "elementos": ["4-6 elementos obrigatórios da página"] },
   "tipo_venda": { "funil": "bridge|direct|search-intent|youtube", "motivo": "1 frase" },
   "campanha": { "naming": "CB_<VERT>_<GEO>_<CANAL>_<FUNIL>_v1 preenchido", "tipo": "Search|PMax|Demand Gen", "lances": "estratégia de lances inicial", "cpc_max_usd": 0.0, "cpc_scale_usd": 0.0 },
@@ -141,12 +145,37 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Busca também a página de vendas principal do vendor — alimenta elementos_presell_referencia
+        // (headline/ângulo/prova social reais) pro Presell Builder usar depois, e não inventar do zero.
+        let vendorPageText = '';
+        let vendorPageUrlUsed = '';
+        const vendorUrlGuess = typeof hunter?.vendor_sales_page_url_guess === 'string' ? hunter.vendor_sales_page_url_guess.trim() : '';
+        if (vendorUrlGuess && /^https?:\/\//i.test(vendorUrlGuess)) {
+          try {
+            const vendorRes = await fetch(vendorUrlGuess, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
+            if (vendorRes.ok) {
+              const vendorHtml = await vendorRes.text();
+              vendorPageText = vendorHtml
+                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 6000);
+              vendorPageUrlUsed = vendorUrlGuess;
+            }
+          } catch (e: any) {
+            console.error('Falha ao buscar página de vendas do vendor:', vendorUrlGuess, e?.message);
+          }
+        }
+
         send({ status: 'step', agent: 'compliance', state: 'running' });
         const compRes = await callAgent(uid, {
           agent: 'compliance-sentinel',
           systemPrompt: dynamicCompliancePrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}
 ${affiliatePageText ? `TEXTO REAL DA PÁGINA DE AFILIADOS (${affiliatePageUrlUsed}):\n"""${affiliatePageText}"""` : `Não foi possível buscar a página de afiliados real (tentativa: ${urlGuess || 'nenhuma URL sugerida pelo Hunter'}). Responda "canais.google_search_permitido": "nao_verificado" e alerte nível crítico.`}
+${vendorPageText ? `TEXTO REAL DA PÁGINA DE VENDAS DO VENDOR (${vendorPageUrlUsed}):\n"""${vendorPageText}"""` : `Não foi possível buscar a página de vendas real (tentativa: ${vendorUrlGuess || 'nenhuma URL sugerida pelo Hunter'}). Retorne "elementos_presell_referencia" como array vazio.`}
 JSON puro.`,
         });
         const comp = compRes.data;
@@ -164,6 +193,8 @@ JSON puro.`,
           forbiddenChannels: comp?.canais?.canais_proibidos ?? [],
         };
         const affiliatePageUrlFinal = affiliatePageUrlUsed || urlGuess || existing?.affiliatePageUrl || null;
+        const vendorPageUrlFinal = vendorPageUrlUsed || vendorUrlGuess || existing?.vendorPageUrl || null;
+        const vendorPageInsights = { elementosPresellReferencia: comp?.elementos_presell_referencia ?? [] };
 
         // Garantido em código, não depende do LLM lembrar (caso FemiCore: o agente simplesmente não
         // reportou a restrição). Se não está explicitamente confirmado "true", entra alerta crítico.
@@ -194,7 +225,8 @@ JSON puro.`,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
             compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
             affiliatePageUrl: affiliatePageUrlFinal,
-            affiliateInsights: { ...(existing?.affiliateInsights as any ?? {}), ...canaisInfo },
+            vendorPageUrl: vendorPageUrlFinal,
+            affiliateInsights: { ...(existing?.affiliateInsights as any ?? {}), ...canaisInfo, vendorPageInsights },
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },
@@ -215,7 +247,8 @@ JSON puro.`,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
             compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
             affiliatePageUrl: affiliatePageUrlFinal,
-            affiliateInsights: canaisInfo,
+            vendorPageUrl: vendorPageUrlFinal,
+            affiliateInsights: { ...canaisInfo, vendorPageInsights },
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },
