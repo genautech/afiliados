@@ -173,15 +173,18 @@ const AutofillContext = React.createContext<Record<string, string>>({});
 const AgentHelp = ({
   fieldKey,
   fieldValue,
-  context
+  context,
+  onApply,
 }: {
   fieldKey: string;
   fieldValue?: string;
   context?: any;
+  onApply?: (value: string) => void;
 }) => {
   const help = FIELD_HELP[fieldKey];
   const [analysing, setAnalysing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [suggestedValue, setSuggestedValue] = useState<string | null>(null);
   const autofillRationale = React.useContext(AutofillContext);
   const autoSuggestion = autofillRationale?.[fieldKey];
 
@@ -194,6 +197,7 @@ const AgentHelp = ({
     }
     setAnalysing(true);
     setResult(null);
+    setSuggestedValue(null);
     try {
       const res = await fetch('/api/wizard-field-check', {
         method: 'POST',
@@ -203,6 +207,7 @@ const AgentHelp = ({
       const data = await res.json();
       if (res.ok && data.success) {
         setResult(data.response);
+        if (data.valorSugerido && data.valorSugerido !== fieldValue) setSuggestedValue(data.valorSugerido);
         toast.success('Análise de campo concluída pelo agente!');
       } else {
         setResult(data.error || 'Erro ao validar campo.');
@@ -212,6 +217,13 @@ const AgentHelp = ({
     } finally {
       setAnalysing(false);
     }
+  };
+
+  const handleApply = () => {
+    if (!suggestedValue || !onApply) return;
+    onApply(suggestedValue);
+    toast.success('Correção aplicada ao campo.');
+    setSuggestedValue(null);
   };
 
   return (
@@ -262,6 +274,19 @@ const AgentHelp = ({
               <div className="mt-3 bg-[#0f172a] border border-[#334155]/60 p-3 rounded-lg text-[11px] leading-relaxed space-y-1 text-slate-300">
                 <span className="text-green-400 font-bold block mb-1">🤖 Análise do Agente:</span>
                 <p className="whitespace-pre-line">{result}</p>
+              </div>
+            )}
+            {suggestedValue && (
+              <div className="mt-2 bg-green-500/10 border border-green-500/30 p-3 rounded-lg text-[11px] space-y-2">
+                <div className="text-green-300 font-semibold">Correção sugerida:</div>
+                <div className="font-mono text-white bg-[#0f172a] rounded p-2 break-all">{suggestedValue}</div>
+                {onApply ? (
+                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 text-white text-[11px] h-7 w-full">
+                    Aplicar correção no campo
+                  </Button>
+                ) : (
+                  <p className="text-slate-400">Copie e cole manualmente — esse campo ainda não suporta aplicação direta.</p>
+                )}
               </div>
             )}
           </div>
@@ -338,6 +363,9 @@ export default function WizardPage() {
   const [flowpageUrl, setFlowpageUrl] = useState('');
   const [hostingerDomain, setHostingerDomain] = useState('');
   const [presellHtml, setPresellHtml] = useState('');
+  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl'>('advertorial');
+  const [popupGate, setPopupGate] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -417,6 +445,7 @@ export default function WizardPage() {
         utmString, wizardStep: step,
         loopEnabled, loopInterval, loopAgents,
         postbackUrl, clickidToken, presellHtml,
+        pageType, popupGate, videoUrl,
       };
       if (campaignId) {
         await fetch(`/api/campaigns/${campaignId}`, {
@@ -470,6 +499,9 @@ export default function WizardPage() {
     setFlowpageUrl(c?.flowpageUrl ?? '');
     setHostingerDomain(c?.hostingerDomain ?? '');
     setPresellHtml(c?.presellHtml ?? '');
+    setPageType(c?.pageType ?? 'advertorial');
+    setPopupGate(!!c?.popupGate);
+    setVideoUrl(c?.videoUrl ?? '');
     setPostbackUrl(c?.postbackUrl ?? '');
     setClickidToken(c?.clickidToken ?? 'clickid');
     setBudgetTest(c?.budgetTest ? String(c.budgetTest) : '50');
@@ -868,31 +900,31 @@ export default function WizardPage() {
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Nome da Campanha *</Label><AgentHelp fieldKey="name" fieldValue={name} context={{ platform, vertical, geo }} /></div><Input value={name} onChange={(e:any) => setName(e?.target?.value ?? '')} placeholder="Ex: WL Supplement Alpha" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Nome da Campanha *</Label><AgentHelp fieldKey="name" fieldValue={name} context={{ platform, vertical, geo }} onApply={setName} /></div><Input value={name} onChange={(e:any) => setName(e?.target?.value ?? '')} placeholder="Ex: WL Supplement Alpha" className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} onApply={setPlatform} /></div>
                   <Select value={platform} onValueChange={setPlatform}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{PLATFORMS.map(p => <SelectItem key={p} value={p} className="text-white">{p}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Vertical</Label><AgentHelp fieldKey="vertical" fieldValue={vertical} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Vertical</Label><AgentHelp fieldKey="vertical" fieldValue={vertical} onApply={setVertical} /></div>
                   <Select value={vertical} onValueChange={(v) => { setVertical(v); setCvrExpected(''); }}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{VERTICALS.map(v => <SelectItem key={v} value={v} className="text-white">{v}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Geo</Label><AgentHelp fieldKey="geo" fieldValue={geo} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Geo</Label><AgentHelp fieldKey="geo" fieldValue={geo} onApply={setGeo} /></div>
                   <Select value={geo} onValueChange={setGeo}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{GEOS.map(g => <SelectItem key={g} value={g} className="text-white">{g}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Canal</Label><AgentHelp fieldKey="channel" fieldValue={channel} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Canal</Label><AgentHelp fieldKey="channel" fieldValue={channel} onApply={setChannel} /></div>
                   <Select value={channel} onValueChange={setChannel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{CHANNELS.map(c => <SelectItem key={c} value={c} className="text-white">{c}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Funil</Label><AgentHelp fieldKey="funnel" fieldValue={funnel} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Funil</Label><AgentHelp fieldKey="funnel" fieldValue={funnel} onApply={setFunnel} /></div>
                   <Select value={funnel} onValueChange={setFunnel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="BRIDGE" className="text-white">Bridge</SelectItem><SelectItem value="DIRECT" className="text-white">Direct</SelectItem><SelectItem value="REVIEW" className="text-white">Review</SelectItem><SelectItem value="SL" className="text-white">Smartlink</SelectItem></SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Comissão USD *</Label><AgentHelp fieldKey="commission" fieldValue={commission} context={{ platform, vertical, geo }} /></div><Input type="number" value={commission} onChange={(e:any) => setCommission(e?.target?.value ?? '')} placeholder="Ex: 47.00" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Refund % estimado</Label><AgentHelp fieldKey="refundPct" fieldValue={refundPct} context={{ platform, vertical }} /></div><Input type="number" value={refundPct} onChange={(e:any) => setRefundPct(e?.target?.value ?? '')} placeholder="Ex: 10" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">AOV (USD)</Label><AgentHelp fieldKey="aov" fieldValue={aov} /></div><Input type="number" value={aov} onChange={(e:any) => setAov(e?.target?.value ?? '')} placeholder="Ex: 67.00" className={inputCls} /></div>
-                <div className="sm:col-span-2"><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Oferta (HopLink/Smartlink)</Label><AgentHelp fieldKey="offerUrl" fieldValue={offerUrl} /></div><Input value={offerUrl} onChange={(e:any) => setOfferUrl(e?.target?.value ?? '')} placeholder="https://hop.clickbank.net/..." className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Comissão USD *</Label><AgentHelp fieldKey="commission" fieldValue={commission} context={{ platform, vertical, geo }} onApply={setCommission} /></div><Input type="number" value={commission} onChange={(e:any) => setCommission(e?.target?.value ?? '')} placeholder="Ex: 47.00" className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Refund % estimado</Label><AgentHelp fieldKey="refundPct" fieldValue={refundPct} context={{ platform, vertical }} onApply={setRefundPct} /></div><Input type="number" value={refundPct} onChange={(e:any) => setRefundPct(e?.target?.value ?? '')} placeholder="Ex: 10" className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">AOV (USD)</Label><AgentHelp fieldKey="aov" fieldValue={aov} onApply={setAov} /></div><Input type="number" value={aov} onChange={(e:any) => setAov(e?.target?.value ?? '')} placeholder="Ex: 67.00" className={inputCls} /></div>
+                <div className="sm:col-span-2"><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Oferta (HopLink/Smartlink)</Label><AgentHelp fieldKey="offerUrl" fieldValue={offerUrl} onApply={setOfferUrl} /></div><Input value={offerUrl} onChange={(e:any) => setOfferUrl(e?.target?.value ?? '')} placeholder="https://hop.clickbank.net/..." className={inputCls} /></div>
               </div>
             </div>
           )}
@@ -902,7 +934,7 @@ export default function WizardPage() {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white">Calculadora de Break-even</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">CVR Esperado (%)</Label><AgentHelp fieldKey="cvrExpected" fieldValue={cvrExpected || CVR_DEFAULTS[vertical]?.toString() || '1'} context={{ platform, vertical }} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">CVR Esperado (%)</Label><AgentHelp fieldKey="cvrExpected" fieldValue={cvrExpected || CVR_DEFAULTS[vertical]?.toString() || '1'} context={{ platform, vertical }} onApply={setCvrExpected} /></div>
                   <Input type="number" value={cvrExpected || CVR_DEFAULTS[vertical]?.toString() || '1'} onChange={(e:any) => setCvrExpected(e?.target?.value ?? '')} className={inputCls} />
                   <p className="text-xs text-slate-500 mt-1">Sugestão para {vertical}: {CVR_DEFAULTS[vertical] ?? 1}%</p></div>
               </div>
@@ -1019,11 +1051,37 @@ export default function WizardPage() {
 
               {/* URLs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} placeholder="https://seudominio.com/review" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL FlowPage</Label><AgentHelp fieldKey="flowpageUrl" fieldValue={flowpageUrl} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label></div>
+                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl') => setPageType(v)}>
+                    <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-[#1e293b] border-[#334155]">
+                      <SelectItem value="advertorial" className="text-white">Advertorial (Artigo de Review)</SelectItem>
+                      <SelectItem value="pogo" className="text-white">Pogo (Curta, direto ao ponto)</SelectItem>
+                      <SelectItem value="vsl" className="text-white">VSL (Vídeo Sales Letter)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2 mt-2">
+                  <Checkbox id="popup-gate" checked={popupGate} onCheckedChange={(v: boolean) => setPopupGate(v)} />
+                  <label htmlFor="popup-gate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-slate-300">
+                    Ativar Pop-up de Retenção
+                  </label>
+                  <AgentHelp fieldKey="popupGate" fieldValue={String(popupGate)} />
+                </div>
+                {pageType === 'vsl' && (
+                  <div className="sm:col-span-2">
+                    <div className="flex items-center gap-1"><Label className="text-slate-300">URL do Vídeo (YouTube, Vimeo ou .mp4)</Label><AgentHelp fieldKey="videoUrl" fieldValue={videoUrl} onApply={setVideoUrl} /></div>
+                    <Input value={videoUrl} onChange={(e:any) => setVideoUrl(e?.target?.value ?? '')} placeholder="https://youtube.com/watch?v=..." className={inputCls} />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} onApply={setPresellUrl} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} placeholder="https://seudominio.com/review" className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL FlowPage</Label><AgentHelp fieldKey="flowpageUrl" fieldValue={flowpageUrl} onApply={setFlowpageUrl} /></div>
                   <div className="flex gap-2"><Input value={flowpageUrl} onChange={(e:any) => setFlowpageUrl(e?.target?.value ?? '')} placeholder="URL do FlowPage" className={`${inputCls} flex-1`} />
                     <a href="https://flowpages.com" target="_blank" rel="noopener"><Button variant="outline" size="icon" className="border-[#334155] text-slate-300"><ExternalLink className="h-4 w-4" /></Button></a></div></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Domínio Hostinger</Label><AgentHelp fieldKey="hostingerDomain" fieldValue={hostingerDomain} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Domínio Hostinger</Label><AgentHelp fieldKey="hostingerDomain" fieldValue={hostingerDomain} onApply={setHostingerDomain} /></div>
                   <div className="flex gap-2"><Input value={hostingerDomain} onChange={(e:any) => setHostingerDomain(e?.target?.value ?? '')} placeholder="seudominio.com" className={`${inputCls} flex-1`} />
                     <a href="https://hostinger.com" target="_blank" rel="noopener"><Button variant="outline" size="icon" className="border-[#334155] text-slate-300"><ExternalLink className="h-4 w-4" /></Button></a></div></div>
               </div>
@@ -1312,8 +1370,8 @@ export default function WizardPage() {
               <h2 className="text-lg font-semibold text-white">Tracking & Tags</h2>
               {platform === 'MaxWeb' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Postback URL</Label><AgentHelp fieldKey="postbackUrl" fieldValue={postbackUrl} /></div><Input value={postbackUrl} onChange={(e:any) => setPostbackUrl(e?.target?.value ?? '')} placeholder="https://...postback..." className={inputCls} /><p className="text-xs text-slate-500 mt-1">{'Ex: https://track.maxweb.com/postback?clickid={clickid}'}</p></div>
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Token ClickID</Label><AgentHelp fieldKey="clickidToken" fieldValue={clickidToken} /></div><Input value={clickidToken} onChange={(e:any) => setClickidToken(e?.target?.value ?? '')} className={inputCls} /></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Postback URL</Label><AgentHelp fieldKey="postbackUrl" fieldValue={postbackUrl} onApply={setPostbackUrl} /></div><Input value={postbackUrl} onChange={(e:any) => setPostbackUrl(e?.target?.value ?? '')} placeholder="https://...postback..." className={inputCls} /><p className="text-xs text-slate-500 mt-1">{'Ex: https://track.maxweb.com/postback?clickid={clickid}'}</p></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Token ClickID</Label><AgentHelp fieldKey="clickidToken" fieldValue={clickidToken} onApply={setClickidToken} /></div><Input value={clickidToken} onChange={(e:any) => setClickidToken(e?.target?.value ?? '')} className={inputCls} /></div>
                 </div>
               )}
               {platform === 'MaxWeb' && (
@@ -1343,8 +1401,8 @@ export default function WizardPage() {
               <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-blue-300">Etapa 1 — Teste</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total de Teste (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} /></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total de Teste (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} onApply={setBudgetTest} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} onApply={setTestDuration} /></div>
                     <Select value={testDuration} onValueChange={setTestDuration}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="48h" className="text-white">48h</SelectItem><SelectItem value="72h" className="text-white">72h</SelectItem><SelectItem value="5" className="text-white">5 dias</SelectItem><SelectItem value="7" className="text-white">7 dias</SelectItem></SelectContent>
                     </Select></div>
@@ -1356,7 +1414,7 @@ export default function WizardPage() {
                 <h3 className="text-sm font-semibold text-purple-300">Etapa 2 — Investimento sério (só depois de validar no teste)</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <div className="flex items-center gap-1"><Label className="text-slate-300">Budget Diário de Scale (USD)</Label><AgentHelp fieldKey="budgetScale" fieldValue={budgetScale} context={{ budgetTest: parseFloat(budgetTest) || 50, commission: commVal }} /></div>
+                    <div className="flex items-center gap-1"><Label className="text-slate-300">Budget Diário de Scale (USD)</Label><AgentHelp fieldKey="budgetScale" fieldValue={budgetScale} context={{ budgetTest: parseFloat(budgetTest) || 50, commission: commVal }} onApply={setBudgetScale} /></div>
                     <Input type="number" value={budgetScale} onChange={(e:any) => setBudgetScale(e?.target?.value ?? '0')} placeholder="Ex.: 150" className={inputCls} />
                   </div>
                   <div className="text-xs text-slate-400 self-end pb-2">

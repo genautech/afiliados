@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { callLLM } from '@/lib/llm';
+import { callAgent } from '@/lib/llm';
 
 const agentPrompts: Record<string, { agent: string; prompt: string }> = {
   name: {
@@ -43,7 +43,10 @@ const agentPrompts: Record<string, { agent: string; prompt: string }> = {
   },
   offerUrl: {
     agent: 'Tracking & Analytics Engineer',
-    prompt: 'Analise a URL da oferta de afiliado (HopLink ou Smartlink). Verifique se o formato da URL parece conter parâmetros de subid/clickid para trackings de cliques e oriente sobre como injetar dinamicamente esses tokens no link para evitar perdas de comissão.'
+    prompt: `Analise a URL da oferta de afiliado (HopLink ClickBank, Smartlink BuyGoods/MaxWeb etc).
+REGRAS IMPORTANTES (não violar): o app AfiliAds já anexa automaticamente "?tid=<utmCampaign da campanha>" (ou "&tid=" se já houver query string) ao HopLink na hora de gerar a presell — normalizado para minúsculas, só a-z/0-9/_, até 100 caracteres (limite real do ClickBank). O campo aqui deve conter o HopLink LIMPO (encrypted ou não), SEM tid/subid manual — adicionar iria duplicar ou conflitar.
+NUNCA sugira sintaxe tipo "%{subid1}", "%{clickid}" ou parâmetros de Post Affiliate Pro/iDevAffiliate — ClickBank NÃO usa essa sintaxe, isso é de outra categoria de plataforma e não funciona no link. Se quiser sugerir os parâmetros avançados reais do ClickBank (traffic_source, traffic_type, campaign, creative, ad, extclid), deixe claro que são OPCIONAIS, só alimentam o dashboard de analytics do próprio ClickBank, e não são lidos pelo AfiliAds.
+Verifique apenas: (1) é uma URL https válida de hop.clickbank.net ou domínio de smartlink reconhecido; (2) não contém "?tid=" ou "&tid=" já embutido (se contém, alertar que vai conflitar com a auto-injeção); (3) não tem espaços/caracteres quebrados. Se estiver tudo certo, diga isso claramente e não invente correção.`
   },
   cvrExpected: {
     agent: 'CRO & Conversion Specialist',
@@ -110,20 +113,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const systemPrompt = `Você é o agente especialista "${config.agent}" de marketing de afiliados. sua tarefa é validar o preenchimento de um campo da campanha e dar um feedback conciso ao afiliado.
-Seja direto e traga as regras de negócios de forma prática em 2 a 3 parágrafos curtos.
-Use português brasileiro de forma profissional.`;
+    const systemPrompt = `Você é o agente especialista "${config.agent}" de marketing de afiliados. Sua tarefa é validar o preenchimento de um campo da campanha e, se possível, propor o valor exato corrigido — não só explicar o problema.
+Seja direto e traga as regras de negócio de forma prática. Use português brasileiro profissional.
+Responda APENAS JSON válido, sem markdown, no formato:
+{"diagnostico": "2-3 parágrafos curtos explicando a análise", "correcao_necessaria": true|false, "valor_sugerido": "valor pronto para substituir o campo, ou null se o valor atual já está correto ou se a correção não é um valor único aplicável (ex.: campo é só informativo)"}
+"valor_sugerido" só deve vir preenchido quando for um valor literal, seguro e pronto pra aplicar direto no campo (mesmo tipo/formato do campo) — nunca invente sintaxe ou parâmetros que a plataforma real não usa.`;
 
     const userPrompt = `${config.prompt}
 Campo analisado: "${fieldKey}"
 Valor preenchido pelo usuário: "${fieldValue}"
 Contexto extra da campanha: ${JSON.stringify(context ?? {})}
 
-Retorne as diretrizes para corrigir ou configurar se o preenchimento estiver incorreto ou não for viável.`;
+JSON puro.`;
 
     try {
-      const responseText = await callLLM(userId, { agent: 'wizard-validator', systemPrompt, userPrompt });
-      return NextResponse.json({ success: true, response: responseText });
+      const res = await callAgent(userId, { agent: 'wizard-validator', systemPrompt, userPrompt });
+      const data = res.data;
+      if (!data?.diagnostico) {
+        return NextResponse.json({ success: false, error: 'O agente não retornou uma análise válida.' });
+      }
+      return NextResponse.json({
+        success: true,
+        response: data.diagnostico,
+        correcaoNecessaria: !!data.correcao_necessaria,
+        valorSugerido: typeof data.valor_sugerido === 'string' && data.valor_sugerido.trim() ? data.valor_sugerido.trim() : null,
+      });
     } catch (llmErr: any) {
       console.error('Field check LLM error:', llmErr);
       return NextResponse.json({
