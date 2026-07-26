@@ -2,7 +2,8 @@ export const metadata = { title: 'Contato' };
 
 export default function Contato() {
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'Arial, sans-serif', color: '#222', lineHeight: 1.6 }}>
+    <main style={{ background: '#fff', minHeight: '100vh' }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'Arial, sans-serif', color: '#222', lineHeight: 1.6 }}>
       <h1>Contato</h1>
       <p>
         Para dúvidas, solicitações ou questões relacionadas ao conteúdo desta página, entre em
@@ -11,6 +12,7 @@ export default function Contato() {
       <p>
         <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>
       </p>
+    </div>
     </main>
   );
 }

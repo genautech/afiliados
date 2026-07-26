@@ -2,7 +2,8 @@ export const metadata = { title: 'Termos de Uso' };
 
 export default function TermosDeUso() {
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'Arial, sans-serif', color: '#222', lineHeight: 1.6 }}>
+    <main style={{ background: '#fff', minHeight: '100vh' }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'Arial, sans-serif', color: '#222', lineHeight: 1.6 }}>
       <h1>Termos de Uso</h1>
       <p>Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
 
@@ -36,6 +37,7 @@ export default function TermosDeUso() {
         Dúvidas sobre estes termos podem ser enviadas para{' '}
         <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.
       </p>
+    </div>
     </main>
   );
 }
