@@ -327,6 +327,8 @@ export async function generatePresell(userId: string, args: {
   pageType?: string;
   popupGate?: boolean;
   videoUrl?: string;
+  publicar?: boolean;
+  variantGroupId?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
@@ -406,13 +408,14 @@ export async function generatePresell(userId: string, args: {
     pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
   });
 
-  const baseSlug = slugify(`${productName}-${pageType}`);
+  const baseSlug = slugify(`${productName}-${pageType}-${angle}`);
   let slug = baseSlug;
   for (let i = 2; await prisma.presell.findUnique({ where: { slug } }); i++) slug = `${baseSlug}-${i}`;
 
+  const publicar = args.publicar !== false;
   const destino = args.destino ?? 'railway';
   let publishedUrl = '';
-  if (destino === 'wordpress') {
+  if (publicar && destino === 'wordpress') {
     if (!args.dominio) throw new Error('dominio é obrigatório quando destino=wordpress');
     publishedUrl = await publishToWordPress(html, { domain: args.dominio, title: content.titulo_pagina, slug });
   }
@@ -430,14 +433,15 @@ export async function generatePresell(userId: string, args: {
       pageType,
       popupGate,
       videoUrl: args.videoUrl ?? '',
+      variantGroupId: args.variantGroupId ?? null,
       geo,
       language,
       html,
       content: content as any,
-      status: 'publicada',
+      status: publicar ? 'publicada' : 'rascunho',
       googleAdsId: args.googleAdsId ?? '',
       publishTarget: destino,
-      wpDomain: destino === 'wordpress' ? args.dominio! : '',
+      wpDomain: publicar && destino === 'wordpress' ? args.dominio! : '',
       publishedUrl,
     },
   });

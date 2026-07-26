@@ -27,6 +27,17 @@ type Result = {
   usage?: { totalTokens?: number };
 };
 
+type Variant = {
+  ok: boolean;
+  id?: string;
+  slug?: string;
+  title?: string;
+  pageType: string;
+  angle: string;
+  previewUrl?: string;
+  error?: string;
+};
+
 type ResearchProduct = {
   id: string; name: string; vertical: string; score: number; hopLink?: string | null;
   summary?: string | null; strategy?: any;
@@ -48,12 +59,18 @@ export default function TrendLabPage() {
   const [geo, setGeo] = useState('BR');
   const [language, setLanguage] = useState('pt-BR');
   const [evidence, setEvidence] = useState('');
-  const [pageType, setPageType] = useState('advertorial');
   const [videoUrl, setVideoUrl] = useState('');
   const [popupGate, setPopupGate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [reviewed, setReviewed] = useState(false);
+
+  const [variants, setVariants] = useState<Variant[] | null>(null);
+  const [wpDomains, setWpDomains] = useState<string[]>([]);
+  const [promoteOpenSlug, setPromoteOpenSlug] = useState<string | null>(null);
+  const [promoteDestino, setPromoteDestino] = useState<'railway' | 'wordpress'>('railway');
+  const [promoteDominio, setPromoteDominio] = useState('');
+  const [promotingSlug, setPromotingSlug] = useState<string | null>(null);
 
   const [researchProducts, setResearchProducts] = useState<ResearchProduct[]>([]);
   const [draftCampaigns, setDraftCampaigns] = useState<DraftCampaign[]>([]);
@@ -78,6 +95,9 @@ export default function TrendLabPage() {
       })
       .catch(() => {})
       .finally(() => setListsLoaded(prev => ({ ...prev, campaigns: true })));
+    fetch('/api/wp-sites').then(r => r.ok ? r.json() : { domains: [] })
+      .then(d => setWpDomains(Array.isArray(d?.domains) ? d.domains : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -167,11 +187,11 @@ export default function TrendLabPage() {
     if (!t.trim()) return toast.error('Informe a tendência ou insight');
     if (!pn.trim()) return toast.error('Informe o produto afiliado');
     if (!/^https?:\/\//i.test(hl.trim())) return toast.error('Informe um link de afiliado válido');
-    if (pageType === 'vsl' && !videoUrl.trim()) return toast.error('Tipo VSL exige o link do vídeo (YouTube, Vimeo ou .mp4)');
 
     setLoading(true);
     setResult(null);
     setReviewed(false);
+    setVariants(null);
     try {
       const context = `INSIGHT/TENDÊNCIA: ${t.trim()}
 RELAÇÃO COM O PRODUTO: ${ag.trim() || 'Explique de forma editorial e verificável por que o produto é relevante para o tema.'}
@@ -184,7 +204,11 @@ Requisitos:
 - Use a tendência como contexto editorial, sem sugerir endosso inexistente.
 - Preserve compliance com Google Ads e políticas de afiliados.`;
 
-      const response = await fetch('/api/presells', {
+      // Se vier de uma campanha, o trackingId TEM que ser o utmCampaign dela — é isso que
+      // sincronizar_clickbank usa pra casar a venda com a campanha depois.
+      const trackingId = cid && sourceCampaignTrackingId ? sourceCampaignTrackingId : `trend-${Date.now()}`;
+
+      const response = await fetch('/api/presells/variants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,31 +218,57 @@ Requisitos:
           angle: ag.trim() || `conteúdo editorial relacionado a ${t.trim()}`,
           geo: gg,
           language: lg,
-          // Se vier de uma campanha, o trackingId TEM que ser o utmCampaign dela — é isso que
-          // sincronizar_clickbank usa pra casar a venda com a campanha depois.
-          trackingId: cid && sourceCampaignTrackingId ? sourceCampaignTrackingId : `trend-${Date.now()}`,
-          pageType,
+          trackingId,
           popupGate,
-          videoUrl: pageType === 'vsl' ? videoUrl.trim() : undefined,
+          videoUrl: videoUrl.trim() || undefined,
           context,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || `Erro ${response.status}`);
-      setResult(data);
-      toast.success('Presell contextualizada criada e salva');
+      setVariants(data.variants ?? []);
+      const okCount = (data.variants ?? []).filter((v: Variant) => v.ok).length;
+      toast.success(`${okCount} opções de presell geradas — abra os previews e escolha uma`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao gerar as presells');
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  async function promoteVariant(variant: Variant, campaignIdOverride?: string | null) {
+    if (!variant.id) return;
+    if (promoteDestino === 'wordpress' && !promoteDominio) {
+      toast.error('Escolha o domínio WordPress de destino');
+      return;
+    }
+    setPromotingSlug(variant.slug ?? variant.id);
+    try {
+      const response = await fetch(`/api/presells/${variant.id}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destino: promoteDestino, dominio: promoteDestino === 'wordpress' ? promoteDominio : undefined }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || `Erro ${response.status}`);
+      const chosen: Result = { id: data.presell.id, slug: data.presell.slug, title: variant.title ?? variant.slug ?? '', url: data.presell.url };
+      setResult(chosen);
+      setVariants(null);
+      setPromoteOpenSlug(null);
+      toast.success(`Presell "${variant.pageType}" publicada — as outras opções foram descartadas`);
+
+      const cid = campaignIdOverride !== undefined ? campaignIdOverride : sourceCampaignId;
       if (cid) {
         fetch(`/api/campaigns/${cid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ presellUrl: data.url }),
+          body: JSON.stringify({ presellUrl: chosen.url }),
         }).catch(() => {});
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha ao gerar a presell');
+      toast.error(error instanceof Error ? error.message : 'Falha ao publicar a presell escolhida');
     } finally {
-      setLoading(false);
+      setPromotingSlug(null);
     }
   }
 
@@ -303,27 +353,18 @@ Requisitos:
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label className="text-slate-300">Tipo de página</Label>
-                <Select value={pageType} onValueChange={setPageType}>
-                  <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="advertorial">Advertorial / Review (padrão)</SelectItem>
-                    <SelectItem value="pogo">Pogo — curta, vende o clique</SelectItem>
-                    <SelectItem value="vsl">VSL — vídeo + CTA</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-slate-300">Link do vídeo do vendor (opcional)</Label>
+                <Input className={inputClass} value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=... — habilita a opção VSL" />
               </div>
               <div className="flex items-center gap-2 pt-7">
                 <Checkbox id="popup-gate" checked={popupGate} onCheckedChange={(v: any) => setPopupGate(!!v)} />
                 <Label htmlFor="popup-gate" className="text-slate-300 cursor-pointer">Pop-up de retenção (segure para continuar)</Label>
               </div>
             </div>
-            {pageType === 'vsl' && (
-              <div className="space-y-2">
-                <Label className="text-slate-300">Link do vídeo (YouTube, Vimeo ou .mp4)</Label>
-                <Input className={inputClass} value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
-              </div>
-            )}
+            <p className="text-xs text-slate-500">
+              Você vai receber <strong>3 opções</strong> de presell (advertorial, pogo e uma terceira variante —
+              VSL se informar o link do vídeo acima, ou um ângulo comparativo caso contrário). Escolha uma para publicar.
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-slate-300">Mercado</Label>
@@ -342,7 +383,7 @@ Requisitos:
             </div>
             <Button onClick={() => runGenerate()} disabled={loading} className="w-full bg-purple-600 text-white hover:bg-purple-700">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              2. Gerar presell para revisão
+              2. Gerar 3 opções de presell
             </Button>
           </CardContent>
         </Card>
@@ -374,6 +415,75 @@ Requisitos:
           </Alert>
         </div>
       </div>
+
+      {variants && (
+        <Card className="border-purple-500/25 bg-purple-500/5">
+          <CardContent className="space-y-4 p-6">
+            <div>
+              <strong className="text-white">Escolha uma das 3 opções para publicar</strong>
+              <p className="mt-1 text-xs text-slate-400">Abra o preview de cada uma antes de decidir. As duas não escolhidas serão descartadas (rascunho não indexado).</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {variants.map((v) => {
+                const key = v.slug ?? `${v.pageType}-${v.angle}`;
+                const open = promoteOpenSlug === key;
+                return (
+                  <Card key={key} className="border-[#334155] bg-[#0f172a]">
+                    <CardContent className="space-y-3 p-4">
+                      <div>
+                        <Badge className="border-purple-500/30 bg-purple-500/10 text-purple-300 capitalize">{v.pageType}</Badge>
+                        <p className="mt-2 text-sm text-slate-200">{v.ok ? (v.title || v.slug) : 'Falha ao gerar'}</p>
+                        {!v.ok && <p className="text-xs text-red-400">{v.error}</p>}
+                      </div>
+                      {v.ok && v.previewUrl && (
+                        <Button asChild variant="outline" size="sm" className="w-full border-[#334155] bg-[#1e293b] text-slate-200">
+                          <Link href={v.previewUrl} target="_blank">Abrir preview <ExternalLink className="ml-2 h-3.5 w-3.5" /></Link>
+                        </Button>
+                      )}
+                      {v.ok && !open && (
+                        <Button size="sm" className="w-full bg-green-600 text-white hover:bg-green-700" onClick={() => { setPromoteOpenSlug(key); setPromoteDestino('railway'); setPromoteDominio(''); }}>
+                          Escolher esta
+                        </Button>
+                      )}
+                      {v.ok && open && (
+                        <div className="space-y-2 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+                          <Label className="text-xs text-slate-300">Publicar em</Label>
+                          <Select value={promoteDestino} onValueChange={(val) => setPromoteDestino(val as 'railway' | 'wordpress')}>
+                            <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="railway">Railway (padrão, /p/slug)</SelectItem>
+                              <SelectItem value="wordpress">WordPress (domínio próprio)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {promoteDestino === 'wordpress' && (
+                            wpDomains.length > 0 ? (
+                              <Select value={promoteDominio} onValueChange={setPromoteDominio}>
+                                <SelectTrigger className={inputClass}><SelectValue placeholder="Escolha o domínio" /></SelectTrigger>
+                                <SelectContent>
+                                  {wpDomains.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <p className="text-xs text-amber-300">Nenhum domínio WordPress configurado (WP_SITES_JSON).</p>
+                            )
+                          )}
+                          <div className="flex gap-2">
+                            <Button size="sm" className="flex-1 bg-green-600 text-white hover:bg-green-700" disabled={promotingSlug === key} onClick={() => promoteVariant(v)}>
+                              {promotingSlug === key ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-2 h-3.5 w-3.5" />}
+                              Confirmar publicação
+                            </Button>
+                            <Button size="sm" variant="outline" className="border-[#334155] text-slate-300" onClick={() => setPromoteOpenSlug(null)}>Cancelar</Button>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {result && (
         <Card className="border-green-500/25 bg-green-500/5">
