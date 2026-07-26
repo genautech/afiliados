@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         keywords: true,
         dailyLogs: { orderBy: { logDate: 'asc' } },
         decisions: { orderBy: { createdAt: 'desc' } },
-        productResearch: { select: { id: true, name: true, vertical: true, riskLevel: true, network: true, avgPayout: true, affiliatePageUrl: true } },
+        productResearch: { select: { id: true, name: true, vertical: true, riskLevel: true, network: true, avgPayout: true, affiliatePageUrl: true, assetsUrl: true } },
       },
     });
     if (!campaign) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });

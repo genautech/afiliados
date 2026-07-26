@@ -396,6 +396,7 @@ model ProductResearch {
   compliance        Json?
   hopLink           String?  @db.Text
   affiliatePageUrl  String?  @db.Text
+  assetsUrl         String?  @db.Text
   affiliateInsights Json?
   status            String   @default("novo")
   chosenKeyword     String   @default("")

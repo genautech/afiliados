@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
         melhor_keyword: product.chosenKeyword,
         estrategia: product.strategy,
         compliance: product.compliance,
+        assets_do_vendor: product.assetsUrl ? { pasta: product.assetsUrl, ...((product.affiliateInsights as any)?.assets ?? {}) } : null,
       } : null,
       campanha_em_andamento: campaign ? {
         nome_atual: campaign.name,

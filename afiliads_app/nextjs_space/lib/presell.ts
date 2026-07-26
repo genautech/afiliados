@@ -123,7 +123,7 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
@@ -172,6 +172,9 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
   t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml() : '');
   if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
+  t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
+    ? `<img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy">`
+    : '');
 
   return t;
 }
@@ -226,6 +229,7 @@ export async function generatePresell(userId: string, args: {
 
   let productCtx = args.context ?? '';
   let isHealthNiche = detectHealthNiche(undefined, undefined, `${angle} ${args.context ?? ''}`);
+  let imagemProdutoUrl: string | undefined;
   if (args.productId) {
     const p = await prisma.productResearch.findFirst({ where: { id: args.productId, userId } });
     if (p) {
@@ -244,6 +248,13 @@ export async function generatePresell(userId: string, args: {
       if (rewriteRules?.length) {
         productCtx += `\nSUBSTITUIÇÕES OBRIGATÓRIAS DE LINGUAGEM (evitar → usar):\n${rewriteRules.map(r => `- "${r.evitar}" → "${r.usar}"`).join('\n')}`;
       }
+      // Assets oficiais do vendor (pasta compartilhada pelo afiliado): usados como contexto de
+      // ângulo/público e, quando há foto de produto real, embutidos na presell no lugar de nada.
+      const assets = (p.affiliateInsights as any)?.assets as { pastaUrl?: string; estrutura?: string[]; imagemProdutoUrl?: string } | undefined;
+      if (assets?.estrutura?.length) {
+        productCtx += `\nASSETS OFICIAIS DO VENDOR DISPONÍVEIS (pasta: ${p.assetsUrl ?? assets.pastaUrl}): ${assets.estrutura.join(' | ')}. Use como referência de público/ângulo real do vendor — NÃO copie claims agressivos de banners de rede social, mantenha a linguagem compliance-safe já definida acima.`;
+      }
+      if (assets?.imagemProdutoUrl) imagemProdutoUrl = assets.imagemProdutoUrl;
     }
   }
 
@@ -265,7 +276,7 @@ export async function generatePresell(userId: string, args: {
 
   const html = renderPresellHtml(content, {
     productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche,
-    pageType, popupGate, videoUrl: args.videoUrl,
+    pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
   });
 
   const baseSlug = slugify(`${productName}-${pageType}`);

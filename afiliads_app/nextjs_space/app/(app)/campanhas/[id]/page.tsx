@@ -335,6 +335,11 @@ export default function CampaignDetailPage() {
                   <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1.5"><ExternalLink className="h-3.5 w-3.5" /> Página de afiliado</Button>
                 </a>
               )}
+              {campaign.productResearch.assetsUrl && (
+                <a href={campaign.productResearch.assetsUrl} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-300 gap-1.5"><ExternalLink className="h-3.5 w-3.5" /> Assets do vendor</Button>
+                </a>
+              )}
             </div>
           </CardContent>
         </Card>
