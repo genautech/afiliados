@@ -417,6 +417,9 @@ model Presell {
   hopLink     String   @db.Text
   trackingId  String   @default("")
   angle       String   @default("review")
+  pageType    String   @default("advertorial")
+  popupGate   Boolean  @default(false)
+  videoUrl    String   @default("")
   geo         String   @default("US")
   language    String   @default("en")
   html        String   @db.Text

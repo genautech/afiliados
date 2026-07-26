@@ -242,23 +242,27 @@ server.tool(
 
 server.tool(
   'gerar_presell',
-  'Gera e publica uma página de presell (bridge page compliance-friendly, template editorial) para um produto. Por padrão publica no app Railway (/p/<slug>); com destino=wordpress publica direto num site WordPress (Hostinger) via REST API, usando o mesmo conteúdo gerado pelos agentes. Requer hopLink de afiliado real.',
+  'Gera e publica uma página de presell (bridge page compliance-friendly) para um produto. Por padrão publica no app Railway (/p/<slug>); com destino=wordpress publica direto num site WordPress (Hostinger). tipo_pagina define a ESTRUTURA da página (advertorial = artigo completo; pogo = curta, vende o clique; vsl = vídeo + CTA, exige video_url); angulo é só o tom do texto. popup ativa um gate de retenção (segure 2s pra continuar) igual pra todo visitante — não é cloaking. Requer hopLink de afiliado real. Se tracking_id vier de uma campanha, use o utmCampaign/name exato dela (é o que sincronizar_clickbank casa depois).',
   {
     produto: z.string().describe('Nome do produto'),
     hoplink: z.string().url().describe('HopLink de afiliado (https://...)'),
-    tracking_id: z.string().optional().describe('TID da campanha (ex.: CB_SURV_US_SEARCH_BRIDGE_v1) — vira &tid= no hoplink'),
-    angulo: z.enum(['review', 'advertorial', 'quiz']).default('review'),
+    tracking_id: z.string().optional().describe('TID da campanha (ex.: CB_SURV_US_SEARCH_BRIDGE_v1) — vira &tid= no hoplink. Use o utmCampaign exato da campanha para o ClickBank sync casar depois.'),
+    angulo: z.string().default('review').describe('Tom/ângulo editorial do texto (livre, ex.: "review honesto", "advertorial focado em causa raiz")'),
+    tipo_pagina: z.enum(['advertorial', 'pogo', 'vsl']).default('advertorial').describe('Estrutura da página. advertorial = artigo completo (padrão). pogo = curta e direta. vsl = vídeo + CTA (exige video_url).'),
+    video_url: z.string().url().optional().describe('Obrigatório se tipo_pagina=vsl — link do vídeo (YouTube, Vimeo ou .mp4)'),
+    popup: z.boolean().default(false).describe('Ativa pop-up "segure para continuar" antes de revelar a página — mesma experiência pra todo visitante'),
     geo: z.string().default('US'),
     destino: z.enum(['railway', 'wordpress']).default('railway').describe('Onde publicar a presell'),
     dominio: z.string().optional().describe('Domínio WordPress de destino (obrigatório se destino=wordpress, ex.: orangepeelmorning.com — precisa estar configurado em WP_SITES_JSON)'),
   },
-  async ({ produto, hoplink, tracking_id, angulo, geo, destino, dominio }) => {
+  async ({ produto, hoplink, tracking_id, angulo, tipo_pagina, video_url, popup, geo, destino, dominio }) => {
     if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
     if (destino === 'wordpress' && !dominio) return text('Informe "dominio" quando destino=wordpress.');
+    if (tipo_pagina === 'vsl' && !video_url) return text('tipo_pagina=vsl exige video_url (link do vídeo).');
     const res = await fetch(`${APP_URL}/api/presells`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
-      body: JSON.stringify({ productName: produto, hopLink: hoplink, trackingId: tracking_id, angle: angulo, geo, destino, dominio }),
+      body: JSON.stringify({ productName: produto, hopLink: hoplink, trackingId: tracking_id, angle: angulo, pageType: tipo_pagina, videoUrl: video_url, popupGate: popup, geo, destino, dominio }),
     });
     const data = await res.json();
     if (!res.ok) return text(`Erro ${res.status}: ${JSON.stringify(data)}`);

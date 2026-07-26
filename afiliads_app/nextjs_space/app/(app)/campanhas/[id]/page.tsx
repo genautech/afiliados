@@ -266,12 +266,17 @@ export default function CampaignDetailPage() {
               </Button>
             </Link>
           )}
-          {!campaign.presellUrl && (
-            <Link href={`/trend-lab?campaignId=${params?.id}`}>
-              <Button variant="outline" className="border-purple-500/30 text-purple-300 gap-2">
-                <Sparkles className="h-4 w-4" /> Gerar Presell
+          <Link href={`/trend-lab?campaignId=${params?.id}`}>
+            <Button variant="outline" className="border-purple-500/30 text-purple-300 gap-2">
+              <Sparkles className="h-4 w-4" /> {campaign.presellUrl ? 'Regenerar Presell' : 'Gerar Presell'}
+            </Button>
+          </Link>
+          {campaign.presellUrl && (
+            <a href={campaign.presellUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" className="border-[#334155] text-slate-300 gap-2">
+                <ExternalLink className="h-4 w-4" /> Ver Presell
               </Button>
-            </Link>
+            </a>
           )}
           {!campaign.googleCampaignId ? (
             <Button

@@ -34,7 +34,7 @@ type ResearchProduct = {
 
 type DraftCampaign = {
   id: string; name: string; vertical: string; geo: string; channel: string; funnel: string;
-  offerUrl?: string | null; presellUrl?: string | null;
+  offerUrl?: string | null; presellUrl?: string | null; utmCampaign?: string | null;
 };
 
 const GEN_VALUES = { trend: '', productName: '', hopLink: '', angle: '', evidence: '', geo: 'BR', language: 'pt-BR' };
@@ -48,15 +48,20 @@ export default function TrendLabPage() {
   const [geo, setGeo] = useState('BR');
   const [language, setLanguage] = useState('pt-BR');
   const [evidence, setEvidence] = useState('');
+  const [pageType, setPageType] = useState('advertorial');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [popupGate, setPopupGate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [reviewed, setReviewed] = useState(false);
 
   const [researchProducts, setResearchProducts] = useState<ResearchProduct[]>([]);
   const [draftCampaigns, setDraftCampaigns] = useState<DraftCampaign[]>([]);
+  const [allCampaigns, setAllCampaigns] = useState<DraftCampaign[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState('');
   const [sourceProductId, setSourceProductId] = useState<string | null>(null);
   const [sourceCampaignId, setSourceCampaignId] = useState<string | null>(null);
+  const [sourceCampaignTrackingId, setSourceCampaignTrackingId] = useState<string | null>(null);
   const [autoLoading, setAutoLoading] = useState(false);
   const [listsLoaded, setListsLoaded] = useState({ products: false, campaigns: false });
 
@@ -66,7 +71,11 @@ export default function TrendLabPage() {
       .catch(() => {})
       .finally(() => setListsLoaded(prev => ({ ...prev, products: true })));
     fetch('/api/campaigns').then(r => r.ok ? r.json() : [])
-      .then(d => setDraftCampaigns(Array.isArray(d) ? d.filter((c: any) => !c.presellUrl) : []))
+      .then(d => {
+        const list = Array.isArray(d) ? d : [];
+        setAllCampaigns(list);
+        setDraftCampaigns(list.filter((c: any) => !c.presellUrl));
+      })
       .catch(() => {})
       .finally(() => setListsLoaded(prev => ({ ...prev, campaigns: true })));
   }, []);
@@ -100,6 +109,7 @@ export default function TrendLabPage() {
       if (!p) return;
       setSourceProductId(id);
       setSourceCampaignId(null);
+      setSourceCampaignTrackingId(null);
       const vals = {
         trend: `Interesse crescente em ${p.vertical || 'soluções para esse público'} — produto pesquisado com score ${p.score}/100.${p.summary ? ' ' + p.summary : ''}`,
         productName: p.name,
@@ -118,9 +128,10 @@ export default function TrendLabPage() {
       if (autoGenerate) runGenerate(vals, id, null);
     } else if (value.startsWith('campaign:')) {
       const id = value.slice('campaign:'.length);
-      const c = draftCampaigns.find((x) => x.id === id);
+      const c = allCampaigns.find((x) => x.id === id);
       if (!c) return;
       setSourceCampaignId(id);
+      setSourceCampaignTrackingId(c.utmCampaign || c.name || null);
       setSourceProductId(null);
       const supportedGeo = ['BR', 'US', 'UK', 'AU'].includes(c.geo) ? c.geo : 'US';
       const vals = {
@@ -156,6 +167,7 @@ export default function TrendLabPage() {
     if (!t.trim()) return toast.error('Informe a tendência ou insight');
     if (!pn.trim()) return toast.error('Informe o produto afiliado');
     if (!/^https?:\/\//i.test(hl.trim())) return toast.error('Informe um link de afiliado válido');
+    if (pageType === 'vsl' && !videoUrl.trim()) return toast.error('Tipo VSL exige o link do vídeo (YouTube, Vimeo ou .mp4)');
 
     setLoading(true);
     setResult(null);
@@ -182,7 +194,12 @@ Requisitos:
           angle: ag.trim() || `conteúdo editorial relacionado a ${t.trim()}`,
           geo: gg,
           language: lg,
-          trackingId: `trend-${Date.now()}`,
+          // Se vier de uma campanha, o trackingId TEM que ser o utmCampaign dela — é isso que
+          // sincronizar_clickbank usa pra casar a venda com a campanha depois.
+          trackingId: cid && sourceCampaignTrackingId ? sourceCampaignTrackingId : `trend-${Date.now()}`,
+          pageType,
+          popupGate,
+          videoUrl: pageType === 'vsl' ? videoUrl.trim() : undefined,
           context,
         }),
       });
@@ -284,6 +301,29 @@ Requisitos:
               <Label className="text-slate-300">Evidências e observações</Label>
               <Textarea className={inputClass} value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Fontes, números verificáveis, limitações e informações que o agente não deve inventar." />
             </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-slate-300">Tipo de página</Label>
+                <Select value={pageType} onValueChange={setPageType}>
+                  <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="advertorial">Advertorial / Review (padrão)</SelectItem>
+                    <SelectItem value="pogo">Pogo — curta, vende o clique</SelectItem>
+                    <SelectItem value="vsl">VSL — vídeo + CTA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pt-7">
+                <Checkbox id="popup-gate" checked={popupGate} onCheckedChange={(v: any) => setPopupGate(!!v)} />
+                <Label htmlFor="popup-gate" className="text-slate-300 cursor-pointer">Pop-up de retenção (segure para continuar)</Label>
+              </div>
+            </div>
+            {pageType === 'vsl' && (
+              <div className="space-y-2">
+                <Label className="text-slate-300">Link do vídeo (YouTube, Vimeo ou .mp4)</Label>
+                <Input className={inputClass} value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-slate-300">Mercado</Label>

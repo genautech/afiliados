@@ -38,6 +38,8 @@ Regras invioláveis (valem para QUALQUER produto/nicho):
 - CTA visível, direto e persuasivo, mas sem promessa de resultado (ex.: "Descubra Como Funciona", "Veja a Análise Completa").
 - Se o contexto abaixo trouxer riscos de compliance específicos do produto (seção "RISCOS DE COMPLIANCE A EVITAR"), reescreva o conteúdo especificamente para não incorrer em NENHUM deles.
 - Idioma conforme solicitado (en para US/UK/AU, pt-BR para Brasil).
+- Tipos de página curtos (pogo, vsl) só exibem headline/subheadline/abertura/prova/cta — capriche
+  nesses campos especificamente, mesmo respondendo o JSON completo abaixo.
 Responda APENAS JSON válido com exatamente estas chaves:
 {"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;
@@ -60,8 +62,70 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean }): string {
-  const templatePath = path.join(process.cwd(), 'lib', 'presell-template.html');
+const TEMPLATE_FILE_BY_TYPE: Record<string, string> = {
+  advertorial: 'presell-template.html',
+  pogo: 'presell-template-pogo.html',
+  vsl: 'presell-template-vsl.html',
+};
+
+// Gate de retenção (pop-up "pressione e segure"): mesma experiência pra qualquer visitante
+// (não distingue bot/humano — não é cloaking), só adiciona um passo de interação real antes
+// de revelar o conteúdo. Baseado no formato "Press and Hold" descrito no insight
+// hermes/knowledge/insights/2026-07-26-tipos-de-presell-e-popup-gate.md.
+function popupGateHtml(): string {
+  return `<div id="pg-overlay" style="position:fixed;inset:0;z-index:9999;background:rgba(20,20,25,.92);display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;font-family:Arial,sans-serif">
+  <div style="color:#fff;font-size:16px;margin-bottom:22px;max-width:320px">Toque e segure o botão por 2 segundos para continuar</div>
+  <button id="pg-btn" style="position:relative;width:110px;height:110px;border-radius:50%;background:#1f3864;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">
+    <svg width="110" height="110" style="position:absolute;top:0;left:0;transform:rotate(-90deg)">
+      <circle cx="55" cy="55" r="48" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="6"/>
+      <circle id="pg-ring" cx="55" cy="55" r="48" fill="none" stroke="#e07b39" stroke-width="6" stroke-dasharray="301.6" stroke-dashoffset="301.6" stroke-linecap="round"/>
+    </svg>
+    <span style="color:#fff;font-size:13px;font-weight:bold;pointer-events:none">SEGURE</span>
+  </button>
+</div>
+<script>
+(function(){
+  var overlay = document.getElementById('pg-overlay');
+  var btn = document.getElementById('pg-btn');
+  var ring = document.getElementById('pg-ring');
+  var DURATION = 2200, CIRC = 301.6;
+  var raf = null, start = null;
+  function frame(ts){
+    if (!start) start = ts;
+    var pct = Math.min(1, (ts - start) / DURATION);
+    ring.setAttribute('stroke-dashoffset', String(CIRC * (1 - pct)));
+    if (pct >= 1) { finish(); return; }
+    raf = requestAnimationFrame(frame);
+  }
+  function begin(){ if (raf) return; start = null; raf = requestAnimationFrame(frame); }
+  function cancel(){ if (raf) cancelAnimationFrame(raf); raf = null; start = null; ring.setAttribute('stroke-dashoffset', String(CIRC)); }
+  function finish(){
+    cancel();
+    overlay.style.transition = 'opacity .35s';
+    overlay.style.opacity = '0';
+    setTimeout(function(){ overlay.remove(); }, 350);
+  }
+  btn.addEventListener('pointerdown', begin);
+  btn.addEventListener('pointerup', cancel);
+  btn.addEventListener('pointerleave', cancel);
+  btn.addEventListener('pointercancel', cancel);
+  btn.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') begin(); });
+  btn.addEventListener('keyup', function(e){ if (e.key === 'Enter' || e.key === ' ') cancel(); });
+})();
+</script>`;
+}
+
+function renderVideoEmbed(videoUrl: string): string {
+  const yt = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/i);
+  if (yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}" title="video" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  const vimeo = videoUrl.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeo) return `<iframe src="https://player.vimeo.com/video/${vimeo[1]}" title="video" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+  return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
+}
+
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string }): string {
+  const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
+  const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
 
   const now = new Date();
@@ -106,6 +170,8 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
   if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
   t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
+  t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml() : '');
+  if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
 
   return t;
 }
@@ -144,11 +210,19 @@ export async function generatePresell(userId: string, args: {
   context?: string;
   destino?: 'railway' | 'wordpress';
   dominio?: string;
+  pageType?: string;
+  popupGate?: boolean;
+  videoUrl?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
+  const pageType = args.pageType && ['advertorial', 'pogo', 'vsl'].includes(args.pageType) ? args.pageType : 'advertorial';
+  const popupGate = !!args.popupGate;
+  if (pageType === 'vsl' && !args.videoUrl?.trim()) {
+    throw new Error('pageType "vsl" exige videoUrl (link do vídeo do VSL — YouTube, Vimeo ou .mp4 direto)');
+  }
 
   let productCtx = args.context ?? '';
   let isHealthNiche = detectHealthNiche(undefined, undefined, `${angle} ${args.context ?? ''}`);
@@ -189,9 +263,12 @@ export async function generatePresell(userId: string, args: {
     finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(tid);
   }
 
-  const html = renderPresellHtml(content, { productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche });
+  const html = renderPresellHtml(content, {
+    productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche,
+    pageType, popupGate, videoUrl: args.videoUrl,
+  });
 
-  const baseSlug = slugify(`${productName}-${angle}`);
+  const baseSlug = slugify(`${productName}-${pageType}`);
   let slug = baseSlug;
   for (let i = 2; await prisma.presell.findUnique({ where: { slug } }); i++) slug = `${baseSlug}-${i}`;
 
@@ -212,6 +289,9 @@ export async function generatePresell(userId: string, args: {
       hopLink: finalHop,
       trackingId: args.trackingId ?? '',
       angle,
+      pageType,
+      popupGate,
+      videoUrl: args.videoUrl ?? '',
       geo,
       language,
       html,

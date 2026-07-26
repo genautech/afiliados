@@ -56,11 +56,15 @@ export async function POST(request: NextRequest) {
       context: body?.context,
       destino: body?.destino === 'wordpress' ? 'wordpress' : 'railway',
       dominio: body?.dominio,
+      pageType: body?.pageType,
+      popupGate: !!body?.popupGate,
+      videoUrl: body?.videoUrl,
     });
     return NextResponse.json({
       id: presell.id, slug: presell.slug, title: presell.title,
       url: presell.publishTarget === 'wordpress' ? presell.publishedUrl : `/p/${presell.slug}`,
       publishTarget: presell.publishTarget,
+      pageType: presell.pageType, popupGate: presell.popupGate,
       usage, provider, model,
     }, { status: 201 });
   } catch (err: any) {
