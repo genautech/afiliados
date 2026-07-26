@@ -24,8 +24,13 @@ export default function PoliticaDePrivacidade() {
 
       <h2>Cookies</h2>
       <p>
-        Usamos cookies de terceiros (Google) para mensurar cliques e conversões dos nossos anúncios.
-        Você pode desativar cookies nas configurações do seu navegador a qualquer momento.
+        Usamos cookies de terceiros (Google Ads, Google Analytics 4 e, quando aplicável, Meta Pixel)
+        para mensurar cliques, conversões e comportamento de navegação dos nossos anúncios. Ao
+        visitar esta página, um banner permite que você aceite ou recuse esses cookies — enquanto
+        não aceitos, as ferramentas de anúncio/analytics operam em modo restrito (sem
+        armazenamento individual de cookie, conforme o Google Consent Mode) e o Meta Pixel não é
+        carregado. Você pode alterar sua escolha a qualquer momento limpando os dados do site nas
+        configurações do seu navegador.
       </p>
 
       <h2>Contato</h2>

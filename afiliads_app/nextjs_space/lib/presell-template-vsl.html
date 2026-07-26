@@ -11,9 +11,17 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    ad_storage: 'denied',
+    analytics_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
   gtag('js', new Date());
   gtag('config', 'GOOGLE_ADS_ID');
 </script>
+{{GA4_TAG}}
+{{META_PIXEL_TAG}}
 
 <style>
   :root{--cor:#1f3864;--acento:#e07b39;--texto:#2b2b2b;--fundo:#ffffff;--cinza:#f5f6f8}
@@ -40,6 +48,7 @@
 </head>
 <body>
 {{POPUP_GATE}}
+{{COOKIE_CONSENT}}
 <div class="wrap">
 
 <header>

@@ -62,6 +62,15 @@ const SERVICES = [
     ],
   },
   {
+    name: 'Tags de Rastreamento (GA4 + Meta Pixel)',
+    key: 'tracking',
+    link: 'https://analytics.google.com/',
+    fields: [
+      { name: 'ga4_measurement_id', label: 'GA4 Measurement ID', placeholder: 'G-XXXXXXXXXX' },
+      { name: 'meta_pixel_id', label: 'Meta Pixel ID', placeholder: 'Ex.: 1234567890123456' },
+    ],
+  },
+  {
     name: 'AnswerThePublic',
     key: 'answerthepublic',
     link: 'https://answerthepublic.com/',

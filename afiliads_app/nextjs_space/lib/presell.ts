@@ -126,6 +126,60 @@ function popupGateHtml(): string {
 </script>`;
 }
 
+// Banner de consentimento de cookies (Google Consent Mode v2). O gtag do Google Ads já seta
+// cookie no load — sem isso, GA4/Ads/Meta rodariam sem nenhum aviso ao visitante (achado ao
+// vivo nesta sessão). "Aceitar"/"Recusar" persistem em localStorage; recusar mantém o consent
+// mode em "denied" (Google ainda registra conversão agregada/modelada, sem cookie individual —
+// comportamento padrão do Consent Mode, não é workaround nosso) e não inicializa o Meta Pixel.
+function cookieConsentHtml(): string {
+  return `<div id="cc-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#0f172a;color:#e2e8f0;padding:14px 18px;font-family:Arial,sans-serif;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;box-shadow:0 -2px 12px rgba(0,0,0,.25)">
+  <span style="max-width:480px">Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes. <a href="/politica-de-privacidade" style="color:#e07b39">Política de Privacidade</a></span>
+  <button id="cc-accept" style="background:#e07b39;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Aceitar</button>
+  <button id="cc-reject" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:8px 18px;border-radius:6px;cursor:pointer">Recusar</button>
+</div>
+<script>
+(function(){
+  var KEY = 'cc_consent';
+  var banner = document.getElementById('cc-banner');
+  function hide(){ if (banner) banner.remove(); }
+  function grant(){
+    if (typeof gtag === 'function') gtag('consent', 'update', { ad_storage: 'granted', analytics_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted' });
+    if (typeof window.__initMetaPixel === 'function') window.__initMetaPixel();
+  }
+  var saved = localStorage.getItem(KEY);
+  if (saved === 'granted') { grant(); hide(); return; }
+  if (saved === 'denied') { hide(); return; }
+  var accept = document.getElementById('cc-accept');
+  var reject = document.getElementById('cc-reject');
+  if (accept) accept.addEventListener('click', function(){ localStorage.setItem(KEY, 'granted'); grant(); hide(); });
+  if (reject) reject.addEventListener('click', function(){ localStorage.setItem(KEY, 'denied'); hide(); });
+})();
+</script>`;
+}
+
+function ga4TagHtml(measurementId: string): string {
+  return `<script>gtag('config', '${measurementId.replace(/[^\w-]/g, '')}');</script>`;
+}
+
+// Meta Pixel não integra com o Consent Mode do Google — por isso o init/track ficam numa função
+// exposta (window.__initMetaPixel) e só são chamados pelo banner de consentimento quando o
+// visitante aceita, nunca no carregamento da página.
+function metaPixelTagHtml(pixelId: string): string {
+  const id = pixelId.replace(/[^\d]/g, '');
+  return `<script>
+window.__initMetaPixel = function(){
+  if (window.fbq) return;
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+  document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '${id}');
+  fbq('track', 'PageView');
+};
+</script>`;
+}
+
 function renderVideoEmbed(videoUrl: string): string {
   const yt = videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/i);
   if (yt) return `<iframe src="https://www.youtube.com/embed/${yt[1]}" title="video" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
@@ -134,7 +188,7 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
@@ -181,6 +235,9 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
   if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
   t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
+  t = t.replace('{{GA4_TAG}}', opts.ga4Id?.trim() ? ga4TagHtml(opts.ga4Id.trim()) : '');
+  t = t.replace('{{META_PIXEL_TAG}}', opts.metaPixelId?.trim() ? metaPixelTagHtml(opts.metaPixelId.trim()) : '');
+  t = t.replace('{{COOKIE_CONSENT}}', cookieConsentHtml());
   t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml() : '');
   if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
   t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
@@ -269,6 +326,12 @@ export async function generatePresell(userId: string, args: {
     }
   }
 
+  const trackingIntegrations = await prisma.integration.findMany({
+    where: { userId, serviceName: 'tracking', fieldName: { in: ['ga4_measurement_id', 'meta_pixel_id'] } },
+  });
+  const ga4Id = trackingIntegrations.find(i => i.fieldName === 'ga4_measurement_id')?.fieldValue;
+  const metaPixelId = trackingIntegrations.find(i => i.fieldName === 'meta_pixel_id')?.fieldValue;
+
   const res = await callAgent(userId, {
     agent: 'presell-builder',
     systemPrompt: BUILDER_PROMPT,
@@ -286,7 +349,7 @@ export async function generatePresell(userId: string, args: {
   }
 
   const html = renderPresellHtml(content, {
-    productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche,
+    productName, hopLink: finalHop, googleAdsId: args.googleAdsId, ga4Id, metaPixelId, isHealthNiche,
     pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
   });
 
