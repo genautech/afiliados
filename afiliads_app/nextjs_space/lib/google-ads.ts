@@ -144,7 +144,7 @@ export async function fetchGoogleCampaign(
 
   // --- REAL API MODE ---
   const token = await getAccessToken(config);
-  const url = `https://googleads.googleapis.com/v17/customers/${config.customerId}/googleAds:search`;
+  const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
 
   const query = `
     SELECT 
@@ -214,7 +214,7 @@ export async function mutateGoogleCampaign(
 
   // 1. Atualizar o Status se solicitado
   if (updates.status) {
-    const url = `https://googleads.googleapis.com/v17/customers/${config.customerId}/campaigns:mutate`;
+    const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/campaigns:mutate`;
     const res = await fetch(url, {
       method: 'POST',
       headers: apiHeaders(token, config),
@@ -244,7 +244,7 @@ export async function mutateGoogleCampaign(
     // em produção o ideal seria o googleCampaignId vir acompanhado do budgetResourceId,
     // ou realizarmos uma busca prévia.
     // Aqui realizamos a busca do budget associado primeiro.
-    const searchUrl = `https://googleads.googleapis.com/v17/customers/${config.customerId}/googleAds:search`;
+    const searchUrl = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
     const query = `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = '${googleCampaignId}' LIMIT 1`;
     const searchRes = await fetch(searchUrl, {
       method: 'POST',
@@ -257,7 +257,7 @@ export async function mutateGoogleCampaign(
       const budgetResourceName = searchData?.results?.[0]?.campaign?.campaignBudget;
       
       if (budgetResourceName) {
-        const mutateBudgetUrl = `https://googleads.googleapis.com/v17/customers/${config.customerId}/campaignBudgets:mutate`;
+        const mutateBudgetUrl = `https://googleads.googleapis.com/v25/customers/${config.customerId}/campaignBudgets:mutate`;
         const amountMicros = Math.round(updates.budgetDaily * 1_000_000);
         
         const budgetRes = await fetch(mutateBudgetUrl, {
@@ -322,7 +322,7 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
 
   // --- REAL API MODE ---
   const token = await getAccessToken(config);
-  const base = `https://googleads.googleapis.com/v17/customers/${config.customerId}`;
+  const base = `https://googleads.googleapis.com/v25/customers/${config.customerId}`;
   const headers = apiHeaders(token, config);
 
   async function mutate(resource: string, operations: any[]): Promise<any> {
