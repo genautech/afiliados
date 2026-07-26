@@ -151,6 +151,21 @@ export const AGENT_REGISTRY: AgentDef[] = [
     },
   },
   {
+    id: 'presell-builder',
+    name: 'Presell Builder',
+    role: 'Redator de páginas de pré-venda',
+    description: 'Escreve a presell/bridge page completa (headline, seções, FAQ, CTA) a partir do produto e do ângulo escolhidos, reescrevendo qualquer claim de diagnóstico/cura/garantia para linguagem condicional focada em benefício — com tom de dignidade em nichos sensíveis — e aplicando as regras de reescrita e riscos de compliance específicos do produto quando disponíveis no dossiê.',
+    route: '/api/presells',
+    page: '/trend-lab',
+    pageLabel: 'Trend Lab',
+    skills: ['Reescrita de Claims Sensíveis', 'Estrutura Editorial Anti-Doorway', 'Disclaimers Garantidos no Template'],
+    testTask: {
+      describe: 'Reescreve um claim de saúde proibido em linguagem condicional',
+      systemPrompt: 'Você é o Presell Builder do AfiliAds. Reescreva claims de saúde/renda absolutos como linguagem condicional focada em benefício, com tom de dignidade em nichos sensíveis. Responda APENAS com JSON válido.',
+      userPrompt: 'Claim original: "Pare os vazamentos de bexiga em 7 dias, garantido". Retorne JSON: {"reescrita": "versão condicional e compliant do claim"}',
+    },
+  },
+  {
     id: 'wizard-validator',
     name: 'Wizard Validator',
     role: 'Validação de campos da nova campanha',

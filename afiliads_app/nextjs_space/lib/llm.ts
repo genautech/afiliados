@@ -112,6 +112,7 @@ export const AGENT_TIERS: Record<string, Tier> = {
   'analysis-assistant': 'light',
   'wizard-validator': 'light',
   'campaign-strategist': 'standard',
+  'presell-builder': 'standard',
 };
 
 // Ordem de preferência por tier, otimizada por custo real no Vertex (2026-07):
