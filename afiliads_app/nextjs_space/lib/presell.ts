@@ -269,6 +269,49 @@ export async function publishToWordPress(html: string, opts: { domain: string; t
   return data.link as string;
 }
 
+// Referência de performance real das presells anteriores do usuário: nunca copia texto, só
+// aponta qual pageType converteu melhor (CTA clicks / views) pra usar como referência estrutural.
+// Mínimo de views por agrupamento evita conclusão precipitada com amostra pequena.
+export async function getPresellReferencia(userId: string, vertical?: string | null): Promise<string> {
+  const MIN_VIEWS = 20;
+  const presells = await prisma.presell.findMany({
+    where: { userId, views: { gte: MIN_VIEWS } },
+    select: { pageType: true, views: true, ctaClicks: true, productId: true },
+  });
+  if (presells.length === 0) return '';
+
+  const productIds = Array.from(new Set(presells.map(p => p.productId).filter(Boolean))) as string[];
+  const researches = productIds.length
+    ? await prisma.productResearch.findMany({ where: { id: { in: productIds } }, select: { id: true, vertical: true } })
+    : [];
+  const verticalById = new Map(researches.map(r => [r.id, r.vertical]));
+
+  const verticalNorm = (vertical ?? '').trim().toLowerCase();
+  const sameVertical = verticalNorm
+    ? presells.filter(p => p.productId && (verticalById.get(p.productId) ?? '').toLowerCase() === verticalNorm)
+    : [];
+  const pool = sameVertical.length >= 3 ? sameVertical : presells;
+
+  const byType = new Map<string, { views: number; clicks: number; count: number }>();
+  for (const p of pool) {
+    const cur = byType.get(p.pageType) ?? { views: 0, clicks: 0, count: 0 };
+    cur.views += p.views;
+    cur.clicks += p.ctaClicks;
+    cur.count += 1;
+    byType.set(p.pageType, cur);
+  }
+  const ranked = Array.from(byType.entries())
+    .map(([pageType, s]) => ({ pageType, ctr: s.views > 0 ? s.clicks / s.views : 0, views: s.views, count: s.count }))
+    .filter(r => r.views >= MIN_VIEWS)
+    .sort((a, b) => b.ctr - a.ctr);
+  if (ranked.length === 0) return '';
+
+  const best = ranked[0];
+  const lines = ranked.map(r => `${r.pageType}: ${(r.ctr * 100).toFixed(1)}% de CTR no CTA (${r.views} views em ${r.count} presell${r.count > 1 ? 's' : ''})`);
+  const scopeLabel = sameVertical.length >= 3 ? `nas suas presells da vertical "${vertical}"` : 'no histórico geral de presells (dado insuficiente ainda na vertical específica)';
+  return `REFERÊNCIA DE PERFORMANCE REAL (${scopeLabel}): ${lines.join(' | ')}. "${best.pageType}" teve a melhor conversão até agora — use como referência de estrutura/ângulo, NUNCA copie texto literal de outra presell (risco de conteúdo duplicado).`;
+}
+
 export async function generatePresell(userId: string, args: {
   productName: string;
   hopLink: string;
@@ -323,6 +366,16 @@ export async function generatePresell(userId: string, args: {
         productCtx += `\nASSETS OFICIAIS DO VENDOR DISPONÍVEIS (pasta: ${p.assetsUrl ?? assets.pastaUrl}): ${assets.estrutura.join(' | ')}. Use como referência de público/ângulo real do vendor — NÃO copie claims agressivos de banners de rede social, mantenha a linguagem compliance-safe já definida acima.`;
       }
       if (assets?.imagemProdutoUrl) imagemProdutoUrl = assets.imagemProdutoUrl;
+
+      // Elementos reais extraídos da página de vendas do vendor (Task 3 do pipeline de pesquisa)
+      // — headline/ângulo/prova social verdadeiros, só como referência, nunca cópia literal.
+      const vendorRef = (p.affiliateInsights as any)?.vendorPageInsights?.elementosPresellReferencia as Array<{ tipo: string; texto: string }> | undefined;
+      if (vendorRef?.length) {
+        productCtx += `\nELEMENTOS REAIS DA PÁGINA DE VENDAS DO VENDOR (referência de ângulo/prova, NÃO copiar literalmente):\n${vendorRef.map(e => `- [${e.tipo}] ${e.texto}`).join('\n')}`;
+      }
+
+      const presellRef = await getPresellReferencia(userId, p.vertical);
+      if (presellRef) productCtx += `\n${presellRef}`;
     }
   }
 
