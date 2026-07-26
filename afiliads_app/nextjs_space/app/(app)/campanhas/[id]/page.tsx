@@ -304,6 +304,48 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
+      {/* Produto vinculado */}
+      {campaign.productResearch ? (
+        <Card className="border-purple-500/30 bg-purple-500/5">
+          <CardContent className="p-4 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <p className="text-xs text-purple-300/80 mb-0.5">Produto desta campanha</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-white font-semibold text-lg">{campaign.productResearch.name}</span>
+                <Badge variant="outline" className="text-slate-300 border-slate-600 text-xs">{campaign.productResearch.network}</Badge>
+                {campaign.productResearch.riskLevel && (
+                  <Badge className={campaign.productResearch.riskLevel === 'alto' ? 'bg-red-500/20 text-red-400' : campaign.productResearch.riskLevel === 'medio' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}>
+                    risco {campaign.productResearch.riskLevel}
+                  </Badge>
+                )}
+                {campaign.productResearch.avgPayout ? <span className="text-xs text-slate-400">payout médio ${campaign.productResearch.avgPayout}</span> : null}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Link href={`/busca-produtos?produto=${encodeURIComponent(campaign.productResearch.name)}`}>
+                <Button size="sm" variant="outline" className="border-purple-500/30 text-purple-300 gap-1.5"><Eye className="h-3.5 w-3.5" /> Ver dossiê</Button>
+              </Link>
+              {campaign.productResearch.affiliatePageUrl && (
+                <a href={campaign.productResearch.affiliatePageUrl} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1.5"><ExternalLink className="h-3.5 w-3.5" /> Página de afiliado</Button>
+                </a>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="p-4 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              <AlertTriangle className="h-4 w-4" /> Esta campanha não está vinculada a nenhum produto pesquisado.
+            </div>
+            <Link href={`/wizard?campaignId=${params?.id}`}>
+              <Button size="sm" variant="outline" className="border-yellow-500/30 text-yellow-400">Vincular no Wizard</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {gadsCreateResult && (
         <Card className={gadsCreateResult.mock ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-green-500/30 bg-green-500/5'}>
           <CardContent className="p-4 space-y-2">

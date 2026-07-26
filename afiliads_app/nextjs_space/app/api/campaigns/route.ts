@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         dailyLogs: { orderBy: { logDate: 'desc' }, take: 30 },
         decisions: { orderBy: { createdAt: 'desc' }, take: 5 },
         _count: { select: { keywords: true, checklists: true } },
+        productResearch: { select: { id: true, name: true, vertical: true, riskLevel: true } },
       },
     });
     return NextResponse.json(campaigns ?? []);
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
     const campaign = await prisma.campaign.create({
       data: {
         userId,
+        productResearchId: body?.productResearchId ?? null,
         name: body?.name ?? 'Nova Campanha',
         platform: body?.platform ?? 'ClickBank',
         vertical: body?.vertical ?? 'Weight Loss',

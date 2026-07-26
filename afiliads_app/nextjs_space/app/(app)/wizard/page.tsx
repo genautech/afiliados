@@ -395,6 +395,7 @@ export default function WizardPage() {
     try {
       const payload = {
         name: name || `${campaignNameGen}`,
+        productResearchId: sourceProductResearchId,
         platform, vertical, geo, channel, funnel,
         offerUrl, commission: commVal, refundPct: refVal,
         aov: parseFloat(aov) || 0, cvrExpected: cvr,
@@ -445,6 +446,7 @@ export default function WizardPage() {
 
   const hydrateFromCampaign = (c: any) => {
     setCampaignId(c?.id ?? null);
+    setSourceProductResearchId(c?.productResearchId ?? c?.productResearch?.id ?? null);
     setName(c?.name ?? '');
     setPlatform(c?.platform ?? 'ClickBank');
     setVertical(c?.vertical ?? 'Weight Loss');

@@ -181,10 +181,12 @@ export async function generatePresell(userId: string, args: {
   const content = res.data as PresellContent | null;
   if (!content?.headline) throw new Error('Presell Builder retornou conteúdo inválido');
 
-  // Hoplink com TID (tracking da campanha) se informado
+  // Hoplink com TID (tracking da campanha) se informado.
+  // ClickBank TID: só a-z/0-9/_, até 100 chars — hífen quebra o tracking.
   let finalHop = hopLink;
   if (args.trackingId && !/[?&]tid=/i.test(hopLink)) {
-    finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(args.trackingId.slice(0, 24));
+    const tid = args.trackingId.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 100);
+    finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(tid);
   }
 
   const html = renderPresellHtml(content, { productName, hopLink: finalHop, googleAdsId: args.googleAdsId, isHealthNiche });

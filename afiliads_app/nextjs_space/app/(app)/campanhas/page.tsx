@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
-import { ListTodo, Search, Wand2, Skull, TrendingUp, Zap, MoreVertical, MessageSquare, Eye } from 'lucide-react';
+import { ListTodo, Search, Wand2, Skull, TrendingUp, Zap, MoreVertical, MessageSquare, Eye, Package, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
@@ -57,9 +57,24 @@ export default function CampanhasPage() {
   };
 
   const filtered = (campaigns ?? []).filter((c: any) => {
-    if (search && !(c?.name ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const matchName = (c?.name ?? '').toLowerCase().includes(q);
+      const matchProduct = (c?.productResearch?.name ?? '').toLowerCase().includes(q);
+      if (!matchName && !matchProduct) return false;
+    }
     return true;
   });
+
+  // Agrupa por dia de criação (a lista já vem ordenada por createdAt desc da API)
+  const dayLabel = (d: string) => new Date(d).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const groupedByDay: { day: string; items: any[] }[] = [];
+  for (const c of filtered) {
+    const day = dayLabel(c?.createdAt);
+    const last = groupedByDay[groupedByDay.length - 1];
+    if (last && last.day === day) last.items.push(c);
+    else groupedByDay.push({ day, items: [c] });
+  }
 
   const getMetrics = (c: any) => {
     const logs = c?.dailyLogs ?? [];
@@ -121,8 +136,13 @@ export default function CampanhasPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {filtered.map((c: any) => {
+        <div className="space-y-8">
+          {groupedByDay.map((group) => (
+            <div key={group.day} className="space-y-4">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide capitalize sticky top-0 z-10 bg-[#0f172a]/95 backdrop-blur py-1.5 -mx-1 px-1">
+                {group.day} <span className="text-slate-600 font-normal normal-case">· {group.items.length} campanha{group.items.length > 1 ? 's' : ''}</span>
+              </h2>
+              {group.items.map((c: any) => {
             const m = getMetrics(c);
             return (
               <Card key={c?.id} className="bg-[#1e293b] border-[#334155] hover:border-[#475569] transition-all">
@@ -133,6 +153,18 @@ export default function CampanhasPage() {
                         <h3 className="text-white font-semibold text-lg">{c?.name ?? 'Sem nome'}</h3>
                         <Badge className={statusColors?.[c?.status] ?? 'bg-slate-500/20 text-slate-400'}>{statusLabels?.[c?.status] ?? c?.status}</Badge>
                         <Badge variant="outline" className="text-slate-300 border-slate-600 text-xs">{c?.platform}</Badge>
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        {c?.productResearch?.name ? (
+                          <Link href={`/busca-produtos?produto=${encodeURIComponent(c.productResearch.name)}`} className="inline-flex items-center gap-1.5 text-sm text-purple-300 hover:text-purple-200 bg-purple-500/10 border border-purple-500/20 rounded-md px-2 py-0.5">
+                            <Package className="h-3.5 w-3.5" /> {c.productResearch.name}
+                            {c.productResearch.riskLevel === 'alto' && <span className="text-red-400 text-xs">· risco alto</span>}
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-yellow-500/80 bg-yellow-500/10 border border-yellow-500/20 rounded-md px-2 py-0.5">
+                            <AlertTriangle className="h-3.5 w-3.5" /> Produto não vinculado
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-4 text-sm text-slate-400">
                         <span>{c?.vertical} · {c?.geo} · {c?.channel}</span>
@@ -197,7 +229,9 @@ export default function CampanhasPage() {
                 </CardContent>
               </Card>
             );
-          })}
+              })}
+            </div>
+          ))}
         </div>
       )}
 
