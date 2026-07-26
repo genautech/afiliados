@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         budgetTest: body?.budgetTest ?? 50,
         budgetDaily: body?.budgetDaily ?? 0,
         testDuration: body?.testDuration ?? '72h',
+        budgetScale: body?.budgetScale ?? 0,
         wizardStep: 1,
       },
     });

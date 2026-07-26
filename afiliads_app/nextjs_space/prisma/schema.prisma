@@ -99,6 +99,7 @@ model Campaign {
   budgetTest            Float               @default(50)
   budgetDaily           Float               @default(0)
   testDuration          String              @default("72h")
+  budgetScale           Float               @default(0)
   campaignNameGenerated String?
   utmString             String?             @db.Text
   googleCampaignName    String?

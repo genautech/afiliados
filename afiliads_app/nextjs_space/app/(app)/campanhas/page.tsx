@@ -44,12 +44,14 @@ export default function CampanhasPage() {
 
   const submitDecision = async (campaignId: string, decision: string) => {
     try {
-      await fetch(`/api/campaigns/${campaignId}/decisions`, {
+      const res = await fetch(`/api/campaigns/${campaignId}/decisions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, rationale }),
       });
+      const data = await res.json().catch(() => null);
       toast.success(`Decisão ${decision} registrada!`);
+      if (data?.gadsLog) toast.info(data.gadsLog);
       setDecisionModal(null);
       setRationale('');
       loadCampaigns();

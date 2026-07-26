@@ -515,7 +515,8 @@ export default function CampaignDetailPage() {
               <div><span className="text-slate-400">Comissão:</span> <span className="text-green-400">${campaign.commission}</span></div>
               <div><span className="text-slate-400">Refund:</span> <span className="text-white">{campaign.refundPct}%</span></div>
               <div><span className="text-slate-400">Budget teste:</span> <span className="text-white">${campaign.budgetTest}</span></div>
-              <div><span className="text-slate-400">Budget diário:</span> <span className="text-white">${campaign.budgetDaily?.toFixed(2)}/dia</span></div>
+              <div><span className="text-slate-400">Budget diário (teste):</span> <span className="text-white">${campaign.budgetDaily?.toFixed(2)}/dia</span></div>
+              <div><span className="text-slate-400">Budget de scale:</span> <span className="text-purple-300">{campaign.budgetScale > 0 ? `$${campaign.budgetScale.toFixed(2)}/dia` : 'não definido'}</span></div>
             </div>
             {campaign.offerUrl && (
               <div className="flex items-center gap-2 mt-2">

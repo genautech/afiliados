@@ -32,8 +32,25 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // Update campaign status based on decision
     const statusMap: Record<string, string> = { KILL: 'KILL', OTIMIZAR: 'OTIMIZANDO', SCALE: 'SCALE' };
     const newStatus = statusMap?.[body?.decision] ?? 'EM_TESTE';
-    await prisma.campaign.update({ where: { id: params?.id }, data: { status: newStatus } });
-    return NextResponse.json(decision, { status: 201 });
+    const campaign = await prisma.campaign.update({ where: { id: params?.id }, data: { status: newStatus } });
+
+    // Confirmar SCALE aplica o budget de scale (definido no Wizard) como orçamento diário
+    // real no Google Ads — é o único ponto do sistema que aumenta gasto de verdade, e só
+    // acontece por clique humano aqui (o loop automático nunca faz isso sozinho).
+    let gadsLog: string | null = null;
+    if (body?.decision === 'SCALE' && campaign.budgetScale > 0 && campaign.googleCampaignId) {
+      try {
+        const { mutateGoogleCampaign } = await import('@/lib/google-ads');
+        const result = await mutateGoogleCampaign(userId, campaign.googleCampaignId, {
+          budgetDaily: campaign.budgetScale,
+          status: 'ENABLED',
+        });
+        gadsLog = result.log;
+      } catch (e: any) {
+        gadsLog = `Falha ao aplicar budget de scale no Google Ads: ${e?.message}`;
+      }
+    }
+    return NextResponse.json({ ...decision, gadsLog }, { status: 201 });
   } catch (err: any) {
     console.error('POST decision error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });

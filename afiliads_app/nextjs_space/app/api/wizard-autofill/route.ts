@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
         aov_atual: campaign.aov,
         cvr_atual: campaign.cvrExpected,
         budget_atual: campaign.budgetTest,
+        budget_scale_atual: campaign.budgetScale || null,
       } : null,
     };
 
@@ -109,6 +110,7 @@ ${buildSchemaHint()}`;
       cvrExpected,
       budgetTest: Number(data.budgetTest) || 50,
       testDuration: data.testDuration || '72h',
+      budgetScale: Number(data.budgetScale) || 0,
       offerUrl: product?.hopLink || undefined,
       keywords,
       negatives,

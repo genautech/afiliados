@@ -159,6 +159,12 @@ const FIELD_HELP: Record<string, {
     what: 'O tempo limite de duração do teste da campanha (ex: 48h, 72h).',
     why: 'Fase de validação inicial. Campanhas sem conversão nesse período devem ser desativadas.',
     steps: '1. Escolha o período que a campanha ficará ativa em fase de validação.\n2. Use 72 horas (3 dias) como padrão ideal para coletar cliques suficientes.\n3. Pause a campanha imediatamente se atingir o orçamento sem conversões.'
+  },
+  budgetScale: {
+    agent: 'Paid Ads Finance Broker',
+    what: 'O orçamento diário real a aplicar no Google Ads quando a campanha for confirmada para SCALE (depois de validada no teste).',
+    why: 'Separa a etapa de risco controlado (teste) da etapa de investimento sério — evita escalar orçamento por engano e dá ao agente um número pra planejar CPC de scale e cobertura de keywords.',
+    steps: '1. Só defina depois (ou junto) de ver os resultados do teste.\n2. Regra prática: 3x a 5x o budget diário de teste, se o EPC/CPC estiver saudável.\n3. Ao clicar "Scale" na página da campanha, esse valor é aplicado automaticamente como orçamento diário real no Google Ads.'
   }
 };
 
@@ -355,6 +361,7 @@ export default function WizardPage() {
   const [goLiveChecks, setGoLiveChecks] = useState<Record<string, boolean>>({});
   const [budgetTest, setBudgetTest] = useState('50');
   const [testDuration, setTestDuration] = useState('72h');
+  const [budgetScale, setBudgetScale] = useState('0');
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [loopInterval, setLoopInterval] = useState('24h');
   const [loopAgents, setLoopAgents] = useState('ads,compliance');
@@ -403,6 +410,7 @@ export default function WizardPage() {
         presellUrl, flowpageUrl, hostingerDomain,
         budgetTest: parseFloat(budgetTest) || 50,
         budgetDaily, testDuration,
+        budgetScale: parseFloat(budgetScale) || 0,
         campaignNameGenerated: campaignNameGen,
         googleCampaignName: campaignNameGen,
         utmCampaign: campaignNameGen,
@@ -466,6 +474,7 @@ export default function WizardPage() {
     setClickidToken(c?.clickidToken ?? 'clickid');
     setBudgetTest(c?.budgetTest ? String(c.budgetTest) : '50');
     setTestDuration(c?.testDuration ?? '72h');
+    setBudgetScale(c?.budgetScale ? String(c.budgetScale) : '0');
     setLoopEnabled(!!c?.loopEnabled);
     setLoopInterval(c?.loopInterval ?? '24h');
     setLoopAgents(c?.loopAgents ?? 'ads,compliance');
@@ -505,6 +514,7 @@ export default function WizardPage() {
     setIf('cvrExpected', setCvrExpected, data.cvrExpected);
     setIf('budgetTest', setBudgetTest, data.budgetTest);
     setIf('testDuration', setTestDuration, data.testDuration);
+    setIf('budgetScale', setBudgetScale, data.budgetScale);
     if (Array.isArray(data.keywords) && data.keywords.length > 0 && (!onlyIfEmpty || !opts?.existingKeywordsCount)) {
       setSelectedKeywords(data.keywords);
     }
@@ -558,7 +568,7 @@ export default function WizardPage() {
                 name: c?.name, platform: c?.platform, vertical: c?.vertical, geo: c?.geo,
                 channel: c?.channel, funnel: c?.funnel, commission: c?.commission, refundPct: c?.refundPct,
                 aov: c?.aov, offerUrl: c?.offerUrl, cvrExpected: c?.cvrExpected,
-                budgetTest: c?.budgetTest, testDuration: c?.testDuration,
+                budgetTest: c?.budgetTest, testDuration: c?.testDuration, budgetScale: c?.budgetScale,
               },
             });
             return;
@@ -1329,13 +1339,32 @@ export default function WizardPage() {
           {step === 9 && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Rocket className="h-5 w-5 text-green-400" /> Go-live</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} /></div>
-                  <Select value={testDuration} onValueChange={setTestDuration}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="48h" className="text-white">48h</SelectItem><SelectItem value="72h" className="text-white">72h</SelectItem><SelectItem value="5" className="text-white">5 dias</SelectItem><SelectItem value="7" className="text-white">7 dias</SelectItem></SelectContent>
-                  </Select></div>
-                <div><Label className="text-slate-300">Budget Diário</Label><p className="text-lg font-mono text-green-400 mt-1">${budgetDaily?.toFixed?.(2)}/dia</p></div>
+
+              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-blue-300">Etapa 1 — Teste</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total de Teste (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} /></div>
+                    <Select value={testDuration} onValueChange={setTestDuration}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="48h" className="text-white">48h</SelectItem><SelectItem value="72h" className="text-white">72h</SelectItem><SelectItem value="5" className="text-white">5 dias</SelectItem><SelectItem value="7" className="text-white">7 dias</SelectItem></SelectContent>
+                    </Select></div>
+                  <div><Label className="text-slate-300">Budget Diário (teste)</Label><p className="text-lg font-mono text-green-400 mt-1">${budgetDaily?.toFixed?.(2)}/dia</p></div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-purple-300">Etapa 2 — Investimento sério (só depois de validar no teste)</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-1"><Label className="text-slate-300">Budget Diário de Scale (USD)</Label><AgentHelp fieldKey="budgetScale" fieldValue={budgetScale} context={{ budgetTest: parseFloat(budgetTest) || 50, commission: commVal }} /></div>
+                    <Input type="number" value={budgetScale} onChange={(e:any) => setBudgetScale(e?.target?.value ?? '0')} placeholder="Ex.: 150" className={inputCls} />
+                  </div>
+                  <div className="text-xs text-slate-400 self-end pb-2">
+                    Só é aplicado quando você confirmar a decisão <strong className="text-purple-300">Scale</strong> na página da campanha
+                    (troca o orçamento diário real no Google Ads automaticamente, ${budgetScale && parseFloat(budgetScale) > 0 ? parseFloat(budgetScale).toFixed(2) : '—'}/dia).
+                    Deixe 0 se ainda não sabe — dá pra definir depois, antes de escalar.
+                  </div>
+                </div>
               </div>
               <div className="space-y-3">
                 {GOLIVE_CHECKLIST.map(item => (

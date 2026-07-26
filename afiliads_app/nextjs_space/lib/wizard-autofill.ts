@@ -9,6 +9,7 @@ REGRAS:
 - Quando o dossiê já trouxer um valor numérico real (comissão, payout, CVR estimada), use exatamente esse valor — não invente um diferente.
 - Quando faltar um dado, estime com base nas melhores práticas de marketing de afiliados (regra de 3x CPA, refund rate típico da vertical).
 - "budgetTest" deve ficar entre $50 e $150, normalmente 1x a 2x o valor da comissão — nunca sugira valores muito acima disso para um teste inicial.
+- "budgetScale" é o orçamento DIÁRIO só aplicado depois que o teste validar (decisão SCALE humana) — sugira 3x a 5x o budget diário de teste (budgetTest/dias de teste) se a economia da oferta (payout, CVR estimada) sustentar esse CPC; nunca sugira scale maior que o afiliado consegue perder com segurança.
 - O nome da campanha deve seguir o padrão [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_v1, usando as SIGLAS abaixo (nunca o nome por extenso):
   Rede: ClickBank=CB, BuyGoods=BG, MaxWeb=MW, Hotmart=HT, Eduzz=ED, Monetizze=MZ.
   Vertical: Weight Loss=WL, Nutra=NUTRA, Make Money=MMO, Relationships=REL, Health=HEALTH, Beauty=BEAUTY, Cursos BR=CURSO, Outro=OTHER.
@@ -31,10 +32,11 @@ export function buildSchemaHint() {
   "cvrExpected": 0.0,
   "budgetTest": 0.0,
   "testDuration": "48h|72h|5|7",
-  "summary": "2-3 frases explicando a estratégia geral escolhida para essa campanha",
+  "budgetScale": 0.0,
+  "summary": "2-3 frases explicando a estratégia geral escolhida para essa campanha, incluindo a lógica de teste vs. scale",
   "rationale": {
     "name": "...", "platform": "...", "vertical": "...", "geo": "...", "channel": "...", "funnel": "...",
-    "commission": "...", "refundPct": "...", "aov": "...", "cvrExpected": "...", "budgetTest": "...", "testDuration": "..."
+    "commission": "...", "refundPct": "...", "aov": "...", "cvrExpected": "...", "budgetTest": "...", "testDuration": "...", "budgetScale": "..."
   }
 }`;
 }
