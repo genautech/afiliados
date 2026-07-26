@@ -121,33 +121,25 @@ export default function CampanhasPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filtered.map((c: any) => {
             const m = getMetrics(c);
             return (
               <Card key={c?.id} className="bg-[#1e293b] border-[#334155] hover:border-[#475569] transition-all">
-                <CardContent className="p-5">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-white font-semibold">{c?.name ?? 'Sem nome'}</h3>
+                <CardContent className="p-5 sm:p-6 space-y-5">
+                  <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <h3 className="text-white font-semibold text-lg">{c?.name ?? 'Sem nome'}</h3>
                         <Badge className={statusColors?.[c?.status] ?? 'bg-slate-500/20 text-slate-400'}>{statusLabels?.[c?.status] ?? c?.status}</Badge>
                         <Badge variant="outline" className="text-slate-300 border-slate-600 text-xs">{c?.platform}</Badge>
                       </div>
-                      <div className="flex flex-wrap gap-4 text-xs text-slate-400">
+                      <div className="flex flex-wrap gap-4 text-sm text-slate-400">
                         <span>{c?.vertical} · {c?.geo} · {c?.channel}</span>
-                        {c?.campaignNameGenerated && <span className="font-mono text-slate-500">{c?.campaignNameGenerated}</span>}
+                        {c?.campaignNameGenerated && <span className="font-mono text-slate-500 text-xs">{c?.campaignNameGenerated}</span>}
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 text-center">
-                      <div><p className="text-xs text-slate-400">Gasto</p><p className="text-sm font-mono text-white">${m.spend?.toFixed?.(2)}</p></div>
-                      <div><p className="text-xs text-slate-400">Receita</p><p className="text-sm font-mono text-green-400">${m.revenue?.toFixed?.(2)}</p></div>
-                      <div><p className="text-xs text-slate-400">CPC</p><p className="text-sm font-mono text-white">${m.cpc?.toFixed?.(3)}</p></div>
-                      <div><p className="text-xs text-slate-400">EPC</p><p className="text-sm font-mono text-white">${m.epc?.toFixed?.(3)}</p></div>
-                      <div><p className="text-xs text-slate-400">EPC/CPC</p><p className={`text-sm font-mono ${m.ratio >= 1.3 ? 'text-green-400' : m.ratio >= 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>{m.ratio?.toFixed?.(2)}</p></div>
-                      <div><p className="text-xs text-slate-400">Conv.</p><p className="text-sm font-mono text-white">{m.conversions}</p></div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap shrink-0">
                       <Link href={`/campanhas/${c?.id}`}>
                         <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                           <Eye className="h-3 w-3 mr-1" /> Detalhes
@@ -164,13 +156,38 @@ export default function CampanhasPage() {
                       </Button>
                     </div>
                   </div>
-                  {/* Decision history */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">Gasto</p>
+                      <p className="text-base sm:text-lg font-mono font-semibold text-white">${m.spend?.toFixed?.(2)}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">Receita</p>
+                      <p className="text-base sm:text-lg font-mono font-semibold text-green-400">${m.revenue?.toFixed?.(2)}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">CPC</p>
+                      <p className="text-base sm:text-lg font-mono font-semibold text-white">${m.cpc?.toFixed?.(3)}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">EPC</p>
+                      <p className="text-base sm:text-lg font-mono font-semibold text-white">${m.epc?.toFixed?.(3)}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">EPC/CPC</p>
+                      <p className={`text-base sm:text-lg font-mono font-semibold ${m.ratio >= 1.3 ? 'text-green-400' : m.ratio >= 1.0 ? 'text-yellow-400' : 'text-red-400'}`}>{m.ratio?.toFixed?.(2)}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#0f172a] border border-[#334155]/80 px-4 py-3">
+                      <p className="text-xs text-slate-400 mb-1">Conversões</p>
+                      <p className="text-base sm:text-lg font-mono font-semibold text-white">{m.conversions}</p>
+                    </div>
+                  </div>
                   {(c?.decisions?.length ?? 0) > 0 && (
-                    <div className="mt-3 pt-3 border-t border-[#334155]">
-                      <p className="text-xs text-slate-500 mb-1">Histórico de decisões:</p>
+                    <div className="pt-4 border-t border-[#334155]">
+                      <p className="text-sm text-slate-400 mb-2">Histórico de decisões</p>
                       <div className="flex flex-wrap gap-2">
                         {(c?.decisions ?? []).map((dec: any) => (
-                          <span key={dec?.id} className="text-xs bg-[#0f172a] rounded px-2 py-1 text-slate-400">
+                          <span key={dec?.id} className="text-xs bg-[#0f172a] rounded-md px-2.5 py-1.5 text-slate-300 border border-[#334155]/60">
                             {dec?.decision} {dec?.rationale ? `— ${dec.rationale}` : ''}
                           </span>
                         ))}

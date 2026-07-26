@@ -3,13 +3,14 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import {
   DollarSign, TrendingUp, MousePointerClick, AlertTriangle,
   BarChart3, Wand2, Target, Activity, FileSpreadsheet, CheckCircle2,
-  XCircle, ArrowUpRight, ArrowDownRight
+  XCircle, ArrowUpRight, ArrowDownRight, ListTodo, Package
 } from 'lucide-react';
 
 const DashboardChart = dynamic(() => import('@/components/dashboard-chart'), { ssr: false });
@@ -47,15 +48,15 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <h1 className="text-2xl font-display font-bold text-white">Dashboard</h1>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map((i) => (
+        <StatGrid cols={5}>
+          {[1, 2, 3, 4, 5].map((i) => (
             <Card key={i} className="bg-[#1e293b] border-[#334155] animate-pulse">
-              <CardContent className="p-6"><div className="h-16 bg-[#334155] rounded" /></CardContent>
+              <CardContent className="p-6"><div className="h-24 bg-[#334155] rounded" /></CardContent>
             </Card>
           ))}
-        </div>
+        </StatGrid>
       </div>
     );
   }
@@ -64,8 +65,8 @@ export default function DashboardPage() {
   const profit = (d?.totalRevenue ?? 0) - (d?.totalSpend ?? 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-display font-bold text-white tracking-tight">Dashboard</h1>
           <p className="text-slate-400 text-sm mt-1">Visão geral com dados integrados das planilhas</p>
@@ -85,75 +86,43 @@ export default function DashboardPage() {
       </div>
 
       {/* Main KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Gasto Total</p>
-                <p className="text-2xl font-bold text-white font-mono">${d?.totalSpend?.toFixed?.(2) ?? '0.00'}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-red-500/20 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-red-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Receita Total</p>
-                <p className="text-2xl font-bold text-green-400 font-mono">${d?.totalRevenue?.toFixed?.(2) ?? '0.00'}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-green-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Lucro</p>
-                <p className={`text-2xl font-bold font-mono ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  ${profit?.toFixed?.(2) ?? '0.00'}
-                </p>
-              </div>
-              <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${profit >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                {profit >= 0 ? <ArrowUpRight className="h-5 w-5 text-green-400" /> : <ArrowDownRight className="h-5 w-5 text-red-400" />}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">ROAS</p>
-                <p className="text-2xl font-bold text-white font-mono">{d?.roas?.toFixed?.(2) ?? '0.00'}x</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <Target className="h-5 w-5 text-blue-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">EPC Médio</p>
-                <p className="text-2xl font-bold text-white font-mono">${d?.epcMedio?.toFixed?.(3) ?? '0.000'}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <MousePointerClick className="h-5 w-5 text-purple-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid cols={5}>
+        <StatCard
+          label="Gasto Total"
+          value={`$${d?.totalSpend?.toFixed?.(2) ?? '0.00'}`}
+          hint="Investimento acumulado"
+          tone="negative"
+          icon={<DollarSign className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Receita Total"
+          value={`$${d?.totalRevenue?.toFixed?.(2) ?? '0.00'}`}
+          hint="Comissões / conversões"
+          tone="positive"
+          icon={<TrendingUp className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Lucro"
+          value={`$${profit?.toFixed?.(2) ?? '0.00'}`}
+          hint={profit >= 0 ? 'Operação no positivo' : 'Operação no negativo'}
+          tone={profit >= 0 ? 'positive' : 'negative'}
+          icon={profit >= 0 ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
+        />
+        <StatCard
+          label="ROAS"
+          value={`${d?.roas?.toFixed?.(2) ?? '0.00'}x`}
+          hint="Receita ÷ gasto"
+          tone={(d?.roas ?? 0) >= 1 ? 'positive' : 'warning'}
+          icon={<Target className="h-5 w-5" />}
+        />
+        <StatCard
+          label="EPC Médio"
+          value={`$${d?.epcMedio?.toFixed?.(3) ?? '0.000'}`}
+          hint="Receita por clique"
+          tone="info"
+          icon={<MousePointerClick className="h-5 w-5" />}
+        />
+      </StatGrid>
 
       {/* Chart */}
       {(d?.recentLogs?.length ?? 0) > 0 && (
@@ -252,44 +221,47 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-white font-mono">{d?.totalCampaigns ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1">Campanhas</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-white font-mono">{d?.offersCount ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1">Ofertas</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-white font-mono">{d?.totalClicks ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1">Cliques</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-white font-mono">{d?.totalConversions ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1">Conversões</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-green-400 font-mono">{d?.testsScale ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1"><CheckCircle2 className="h-3 w-3 text-green-400" /> Scales</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[#1e293b] border-[#334155]">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-red-400 font-mono">{d?.testsKill ?? 0}</p>
-            <p className="text-xs text-slate-400 mt-1 flex items-center justify-center gap-1"><XCircle className="h-3 w-3 text-red-400" /> Kills</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatGrid cols={6}>
+        <StatCard
+          label="Campanhas"
+          value={d?.totalCampaigns ?? 0}
+          hint="Total cadastradas"
+          icon={<ListTodo className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Ofertas"
+          value={d?.offersCount ?? 0}
+          hint="Produtos rastreados"
+          icon={<Package className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Cliques"
+          value={d?.totalClicks ?? 0}
+          hint="Volume de tráfego"
+          icon={<MousePointerClick className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Conversões"
+          value={d?.totalConversions ?? 0}
+          hint="Vendas registradas"
+          tone="info"
+          icon={<Target className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Scales"
+          value={d?.testsScale ?? 0}
+          hint="Campanhas em escala"
+          tone="positive"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Kills"
+          value={d?.testsKill ?? 0}
+          hint="Campanhas encerradas"
+          tone="negative"
+          icon={<XCircle className="h-5 w-5" />}
+        />
+      </StatGrid>
     </div>
   );
 }
