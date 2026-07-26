@@ -28,18 +28,19 @@ Identifique qual dos 8 fluxos abaixo o pedido exige, carregue APENAS as referên
 
 Dados que envelhecem — políticas do Google, comissões, CPCs, disponibilidade de programas — NUNCA são afirmados de memória. Ou busque na web a versão atual (citando fonte e data), ou marque explicitamente como **estimativa de planejamento a validar** no Planejador de Palavras-chave / dentro da plataforma. O usuário toma decisões de dinheiro real com base no que você diz; dado velho apresentado como certeza queima orçamento e confiança.
 
-## As 10 regras de negócio (nunca violar)
+## As 11 regras de negócio (nunca violar)
 
-1. **Link direto de afiliado nunca é URL final.** Página-ponte sempre — senão é reprovação/suspensão (ver `references/compliance-google.md`).
-2. **Negativas antes do primeiro real gasto.** Correspondência ampla sem lista-mestra = orçamento evaporado.
-3. **Lance manual até haver histórico de conversões.** Lance inteligente no dia 1 faz o algoritmo aprender caro.
-4. **Rede de Display OFF e localização em "presença" apenas.** As duas pegadinhas de configuração que contaminam dados.
-5. **Decisão exige amostra:** mínimo 7–14 dias OU ~100 cliques por keyword antes de julgar qualquer coisa.
-6. **Uma mudança por vez.** Mexer em tudo simultaneamente impede saber o que funcionou.
-7. **Escala gradual:** +20–30% de orçamento por vez. Dobrar reinicia o aprendizado e o CPA dispara.
-8. **Regra do 3×:** gastou 3× o valor da comissão sem NENHUMA venda, com rastreamento comprovadamente funcionando e página rápida? Troque a OFERTA antes do nicho — o problema costuma ser a página de vendas do produtor.
-9. **Copy jamais promete resultado** ("Nunca mais seja vítima/pobre/gordo" ✖). Saúde e finanças têm regras extras. Recuse gerar copy que viole; ofereça a versão segura.
-10. **Sem rastreamento, sem otimização.** Se a conversão não está configurada, diga isso e resolva o rastreamento ANTES de fingir precisão em qualquer análise.
+1. **O vendor pode proibir o canal inteiro, separado da política do Google.** Antes de montar QUALQUER campanha, busque e leia a página real de afiliados/advertising rules do vendor procurando por "search", "adwords", "google" — não confie em texto de marketing ("converte bem no Google!"), que quase sempre significa Google Display/YouTube, não Search. Muitos vendors de nutra/saúde de ticket alto proíbem Google Search/AdWords por completo nas próprias regras de tráfego, mesmo sem restrição de brand bidding. Sem essa página confirmada com fonte, trate o canal como "não verificado" e não gaste 1 centavo em Search. (Caso real: FemiCore, YuSleep e Lymph Tonic — três top-offers do mesmo mês na ClickBank — todas proíbem Search e só permitem Display/YouTube, apesar do texto de marketing mencionar "Google" como canal que converte.)
+2. **Link direto de afiliado nunca é URL final.** Página-ponte sempre — senão é reprovação/suspensão (ver `references/compliance-google.md`).
+3. **Negativas antes do primeiro real gasto.** Correspondência ampla sem lista-mestra = orçamento evaporado.
+4. **Lance manual até haver histórico de conversões.** Lance inteligente no dia 1 faz o algoritmo aprender caro.
+5. **Rede de Display OFF e localização em "presença" apenas.** As duas pegadinhas de configuração que contaminam dados.
+6. **Decisão exige amostra:** mínimo 7–14 dias OU ~100 cliques por keyword antes de julgar qualquer coisa.
+7. **Uma mudança por vez.** Mexer em tudo simultaneamente impede saber o que funcionou.
+8. **Escala gradual:** +20–30% de orçamento por vez. Dobrar reinicia o aprendizado e o CPA dispara.
+9. **Regra do 3×:** gastou 3× o valor da comissão sem NENHUMA venda, com rastreamento comprovadamente funcionando e página rápida? Troque a OFERTA antes do nicho — o problema costuma ser a página de vendas do produtor.
+10. **Copy jamais promete resultado** ("Nunca mais seja vítima/pobre/gordo" ✖). Saúde e finanças têm regras extras. Recuse gerar copy que viole; ofereça a versão segura.
+11. **Sem rastreamento, sem otimização.** Se a conversão não está configurada, diga isso e resolva o rastreamento ANTES de fingir precisão em qualquer análise.
 
 ## Fluxo 1 — Descoberta de nicho e produto
 
@@ -73,7 +74,9 @@ Gere a árvore completa: campanha → grupos por tema → keywords com correspon
 **Gatilhos:** "pré-venda", "presell", "página ponte", "landing", "artigo ponte".
 **Carregue:** `references/compliance-google.md` + `assets/template-prevenda.html`.
 
-Escolha o formato pelo nicho (artigo-ponte, review, comparativo, quiz), gere o HTML completo e responsivo a partir do template, com placeholders claros para link de afiliado, tag de conversão e pixel. Entregue o arquivo + instruções de hospedagem e inserção da tag.
+Se estiver operando dentro do projeto AfiliAds (repo `afiliados/`), **prefira sempre** o gerador real do app (`gerar_presell` via MCP, ou `/api/presells`) em vez de montar HTML manualmente aqui — ele já resolve tipo de página, pop-up e compliance de forma consistente com o que a campanha depois vai rastrear. Tipos de página disponíveis: **advertorial** (artigo completo, padrão), **pogo** (curta, vende o clique), **vsl** (vídeo + CTA, exige URL do vídeo). Todos aceitam um pop-up de retenção opcional ("segure para continuar") — mesma experiência pra todo visitante, não é cloaking. Quiz interativo real e Lead Gen (captura de e-mail) ainda não existem no gerador — se o nicho pedir, construa manualmente com o `assets/template-prevenda.html` como base e avise que é uma versão simplificada.
+
+Fora do contexto do app (skill standalone, outro projeto), use `assets/template-prevenda.html`: escolha o formato pelo nicho (artigo-ponte, review, comparativo), gere o HTML completo e responsivo a partir do template, com placeholders claros para link de afiliado, tag de conversão e pixel. Entregue o arquivo + instruções de hospedagem e inserção da tag.
 
 ## Fluxo 5 — Rastreamento e pixel
 

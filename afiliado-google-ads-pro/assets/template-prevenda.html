@@ -32,6 +32,7 @@
   ul{margin:0 0 18px 24px}
   li{margin-bottom:8px}
   .destaque{background:var(--cinza);border-left:4px solid var(--acento);padding:18px 20px;margin:24px 0;font-size:18px}
+  .produto-img{display:block;max-width:280px;width:100%;height:auto;margin:0 auto 24px}
   .cta{display:block;text-align:center;background:var(--acento);color:#fff;font-family:Arial,sans-serif;font-weight:bold;font-size:20px;text-decoration:none;padding:18px 24px;border-radius:8px;margin:30px 0;box-shadow:0 4px 12px rgba(224,123,57,.35)}
   .cta:hover{filter:brightness(1.08)}
   .cta-sub{text-align:center;font-family:Arial,sans-serif;font-size:13px;color:#888;margin-top:-20px;margin-bottom:26px}
@@ -53,6 +54,9 @@
   <h1>{{HEADLINE — a promessa editorial, sem promessa de resultado}}</h1>
   <p class="sub">{{SUBHEADLINE — expande a headline com o benefício de LER o artigo}}</p>
   <div class="meta">Por {{AUTOR}} · Atualizado em {{DATA}} · Leitura de {{X}} min</div>
+
+  <!-- Imagem oficial do produto (bottle/embalagem), se o vendor disponibilizar assets — não use "before/after" nem foto de terceiro sem permissão -->
+  <img class="produto-img" src="{{URL_DA_FOTO_OFICIAL_DO_PRODUTO}}" alt="{{PRODUTO}}">
 
   <p>{{ABERTURA — a dor/situação do leitor em 2–3 frases, na linguagem dele. Mostre que você entende o problema ANTES de falar de solução.}}</p>
 
@@ -81,9 +85,15 @@
 
   <a class="cta" href="#" data-href="LINK_DE_AFILIADO_AQUI">{{CTA FINAL}}</a>
 
-  <div class="disclosure">Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você. Recomendamos apenas o que avaliamos de forma independente.</div>
+  <div class="disclosure">
+    Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você. Recomendamos apenas o que avaliamos de forma independente.<br>
+    Resultados individuais podem variar.
+    {{DISCLAIMER_SAUDE — se o nicho for saúde/corpo/finanças/relacionamentos: "Este produto não se destina a diagnosticar, tratar, curar ou prevenir qualquer doença. Consulte um profissional antes de usar." Se não for nicho sensível, deixe em branco.}}
+  </div>
 </article>
 
+<!-- Links de política/termos/contato abaixo assumem hospedagem dentro do app AfiliAds (rotas /politica-de-privacidade, /termos, /contato).
+     Usando este template FORA do app: crie páginas equivalentes no seu próprio domínio antes de publicar — senão os links quebram (404). -->
 <footer>
   <a href="/politica-de-privacidade">Política de Privacidade</a>
   <a href="/termos">Termos de Uso</a>

@@ -31,7 +31,7 @@ Comissões e regras mudam com frequência: **valide dentro da plataforma antes d
 2. **Página de vendas do produtor:** carrega em <3s no celular? Tem prova, oferta clara, checkout simples? Você paga o clique — a página dele converte ou queima seu dinheiro.
 3. **Tração:** temperatura (Hotmart) / gravity (ClickBank) médios-altos, mas cuidado com o topo absoluto (saturação de afiliados = leilão caro).
 4. **Compliance:** o produto é anunciável no Google? (Ver compliance-google.md — regulados, saúde com promessa, finanças sem certificação = não.)
-5. **Regras do produtor:** permite tráfego pago? Proíbe bid em marca? Leia as regras do programa — violar = comissão estornada.
+5. **Regras do produtor, POR CANAL — não genérico.** "Permite tráfego pago" não é suficiente: leia a página real de afiliados/advertising rules procurando "search"/"adwords"/"google" especificamente. É comum um vendor permitir Facebook/Native/YouTube/Display e proibir Google Search inteiro (não só brand bidding) — o texto de marketing ("converte bem no Google!") normalmente quer dizer Display/YouTube, não Search. Sem confirmar isso com a página real (fonte + trecho exato), trate o canal pretendido como não verificado e não gaste. Violar = comissão estornada ou banimento sem reintegração.
 6. **Suporte a afiliado:** materiais, página de ferramentas, gerente de afiliados = sinal de operação séria.
 7. **Janela de cookie e atribuição:** quanto maior, melhor para funis com pré-venda.
 

@@ -10,7 +10,7 @@ Pontue de 0–10 cada critério; score final = média ponderada ×10 (0–100):
 |---|---|---|
 | Intenção de compra no Google | 25% | Existem buscas transacionais ("comprar", "melhor X", "X funciona")? Volume no Planejador? |
 | Economia da oferta | 25% | Comissão ≥ 3× o CPA estimado? Recorrência? Ticket vs. CPC do nicho |
-| Adequação ao Google Ads | 20% | Políticas permitem anunciar? Precisa certificação (finanças)? Termos proibidos (saúde)? |
+| Adequação ao Google Ads | 20% | DUAS perguntas separadas: (1) a política DO GOOGLE permite o nicho? (certificação em finanças, termos proibidos em saúde) — e (2) o VENDOR/programa de afiliados escolhido permite Google Search especificamente? São coisas diferentes: um nicho pode ser 100% ok pro Google e o vendor específico ainda proibir Search nas próprias regras de tráfego (ver `plataformas-e-programas.md`, critério 5). Nota 10 exige as duas confirmadas. |
 | Durabilidade (future-proof) | 15% | O nicho sobrevive à IA e a mudanças de plataforma? Categoria > ferramenta específica |
 | Concorrência | 10% | CPCs inflacionados? Grandes marcas dominam? Existe ângulo de entrada? |
 | Viabilidade faceless/IA | 5% | Dá para operar sem aparecer, com produção assistida por IA? |

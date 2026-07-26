@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const name = String(body?.name ?? '').trim();
     if (!name) return NextResponse.json({ error: 'name é obrigatório' }, { status: 422 });
     const data: any = {};
-    for (const k of ['network', 'vertical', 'gravity', 'avgPayout', 'commissionPct', 'conversionRate', 'rebill', 'score', 'riskLevel', 'source', 'summary', 'tags', 'keywords', 'strategy', 'compliance', 'hopLink', 'affiliatePageUrl', 'affiliateInsights', 'status', 'chosenKeyword']) {
+    for (const k of ['network', 'vertical', 'gravity', 'avgPayout', 'commissionPct', 'conversionRate', 'rebill', 'score', 'riskLevel', 'source', 'summary', 'tags', 'keywords', 'strategy', 'compliance', 'hopLink', 'affiliatePageUrl', 'assetsUrl', 'affiliateInsights', 'status', 'chosenKeyword']) {
       if (body?.[k] !== undefined) data[k] = body[k];
     }
     const product = await prisma.productResearch.upsert({
@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest) {
     const { id, ...data } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
     const allowed: any = {};
-    for (const k of ['status', 'chosenKeyword', 'hopLink', 'notes', 'affiliatePageUrl', 'affiliateInsights']) {
+    for (const k of ['status', 'chosenKeyword', 'hopLink', 'notes', 'affiliatePageUrl', 'assetsUrl', 'affiliateInsights']) {
       if (data[k] !== undefined) allowed[k] = data[k];
     }
     const product = await prisma.productResearch.update({
