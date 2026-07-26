@@ -19,7 +19,8 @@ Responda APENAS JSON válido:
   "risk_level": "baixo|medio|alto",
   "summary": "resumo em 2-3 frases: o que é, para quem, por que (não) promover",
   "tags": ["5 a 10 tags do produto/nicho/ângulo"],
-  "funil": "descrição curta do funil do vendor (VSL, upsells, quiz...)"
+  "funil": "descrição curta do funil do vendor (VSL, upsells, quiz...)",
+  "affiliate_page_url_guess": "melhor chute da URL real da página de afiliados/JV do vendor (ex.: https://dominio.com/affiliates ou https://dominio.com/help/affiliates.php) — sem isso o Compliance Sentinel não consegue confirmar restrições de canal"
 }
 Score 0-100 pondera: payout, conversão esperada, momentum, competição e risco de compliance. Se não conhecer o produto, estime pela vertical e diga isso no summary.`;
 
@@ -40,10 +41,15 @@ const COMPLIANCE_PROMPT = `Você é o Compliance Sentinel, auditor de políticas
 Dado o produto, vertical e keywords, aponte riscos de: claims de saúde/renda, trademark bidding, verticais restritas (health in personalized ads), necessidade de bridge page, cloaking.
 Também defina a estratégia recomendada.
 Se a vertical for sensível (saúde, corpo, finanças, relacionamentos, fases da vida), gere de 3 a 8 pares de substituição de linguagem: frases/claims que NÃO podem aparecer na presell (diagnóstico, cura, garantia de resultado, termos médicos/explícitos) e a reescrita segura equivalente focada em benefício/experiência condicional. Se a vertical não for sensível, retorne "regras_reescrita": [].
+
+REGRA CRÍTICA (aprendida do caso FemiCore, não repetir): a maioria dos vendors de nutra/saúde de ticket alto no ClickBank PROÍBE Google Search/AdWords inteiramente nas próprias regras de tráfego — não é só brand bidding, é o canal inteiro. Isso costuma ficar numa cláusula tipo "Use for any purpose Google Search Advertising" ou "does not allow ... any traffic from Google unless it is Display or YouTube", separada dos claims de saúde. NUNCA assuma que Google Search é permitido só porque a vertical em si é ok — isso é uma decisão comercial do vendor, não uma política do Google.
+Se o texto real da página de afiliados do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE AFILIADOS"), baseie "google_search_permitido" NELE, citando a frase exata como fonte. Se NÃO foi fornecido (fetch falhou), responda "google_search_permitido": "nao_verificado" e gere um alerta nível "critico" mandando o usuário confirmar manualmente na página de afiliados/advertising rules do vendor antes de gastar em Search — nunca responda true/false sem fonte real.
+
 Responda APENAS JSON:
 { "risco_geral": "baixo|medio|alto",
   "alertas": [{ "nivel": "info|atencao|critico", "texto": "..." }],
   "regras_reescrita": [{ "evitar": "claim ou termo proibido", "usar": "reescrita segura equivalente" }],
+  "canais": { "google_search_permitido": true|false|"nao_verificado", "fonte": "URL + trecho exato que embasa a resposta, ou 'página de afiliados não encontrada'", "canais_permitidos": ["..."], "canais_proibidos": ["..."] },
   "presell": { "tipo": "review|advertorial|quiz|vsl-bridge", "motivo": "1 frase", "elementos": ["4-6 elementos obrigatórios da página"] },
   "tipo_venda": { "funil": "bridge|direct|search-intent|youtube", "motivo": "1 frase" },
   "campanha": { "naming": "CB_<VERT>_<GEO>_<CANAL>_<FUNIL>_v1 preenchido", "tipo": "Search|PMax|Demand Gen", "lances": "estratégia de lances inicial", "cpc_max_usd": 0.0, "cpc_scale_usd": 0.0 },
@@ -111,15 +117,65 @@ export async function POST(request: NextRequest) {
         if (!seo) throw new Error('SEO Architect retornou resposta inválida');
         send({ status: 'step', agent: 'seo', state: 'done', usage: seoRes.usage });
 
+        // Busca a página real de afiliados/advertising rules antes do Compliance Sentinel decidir
+        // sobre canais permitidos — nunca deixar o agente "adivinhar" isso de memória (caso FemiCore).
+        let affiliatePageText = '';
+        let affiliatePageUrlUsed = '';
+        const urlGuess = typeof hunter?.affiliate_page_url_guess === 'string' ? hunter.affiliate_page_url_guess.trim() : '';
+        if (urlGuess && /^https?:\/\//i.test(urlGuess)) {
+          try {
+            const pageRes = await fetch(urlGuess, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
+            if (pageRes.ok) {
+              const html = await pageRes.text();
+              affiliatePageText = html
+                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 6000);
+              affiliatePageUrlUsed = urlGuess;
+            }
+          } catch (e: any) {
+            console.error('Falha ao buscar página de afiliados:', urlGuess, e?.message);
+          }
+        }
+
         send({ status: 'step', agent: 'compliance', state: 'running' });
         const compRes = await callAgent(uid, {
           agent: 'compliance-sentinel',
           systemPrompt: dynamicCompliancePrompt,
-          userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}\nJSON puro.`,
+          userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}
+${affiliatePageText ? `TEXTO REAL DA PÁGINA DE AFILIADOS (${affiliatePageUrlUsed}):\n"""${affiliatePageText}"""` : `Não foi possível buscar a página de afiliados real (tentativa: ${urlGuess || 'nenhuma URL sugerida pelo Hunter'}). Responda "canais.google_search_permitido": "nao_verificado" e alerte nível crítico.`}
+JSON puro.`,
         });
         const comp = compRes.data;
         if (!comp) throw new Error('Compliance Sentinel retornou resposta inválida');
         send({ status: 'step', agent: 'compliance', state: 'done', usage: compRes.usage });
+
+        // Canais fica em affiliateInsights (mesmo formato usado pelos dossiês pesquisados manualmente)
+        // pra alimentar tanto a UI de Busca de Produtos quanto o gerador de presell/wizard.
+        const canaisInfo = {
+          campaignValidation: {
+            googleSearchAllowed: comp?.canais?.google_search_permitido ?? 'nao_verificado',
+            notes: comp?.canais?.fonte ?? 'Página de afiliados não confirmada — verificar manualmente antes de rodar Search.',
+          },
+          allowedChannels: comp?.canais?.canais_permitidos ?? [],
+          forbiddenChannels: comp?.canais?.canais_proibidos ?? [],
+        };
+        const affiliatePageUrlFinal = affiliatePageUrlUsed || urlGuess || existing?.affiliatePageUrl || null;
+
+        // Garantido em código, não depende do LLM lembrar (caso FemiCore: o agente simplesmente não
+        // reportou a restrição). Se não está explicitamente confirmado "true", entra alerta crítico.
+        const alertasFinal = [...(comp?.alertas ?? [])];
+        if (canaisInfo.campaignValidation.googleSearchAllowed !== true) {
+          alertasFinal.unshift({
+            nivel: 'critico',
+            texto: canaisInfo.campaignValidation.googleSearchAllowed === false
+              ? `Google Search/AdWords é PROIBIDO por este vendor. Fonte: ${canaisInfo.campaignValidation.notes}`
+              : `Permissão de Google Search NÃO confirmada com a página real de afiliados — não rodar Search antes de verificar manualmente (${affiliatePageUrlFinal ?? 'página de afiliados não encontrada'}).`,
+          });
+        }
 
         const record = await prisma.productResearch.upsert({
           where: { userId_name: { userId: uid, name: productName } },
@@ -136,7 +192,9 @@ export async function POST(request: NextRequest) {
             tags: hunter?.tags ?? [],
             keywords: seo,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
-            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [], regras_reescrita: comp?.regras_reescrita ?? [] },
+            compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
+            affiliatePageUrl: affiliatePageUrlFinal,
+            affiliateInsights: { ...(existing?.affiliateInsights as any ?? {}), ...canaisInfo },
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },
@@ -155,7 +213,9 @@ export async function POST(request: NextRequest) {
             tags: hunter?.tags ?? [],
             keywords: seo,
             strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
-            compliance: { risco_geral: comp?.risco_geral, alertas: comp?.alertas ?? [], regras_reescrita: comp?.regras_reescrita ?? [] },
+            compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
+            affiliatePageUrl: affiliatePageUrlFinal,
+            affiliateInsights: canaisInfo,
             status: 'analisado',
             chosenKeyword: seo?.melhor_keyword?.kw ?? '',
           },
