@@ -1,5 +1,37 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+## Coordenação entre sessões simultâneas (leia antes de começar)
+
+Mais de um agente/CLI trabalha neste repo às vezes na mesma janela de tempo (Claude Code,
+Codex CLI, Cursor, Hermes CLI). Antes de editar arquivos de app (não docs/knowledge),
+rode `git log origin/main..HEAD --oneline` e `git status --short` pra ver se há trabalho
+local de outra sessão em andamento — se houver, evite os mesmos arquivos até a outra
+sessão commitar, e prefira commits pequenos e frequentes (mais fácil de mesclar sem
+conflito do que uma leva grande no final).
+
+**Estado em 2026-07-25 (~23h):** Claude Code e Codex CLI trabalharam em paralelo no mesmo
+`main`, sem conflito de arquivo, mas com **duas mudanças de schema Prisma commitadas e
+ainda NÃO aplicadas ao banco** (`npx prisma db push` pendente):
+- `Campaign.productResearchId` (Codex) — vincula campanha ao produto pesquisado.
+- `Presell.pageType` / `popupGate` / `videoUrl` (Codex) — tipos de página (advertorial/pogo/vsl) e pop-up de retenção.
+
+Quem for rodar `prisma db push` deve aplicar as duas de uma vez (são aditivas, sem
+conflito entre si) e depois rodar `npm run build` pra confirmar. Não aplicar duas vezes
+em sessões separadas sem checar `prisma migrate diff` antes (evita erro de coluna
+duplicada).
+
+Divisão de trabalho que emergiu hoje (não é regra fixa, só o que aconteceu):
+- **Claude Code**: Wizard (Campaign Setup Strategist / autofill), conexão real com a
+  Google Ads API (OAuth, MCC, criação de campanha), blindagem de compliance genérica do
+  Presell Builder (claims sensíveis, disclaimers garantidos no template).
+- **Codex CLI**: variantes estruturais de presell (pogo/vsl além de advertorial), pop-up
+  de retenção sem cloaking, integração Gmail read-only no MCP, correções de bugs no
+  Trend Lab (trackingId, listagem de campanhas com presell, botão de regenerar).
+
+Ambos escrevem em `hermes/knowledge/insights/` ao concluir algo relevante — é a memória
+compartilhada entre sessões que não se veem em tempo real. Ler os insights mais recentes
+lá antes de assumir que uma feature não existe ainda.
+
 ## Regra de ouro
 
 Este repositório é o **projeto afiliados**. Organize conhecimento e orquestração aqui.
