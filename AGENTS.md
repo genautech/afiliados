@@ -9,16 +9,19 @@ local de outra sessão em andamento — se houver, evite os mesmos arquivos até
 sessão commitar, e prefira commits pequenos e frequentes (mais fácil de mesclar sem
 conflito do que uma leva grande no final).
 
-**Estado em 2026-07-25 (~23h):** Claude Code e Codex CLI trabalharam em paralelo no mesmo
-`main`, sem conflito de arquivo, mas com **duas mudanças de schema Prisma commitadas e
-ainda NÃO aplicadas ao banco** (`npx prisma db push` pendente):
-- `Campaign.productResearchId` (Codex) — vincula campanha ao produto pesquisado.
-- `Presell.pageType` / `popupGate` / `videoUrl` (Codex) — tipos de página (advertorial/pogo/vsl) e pop-up de retenção.
+**Estado em 2026-07-26 (~00h):** as duas mudanças de schema Prisma commitadas em 2026-07-25
+(`Campaign.productResearchId` e `Presell.pageType`/`popupGate`/`videoUrl`) já foram
+aplicadas ao banco via `prisma db push` e `npm run build` passou limpo — item resolvido,
+sem ação pendente.
 
-Quem for rodar `prisma db push` deve aplicar as duas de uma vez (são aditivas, sem
-conflito entre si) e depois rodar `npm run build` pra confirmar. Não aplicar duas vezes
-em sessões separadas sem checar `prisma migrate diff` antes (evita erro de coluna
-duplicada).
+Teste ponta-a-ponta da criação de campanha real (PAUSED) na conta Yoobe via Google Ads API
+encontrou e corrigiu um bug: a API v25 passou a exigir `containsEuPoliticalAdvertising` na
+criação de campanha (regra da UE, obrigatório desde set/2025, bloqueia mutate calls sem
+declaração a partir de abr/2026) — `lib/google-ads.ts` não enviava o campo. Corrigido
+(sempre `DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING`, produto não roda ads políticos).
+Fluxo completo validado (orçamento → campanha PAUSED → geo/idioma → ad group → keyword →
+RSA) e objetos de teste já removidos da conta. Detalhes:
+`hermes/knowledge/insights/2026-07-26-google-ads-eu-political-ads-field.md`.
 
 Divisão de trabalho que emergiu hoje (não é regra fixa, só o que aconteceu):
 - **Claude Code**: Wizard (Campaign Setup Strategist / autofill), conexão real com a

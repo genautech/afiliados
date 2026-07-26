@@ -348,6 +348,8 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
       manualCpc: {},
       networkSettings: { targetGoogleSearch: true, targetSearchNetwork: false, targetContentNetwork: false, targetPartnerSearchNetwork: false },
       geoTargetTypeSetting: { positiveGeoTargetType: 'PRESENCE', negativeGeoTargetType: 'PRESENCE' },
+      // Exigido pela API desde set/2025 (EU Political Ads Regulation) — campanhas de afiliados nunca são políticas.
+      containsEuPoliticalAdvertising: 'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING',
     },
   }]);
   const campaignResourceName = campaignRes.results[0].resourceName;
