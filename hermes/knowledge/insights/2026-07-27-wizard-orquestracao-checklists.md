@@ -274,6 +274,28 @@ passar) — todos corretos. **Lição de processo:** qualquer "termo sempre bani
 apareça em disclaimers legais/de saúde padrão é candidato a falso positivo — trate por
 negação, não por allowlist de frase exata (que não escala contra texto gerado por IA).
 
+## Achado extra 4 — presellUrl também sofria do bug de estado desatualizado (mesmo dia)
+
+Validando a presell publicada de verdade (WordPress), o usuário reportou o MESMO erro de SSL
+de antes reaparecendo em produção — `campaign.presellUrl` tinha voltado pro valor antigo do
+AfiliAds. Causa: uma aba do wizard aberta ANTES da publicação (com `presellUrl` desatualizado
+no estado local) rodou `saveCampaign()` (clique em "Próximo"/"Verificar automaticamente"), que
+manda um snapshot completo do estado local — sobrescrevendo o valor mais novo gravado por
+fora daquela aba (no caso, minha correção manual + a publicação em WordPress). Mesma classe de
+bug já corrigida nesta sessão pra `productResearchId`/`pageType`/`popupGate`/`videoUrl`, agora
+confirmada em mais um campo.
+
+**Fix:** `presellUrl` tem 3 writers dedicados e precisos — `generatePresellHtml()`,
+`publishToOwnDomain()`, e agora um `onBlur` no próprio Input manual do campo. Nenhum deles
+precisa do snapshot geral do `saveCampaign()`, então o campo foi REMOVIDO do payload desse
+snapshot — só os 3 caminhos dedicados escrevem esse campo agora, cada um sempre com o valor
+mais recente/intencional, nunca um snapshot de estado que pode estar velho.
+
+**Padrão geral pra próximos agentes:** sempre que um campo tiver MÚLTIPLOS caminhos de escrita
+(um dedicado/preciso + outro genérico tipo "salva tudo que está no estado local"), o caminho
+genérico é o suspeito nº 1 quando esse campo "volta sozinho" pro valor errado — a correção é
+tirar o campo do snapshot genérico, não tentar sincronizar o estado local com mais frequência.
+
 ## Próxima ação (uma só)
 
 - Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-
