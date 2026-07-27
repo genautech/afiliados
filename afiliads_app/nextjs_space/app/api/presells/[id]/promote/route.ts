@@ -35,10 +35,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     let publishedUrl = '';
     if (destino === 'wordpress') {
       if (!dominio) return NextResponse.json({ error: 'dominio é obrigatório para destino=wordpress' }, { status: 422 });
-      publishedUrl = await publishToWordPress(presell.html, { domain: dominio, title: presell.title, slug: presell.slug });
+      publishedUrl = await publishToWordPress(presell.html, { domain: dominio, title: presell.title, slug: presell.slug, language: presell.language });
     } else if (destino === 'ftp') {
       if (!dominio) return NextResponse.json({ error: 'dominio é obrigatório para destino=ftp' }, { status: 422 });
-      publishedUrl = await publishToFtp(presell.html, { domain: dominio, slug: presell.slug });
+      publishedUrl = await publishToFtp(presell.html, { domain: dominio, slug: presell.slug, language: presell.language });
     }
 
     const promoted = await prisma.presell.update({

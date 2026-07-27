@@ -119,6 +119,9 @@ interface Locale {
   privacyLabel: string;
   termsLabel: string;
   contactLabel: string;
+  privacySlug: string;
+  termsSlug: string;
+  contactSlug: string;
   rightsReserved: string;
   cookieMsg: string;
   cookieAccept: string;
@@ -150,6 +153,9 @@ const LOCALE_EN: Locale = {
   privacyLabel: 'Privacy Policy',
   termsLabel: 'Terms of Use',
   contactLabel: 'Contact',
+  privacySlug: 'privacy-policy',
+  termsSlug: 'terms-of-use',
+  contactSlug: 'contact',
   rightsReserved: 'All rights reserved.',
   cookieMsg: 'We use cookies to analyze traffic and show more relevant ads.',
   cookieAccept: 'Accept',
@@ -181,6 +187,9 @@ const LOCALE_PT: Locale = {
   privacyLabel: 'Política de Privacidade',
   termsLabel: 'Termos de Uso',
   contactLabel: 'Contato',
+  privacySlug: 'politica-de-privacidade',
+  termsSlug: 'termos',
+  contactSlug: 'contato',
   rightsReserved: 'Todos os direitos reservados.',
   cookieMsg: 'Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes.',
   cookieAccept: 'Aceitar',
@@ -284,7 +293,7 @@ function popupGateHtml(locale: Locale): string {
 // comportamento padrão do Consent Mode, não é workaround nosso) e não inicializa o Meta Pixel.
 function cookieConsentHtml(locale: Locale): string {
   return `<div id="cc-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#0f172a;color:#e2e8f0;padding:14px 18px;font-family:Arial,sans-serif;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;box-shadow:0 -2px 12px rgba(0,0,0,.25)">
-  <span style="max-width:480px">${esc(locale.cookieMsg)} <a href="/politica-de-privacidade" style="color:#e07b39">${esc(locale.privacyLabel)}</a></span>
+  <span style="max-width:480px">${esc(locale.cookieMsg)} <a href="/${locale.privacySlug}" style="color:#e07b39">${esc(locale.privacyLabel)}</a></span>
   <button id="cc-accept" style="background:#e07b39;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:bold;cursor:pointer">${esc(locale.cookieAccept)}</button>
   <button id="cc-reject" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:8px 18px;border-radius:6px;cursor:pointer">${esc(locale.cookieReject)}</button>
 </div>
@@ -461,6 +470,12 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace(/\{\{PRIVACY_LABEL\}\}/g, esc(locale.privacyLabel));
   t = t.replace(/\{\{TERMS_LABEL\}\}/g, esc(locale.termsLabel));
   t = t.replace(/\{\{CONTACT_LABEL\}\}/g, esc(locale.contactLabel));
+  // Slugs das páginas de compliance (corrigido 2026-07-27): antes hardcoded em português nos
+  // 4 arquivos de template, mesmo pra presells geradas em inglês — o rodapé linkava labels em
+  // inglês pra URLs em português (ex.: "Privacy Policy" → /politica-de-privacidade).
+  t = t.replace(/\/politica-de-privacidade/g, `/${locale.privacySlug}`);
+  t = t.replace(/\/termos\b/g, `/${locale.termsSlug}`);
+  t = t.replace(/\/contato\b/g, `/${locale.contactSlug}`);
   t = t.replace(/\{\{RIGHTS_RESERVED\}\}/g, esc(locale.rightsReserved));
   if (pageType === 'interstitial') {
     t = t.replace('{{SEG_EYEBROW}}', esc(locale.segEyebrow));
@@ -587,13 +602,68 @@ async function wpCreatePage(domain: string, auth: string, opts: { title: string;
   }
 }
 
-// Mesmo texto real usado nas páginas do próprio AfiliAds (app/politica-de-privacidade,
-// app/termos, app/contato) — não é um stub vazio, é o conteúdo de compliance de verdade.
-const WP_COMPLIANCE_PAGES: Array<{ slug: string; title: string; content: string }> = [
-  {
-    slug: 'politica-de-privacidade',
-    title: 'Política de Privacidade',
-    content: `<h1>Política de Privacidade</h1>
+// Conteúdo de compliance de verdade (não é stub) — bilíngue (corrigido 2026-07-27: campanhas
+// para o mercado americano (geo=US, language=en) estavam recebendo Política de
+// Privacidade/Termos em PORTUGUÊS, porque essas páginas eram uma lista fixa em pt-BR,
+// independente do idioma real da presell/campanha. Estrutura de seções baseada no padrão
+// real usado por geradores de política de privacidade/termos pra sites de afiliados nos EUA
+// (FTC affiliate disclosure guidelines + estrutura padrão de privacy policy: dados
+// coletados, cookies/consent, direitos do usuário CCPA/GDPR, privacidade infantil, contato).
+function getCompliancePages(locale: Locale): Array<{ slug: string; title: string; content: string }> {
+  if (locale.htmlLang === 'en') {
+    return [
+      {
+        slug: locale.privacySlug,
+        title: 'Privacy Policy',
+        content: `<h1>Privacy Policy</h1>
+<p>This site is an independent content and affiliate disclosure page that participates in affiliate marketing programs. We may earn a commission from purchases made through links on this page, at no extra cost to you.</p>
+<h2>Information We Collect</h2>
+<p>We collect anonymized browsing data (such as pages visited and traffic source) through analytics tools (Google Analytics / Google Ads) to measure content performance. We do not directly collect sensitive personal information on this page. If you proceed to the advertised product's website, that site's own privacy policy applies to any data it collects.</p>
+<h2>Cookies and Tracking Technologies</h2>
+<p>We use third-party cookies (Google Ads, Google Analytics 4, and, where applicable, Meta Pixel) to measure clicks, conversions, and ad browsing behavior. When you visit this page, a banner lets you accept or decline these cookies — while not accepted, advertising/analytics tools operate in a restricted mode (no individual cookie storage, per Google Consent Mode) and Meta Pixel is not loaded. You may change your choice at any time by clearing this site's data in your browser settings.</p>
+<h2>Your Privacy Rights</h2>
+<p>Depending on where you live, you may have rights under applicable privacy laws (such as the California Consumer Privacy Act/CPRA for California residents, or the GDPR for EU/UK visitors), including the right to know what data is processed, to request its deletion, and to opt out of the sale or sharing of personal information. We do not sell personal information. To exercise any of these rights, contact us using the details below.</p>
+<h2>Children's Privacy</h2>
+<p>This site is not directed at children under 13, and we do not knowingly collect personal information from children.</p>
+<h2>Changes to This Policy</h2>
+<p>We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated revision date.</p>
+<h2>Contact</h2>
+<p>Questions about this policy can be sent to <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
+      },
+      {
+        slug: locale.termsSlug,
+        title: 'Terms of Use',
+        content: `<h1>Terms of Use</h1>
+<p>By accessing this site, you agree to the terms below. This is independent editorial content created for informational and promotional purposes, and it may contain affiliate links.</p>
+<h2>Affiliate Disclosure</h2>
+<p>This site participates in affiliate marketing programs. We may earn a commission on purchases made through the links present here, at no extra cost to the buyer. Opinions and reviews expressed are based on independent research.</p>
+<h2>No Professional or Medical Advice</h2>
+<p>The content on this page is provided for informational purposes only and does not substitute professional medical, financial, or other advice. Individual results may vary. Consult a qualified professional before making decisions related to your health.</p>
+<h2>Intellectual Property</h2>
+<p>Third-party trademarks, products, and images mentioned belong to their respective owners and are referenced for informational/comparative purposes only.</p>
+<h2>Third-Party Links</h2>
+<p>This site contains links to third-party websites (including the merchant's official site). We are not responsible for the content, policies, or practices of any third-party site.</p>
+<h2>Limitation of Liability</h2>
+<p>This content is provided "as is" without warranties of any kind. We are not liable for any damages arising from the use of this site or reliance on its content.</p>
+<h2>Changes to These Terms</h2>
+<p>We may update these Terms of Use from time to time. Continued use of this site after changes constitutes acceptance of the revised terms.</p>
+<h2>Contact</h2>
+<p>Questions about these terms can be sent to <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
+      },
+      {
+        slug: locale.contactSlug,
+        title: 'Contact',
+        content: `<h1>Contact</h1>
+<p>For questions, requests, or concerns related to the content on this page, please reach out:</p>
+<p><a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a></p>`,
+      },
+    ];
+  }
+  return [
+    {
+      slug: locale.privacySlug,
+      title: 'Política de Privacidade',
+      content: `<h1>Política de Privacidade</h1>
 <p>Este site é uma página de conteúdo e divulgação (advertorial) que participa de programas de marketing de afiliados. Podemos receber comissão por compras feitas através de links presentes nesta página, sem custo adicional para você.</p>
 <h2>Dados coletados</h2>
 <p>Coletamos dados de navegação de forma anônima (como páginas visitadas e origem do tráfego) através de ferramentas de analytics (Google Analytics / Google Ads) para medir o desempenho do conteúdo. Não coletamos dados pessoais sensíveis nesta página. Se você prosseguir para o site do produto anunciado, a política de privacidade daquele site próprio se aplica aos dados que ele coletar.</p>
@@ -601,11 +671,11 @@ const WP_COMPLIANCE_PAGES: Array<{ slug: string; title: string; content: string 
 <p>Usamos cookies de terceiros (Google Ads, Google Analytics 4 e, quando aplicável, Meta Pixel) para mensurar cliques, conversões e comportamento de navegação dos nossos anúncios. Ao visitar esta página, um banner permite que você aceite ou recuse esses cookies — enquanto não aceitos, as ferramentas de anúncio/analytics operam em modo restrito (sem armazenamento individual de cookie, conforme o Google Consent Mode) e o Meta Pixel não é carregado. Você pode alterar sua escolha a qualquer momento limpando os dados do site nas configurações do seu navegador.</p>
 <h2>Contato</h2>
 <p>Dúvidas sobre esta política podem ser enviadas para <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
-  },
-  {
-    slug: 'termos',
-    title: 'Termos de Uso',
-    content: `<h1>Termos de Uso</h1>
+    },
+    {
+      slug: locale.termsSlug,
+      title: 'Termos de Uso',
+      content: `<h1>Termos de Uso</h1>
 <p>Ao acessar este site, você concorda com os termos abaixo. Este é um conteúdo editorial independente com finalidade informativa e promocional, que pode conter links de afiliado.</p>
 <h2>Divulgação de afiliado</h2>
 <p>Este site participa de programas de marketing de afiliados. Podemos ganhar comissão sobre compras realizadas através dos links aqui presentes, sem custo adicional para o comprador. As opiniões e avaliações expressas são baseadas em pesquisa independente.</p>
@@ -615,15 +685,16 @@ const WP_COMPLIANCE_PAGES: Array<{ slug: string; title: string; content: string 
 <p>Marcas, produtos e imagens de terceiros mencionados pertencem aos seus respectivos proprietários e são citados apenas para fins informativos/comparativos.</p>
 <h2>Contato</h2>
 <p>Dúvidas sobre estes termos podem ser enviadas para <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
-  },
-  {
-    slug: 'contato',
-    title: 'Contato',
-    content: `<h1>Contato</h1>
+    },
+    {
+      slug: locale.contactSlug,
+      title: 'Contato',
+      content: `<h1>Contato</h1>
 <p>Para dúvidas, solicitações ou questões relacionadas ao conteúdo desta página, entre em contato:</p>
 <p><a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a></p>`,
-  },
-];
+    },
+  ];
+}
 
 // Roda antes de publicar a presell em si — sem isso, os links de rodapé (Política de
 // Privacidade/Termos/Contato) que TODA presell gera apontam pra páginas que nunca existiram
@@ -631,9 +702,9 @@ const WP_COMPLIANCE_PAGES: Array<{ slug: string; title: string; content: string 
 // privacy policy funcional numa bridge page). Idempotente: só cria o que ainda não existe.
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function ensureWordPressCompliancePages(domain: string): Promise<void> {
+export async function ensureWordPressCompliancePages(domain: string, language?: string): Promise<void> {
   const { auth } = await wpAuthHeader(domain);
-  for (const page of WP_COMPLIANCE_PAGES) {
+  for (const page of getCompliancePages(pickLocale(language))) {
     try {
       const exists = await wpPageExists(domain, auth, page.slug);
       if (!exists) await wpCreatePage(domain, auth, page);
@@ -648,9 +719,23 @@ export async function ensureWordPressCompliancePages(domain: string): Promise<vo
   }
 }
 
-export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string }) {
+async function wpUpdatePage(domain: string, auth: string, pageId: number, opts: { title?: string; content: string }): Promise<string> {
+  const res = await fetch(`https://${domain}/wp-json/wp/v2/pages/${pageId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({ ...(opts.title ? { title: opts.title } : {}), content: opts.content }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Erro ao atualizar página no WordPress (${domain}): ${data?.message ?? res.status}`);
+  return data.link as string;
+}
+
+export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string; language?: string; updatePageId?: number }) {
   const { auth } = await wpAuthHeader(opts.domain);
-  await ensureWordPressCompliancePages(opts.domain);
+  await ensureWordPressCompliancePages(opts.domain, opts.language);
+  if (opts.updatePageId) {
+    return wpUpdatePage(opts.domain, auth, opts.updatePageId, { title: opts.title, content: html });
+  }
   const res = await fetch(`https://${opts.domain}/wp-json/wp/v2/pages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
@@ -674,9 +759,9 @@ function ftpSites(): Record<string, { host: string; port?: number; user: string;
   }
 }
 
-function wrapStaticPage(title: string, bodyHtml: string): string {
+function wrapStaticPage(title: string, bodyHtml: string, htmlLang: string): string {
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${htmlLang}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -705,12 +790,13 @@ async function ftpUploadFile(site: { host: string; port?: number; user: string; 
 
 // Idempotente por natureza (upload sempre sobrescreve o mesmo caminho) — diferente da versão
 // WordPress, não precisa checar existência antes.
-export async function ensureFtpCompliancePages(domain: string): Promise<void> {
+export async function ensureFtpCompliancePages(domain: string, language?: string): Promise<void> {
   const site = ftpSites()[domain];
   if (!site) throw new Error(`Domínio FTP "${domain}" não configurado em FTP_SITES_JSON`);
-  for (const page of WP_COMPLIANCE_PAGES) {
+  const locale = pickLocale(language);
+  for (const page of getCompliancePages(locale)) {
     try {
-      await ftpUploadFile(site, page.slug, 'index.html', wrapStaticPage(page.title, page.content));
+      await ftpUploadFile(site, page.slug, 'index.html', wrapStaticPage(page.title, page.content, locale.htmlLang));
     } catch (e: any) {
       console.error(`[ftp-compliance-pages] falha ao enviar "${page.slug}" pra ${domain}:`, e?.message);
     }
@@ -718,10 +804,10 @@ export async function ensureFtpCompliancePages(domain: string): Promise<void> {
   }
 }
 
-export async function publishToFtp(html: string, opts: { domain: string; slug: string }): Promise<string> {
+export async function publishToFtp(html: string, opts: { domain: string; slug: string; language?: string }): Promise<string> {
   const site = ftpSites()[opts.domain];
   if (!site) throw new Error(`Domínio FTP "${opts.domain}" não configurado em FTP_SITES_JSON`);
-  await ensureFtpCompliancePages(opts.domain);
+  await ensureFtpCompliancePages(opts.domain, opts.language);
   await ftpUploadFile(site, opts.slug, 'index.html', html);
   return `https://${opts.domain}/${opts.slug}/`;
 }
