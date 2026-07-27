@@ -222,6 +222,58 @@ trocar de conta, sem risco de nada quebrar.
 ativo na mesma pasta corrompe o `.next` compartilhado (erro `MODULE_NOT_FOUND` no dev
 server) — sempre rodar build isolado ou reiniciar o dev depois.
 
+## Achado extra 2 — publicação em domínio próprio (mesmo dia)
+
+Usuário perguntou por que a presell da FemiCore apontava pro AfiliAds em vez de
+`orangepeelmorning.com` (domínio real registrado na Hostinger). Investigação em 3 camadas:
+
+**1) `hostingerDomain` da campanha estava vazio** — nunca foi preenchido, então não havia
+nada dizendo ao app pra usar esse domínio.
+
+**2) A API pública da Hostinger não publica arquivo em hospedagem regular.** Pesquisei
+`developers.hostinger.com`/SDK oficial antes de implementar qualquer coisa: existe
+`AgencyHostingFilesApi` (upload de arquivo), mas só pra contas Agency Hosting (revenda) — não
+existe `HostingFilesApi` equivalente pra hospedagem regular/pessoal. Pra uma conta normal, a
+Hostinger só documenta File Manager (painel), FTP/SFTP ou Git deploy como formas de publicar
+conteúdo. **Não presuma que uma "API key da Hostinger" dá pra fazer upload de arquivo** — só
+funciona assim em conta Agency Hosting.
+
+**3) Construído `publishToFtp()`** (`lib/presell.ts`, usando `basic-ftp`) como caminho pra
+domínios que são hospedagem estática de verdade — config em `FTP_SITES_JSON` (mesmo padrão de
+`WP_SITES_JSON`), endpoint `/api/presells/[id]/promote` aceita `destino='ftp'`, botão
+"Publicar em domínio próprio" no Passo 4 do wizard.
+
+**Mas a virada real:** antes de configurar FTP pra `orangepeelmorning.com`, testei (leitura,
+sem custo) se o `WP_SITES_JSON` que JÁ existia no `.env` pra esse domínio (de uma sessão
+anterior) ainda era válido — `GET /wp-json/wp/v2/users/me` com Basic Auth retornou 200 e o
+perfil real do usuário WordPress. **O domínio roda WordPress de verdade**, contradizendo o que
+o usuário tinha dito ("é hospedagem estática"). Perguntei e o usuário confirmou: usar o
+pipeline WordPress já existente. Publicado de verdade via `/api/presells/[id]/promote` com
+`destino=wordpress` — página real, HTTP 200, `campaign.presellUrl`/`hostingerDomain`
+atualizados. **Regra pra próximos agentes:** antes de construir uma integração nova pra um
+domínio, teste (com uma chamada de leitura, sem custo) se já existe uma configurada em
+`WP_SITES_JSON`/`FTP_SITES_JSON` que baseia — presunções do usuário sobre a própria infra
+podem estar desatualizadas ou erradas.
+
+## Achado extra 3 — falso positivo em compliance (descoberto publicando a FemiCore de verdade)
+
+Depois de publicar em WordPress, `sem_claims` reprovou com "Termo de claim proibido
+encontrado (\"cure\")" — na presell real gerada pela IA, o disclaimer de saúde obrigatório
+estava fraseado como "supplements are not intended to diagnose, treat, or cure any
+condition." — uma variação legítima do disclaimer padrão, não um claim proibido. A correção
+anterior desta mesma sessão (`SAFE_DISCLAIMER_BOILERPLATE`, uma allowlist de frase EXATA)
+quebrou na primeira variação de texto que a IA gerou com fraseado diferente. **Causa raiz de
+fundo:** "cure"/"eliminate"/"cura"/"elimina" estavam no grupo "sempre banido, sem exceção"
+(`BANNED_CLAIM_RE`) — mas esses termos aparecem legitimamente dentro do disclaimer de saúde
+correto o tempo todo, então precisam do MESMO tratamento de "checagem por negação" já usado
+pra "garantido"/"guaranteed" (`NEGATED_CLAIM_TERMS_RE`), não de uma allowlist de frase fixa.
+Corrigido movendo esses 4 termos pro grupo de negação; `SAFE_DISCLAIMER_BOILERPLATE`/
+`stripSafeBoilerplate()` removidos (ficaram redundantes). Validado com 8 casos de sanidade
+(5 claims reais que devem reprovar, 3 disclaimers corretos em variações de fraseado que devem
+passar) — todos corretos. **Lição de processo:** qualquer "termo sempre banido" que também
+apareça em disclaimers legais/de saúde padrão é candidato a falso positivo — trate por
+negação, não por allowlist de frase exata (que não escala contra texto gerado por IA).
+
 ## Próxima ação (uma só)
 
 - Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-

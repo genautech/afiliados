@@ -1,5 +1,28 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+**Estado em 2026-07-27 (~15h) — presell da FemiCore publicada de verdade em
+orangepeelmorning.com + fix de falso-positivo em compliance:** durante o teste do
+"Corrigir com agente" no item SSL, achamos que `generatePresellHtml()` nunca persistia
+`presellUrl` (corrigido) e que o diagnóstico genérico sugeria hospedagem de terceiro
+(Netlify) que o usuário não usa. Investigando a hospedagem real: **a API pública da
+Hostinger só expõe upload de arquivo pra contas Agency Hosting**, não pra hospedagem
+regular — implementei `publishToFtp()` (`lib/presell.ts`, `basic-ftp`) como caminho pra
+domínios estáticos, mas antes de usá-lo testei (leitura, sem custo) se `WP_SITES_JSON` já
+tinha algo configurado pra `orangepeelmorning.com` — tinha, de uma sessão anterior, e a
+Application Password ainda era válida (`GET /wp-json/wp/v2/users/me` → 200). O domínio roda
+WordPress de verdade. Publicado via o pipeline WordPress já existente:
+`https://orangepeelmorning.com/femicore-advertorial-advertorial-3/` (real, HTTP 200).
+Publicando de verdade, achamos mais um falso positivo de compliance: `sem_claims` reprovava
+qualquer variação de fraseado do disclaimer de saúde que usasse "cure"/"eliminate" — corrigido
+tratando esses termos por checagem de negação (igual "garantido"/"guaranteed"), não por
+allowlist de frase exata (que quebra a cada variação de texto da IA). Checklist da Bridge da
+FemiCore: 7/7. Detalhes completos em
+`hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md` ("Achado extra 2" e
+"3"). `publishToFtp()`/`FTP_SITES_JSON` seguem disponíveis pra qualquer domínio futuro que
+seja hospedagem estática de verdade (não WordPress) — endpoint
+`/api/presells/[id]/promote` aceita `destino='ftp'`, botão "Publicar em domínio próprio" no
+Passo 4 do wizard.
+
 **Estado em 2026-07-27 (~14h) — Fase 3 do wizard completa (ChecklistLearning + "Corrigir com
 agente"):** fecha o plano de 3 fases da orquestração do wizard. Novo modelo
 `ChecklistLearning` (problema+correção por item de checklist, escopado por vertical/canal/
