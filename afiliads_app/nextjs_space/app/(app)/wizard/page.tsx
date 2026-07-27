@@ -1095,10 +1095,13 @@ export default function WizardPage() {
       if (absoluteUrl) setPresellUrl(absoluteUrl);
       setShowPreview(true);
       setPresellSnapshot({ channel, pageType, videoUrl, name });
+      // Persiste a URL de verdade junto com presellGeneratedAt — sem isso, checagens que leem
+      // campaign.presellUrl direto do banco (ex.: "SSL ativo") ficam falhando logo após gerar,
+      // já que só um saveCampaign() completo (Próximo/Salvar Rascunho) sincronizava esse campo.
       fetch(`/api/campaigns/${cid}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ presellGeneratedAt: new Date().toISOString() }),
+        body: JSON.stringify({ presellGeneratedAt: new Date().toISOString(), presellUrl: absoluteUrl || presellUrl }),
       }).catch(() => {});
       toast.success('Presell gerada pelo Presell Builder (IA) — revise antes de avançar.');
     } catch {
@@ -1803,10 +1806,19 @@ export default function WizardPage() {
                       : 'Cria em modo PAUSED (não gasta nada até você ativar manualmente). Exige os itens críticos deste checklist marcados/verificados antes.'}
                   </p>
                 </div>
-                <Button size="sm" onClick={createInGoogleAds} disabled={creatingGads || !!googleCampaignId} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shrink-0">
-                  {creatingGads ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
-                  {googleCampaignId ? 'Já criada' : creatingGads ? 'Criando...' : 'Criar no Google Ads (PAUSED)'}
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Button size="sm" onClick={createInGoogleAds} disabled={creatingGads || !!googleCampaignId} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
+                    {creatingGads ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                    {googleCampaignId ? 'Já criada' : creatingGads ? 'Criando...' : 'Criar no Google Ads (PAUSED)'}
+                  </Button>
+                  {googleCampaignId && (
+                    <a href={`https://ads.google.com/aw/campaigns?campaignId=${googleCampaignId}`} target="_blank" rel="noopener">
+                      <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1.5" title="Abre a campanha no Google Ads — se a conta ativa no navegador não for a certa, troque de conta lá antes">
+                        <ExternalLink className="h-3.5 w-3.5" /> Ver no Google Ads
+                      </Button>
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           )}

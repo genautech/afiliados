@@ -62,7 +62,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const scope = STEP_SCOPE[step] ?? 'outro';
-    const context = { vertical: campaign.vertical, channel: campaign.channel, platform: campaign.platform, pageType: campaign.pageType };
+    const linkedPresell = await prisma.presell.findFirst({ where: { campaignId }, orderBy: { createdAt: 'desc' }, select: { slug: true } });
+    const context = {
+      vertical: campaign.vertical, channel: campaign.channel, platform: campaign.platform, pageType: campaign.pageType,
+      // Infra REAL do usuário — o diagnóstico nunca deve sugerir hospedagem de terceiro
+      // (Netlify, Vercel, Wix etc.) que não é o que o usuário de fato usa; ver instrução no
+      // systemPrompt do ramo genérico abaixo.
+      presell_gerada_pelo_afiliads: linkedPresell ? `${process.env.NEXTAUTH_URL ?? ''}/p/${linkedPresell.slug}` : null,
+      presell_url_configurada_na_campanha: campaign.presellUrl || null,
+      hostinger_domain_configurado: campaign.hostingerDomain || null,
+    };
     const failureNote = checklistRow.note ?? 'motivo não registrado';
 
     const fieldMapping = ITEM_FIELD_MAP[itemKey];
@@ -116,6 +125,7 @@ JSON puro.`;
     // Itens sem campo único mapeável (conteúdo de presell ou sistema externo) — diagnostica e
     // grava a lição, sem tentar aplicar direto (ver comentário no ITEM_FIELD_MAP acima).
     const systemPrompt = `Você é o agente "Compliance Sentinel" de marketing de afiliados. Diagnostique a falha de um item de checklist e proponha uma correção CONCRETA e específica — texto real pronto pra ser usado numa página de pré-sell, configuração de anúncio, ou ajuste de sistema, não uma explicação genérica.
+REGRA CRÍTICA sobre hospedagem/SSL: o campo "Contexto da campanha" traz a infra REAL do usuário — se "presell_gerada_pelo_afiliads" estiver preenchido, a pré-sell já é hospedada pelo próprio AfiliAds com HTTPS automático (o item provavelmente só falhou porque presellUrl não estava salvo na campanha ainda — corrigido automaticamente a partir de agora); se "hostinger_domain_configurado" estiver preenchido, é o domínio próprio real do usuário na Hostinger (que já tem API key configurada). NUNCA sugira hospedagem de terceiro (Netlify, Vercel, Wix, GitHub Pages etc.) — o usuário não usa isso. Se nenhum dos dois campos de infra estiver preenchido, explique que falta vincular uma pré-sell gerada ou configurar o domínio Hostinger, sem inventar outro provedor.
 Responda APENAS JSON válido, sem markdown: {"diagnostico": "1-2 parágrafos curtos", "correcao": "instrução concreta e específica do que mudar/adicionar"}`;
     const userPrompt = `Item de checklist com falha: "${checklistRow.itemLabel}"
 Motivo da falha: ${failureNote}

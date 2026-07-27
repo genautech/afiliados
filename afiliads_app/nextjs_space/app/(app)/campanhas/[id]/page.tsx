@@ -289,14 +289,21 @@ export default function CampaignDetailPage() {
               {creatingGads ? 'Criando...' : criticalUnchecked > 0 ? `Checklist pendente (${criticalUnchecked})` : 'Criar no Google Ads'}
             </Button>
           ) : (
-            <Button
-              onClick={() => runGadsSync('pull')}
-              disabled={syncingGads}
-              className="bg-slate-700 hover:bg-slate-600 text-white gap-2"
-            >
-              {syncingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Sincronizar Google Ads
-            </Button>
+            <>
+              <Button
+                onClick={() => runGadsSync('pull')}
+                disabled={syncingGads}
+                className="bg-slate-700 hover:bg-slate-600 text-white gap-2"
+              >
+                {syncingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Sincronizar Google Ads
+              </Button>
+              <a href={`https://ads.google.com/aw/campaigns?campaignId=${campaign.googleCampaignId}`} target="_blank" rel="noopener">
+                <Button variant="outline" className="border-[#334155] text-slate-300 gap-2" title="Abre a campanha no Google Ads — se a conta ativa no navegador não for a certa, troque de conta lá antes">
+                  <ExternalLink className="h-4 w-4" /> Ver no Google Ads
+                </Button>
+              </a>
+            </>
           )}
           <Button onClick={runAudit} disabled={auditing} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
             {auditing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
