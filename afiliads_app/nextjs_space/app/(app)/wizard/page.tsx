@@ -433,6 +433,12 @@ export default function WizardPage() {
   const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [generatingPresell, setGeneratingPresell] = useState(false);
+  // Staleness cross-step (Fase 2, 2026-07-27): snapshot dos campos que a presell usa pra se
+  // gerar, tirado no momento da geração — se algum divergir depois (usuário mudou canal/tipo
+  // de página/vídeo/nome em passo posterior), a presell pode estar desatualizada e precisa
+  // regenerar antes de lançar. Comparação é só client-side (não bloqueia nada sozinha —
+  // bridge_ok em GOLIVE_CHECKLIST continua sendo o gate real), é só aviso antecipado.
+  const [presellSnapshot, setPresellSnapshot] = useState<{ channel: string; pageType: string; videoUrl: string; name: string } | null>(null);
   const [presellId, setPresellId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -462,6 +468,7 @@ export default function WizardPage() {
   // a campanha e ao rodar a verificação automática (/api/campaigns/[id]/checklists/verify).
   const [checklistMeta, setChecklistMeta] = useState<Record<string, { verificationType: string; note?: string | null }>>({});
   const [verifyingChecklist, setVerifyingChecklist] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [testDuration, setTestDuration] = useState('72h');
   const [budgetScale, setBudgetScale] = useState('0');
   const [loopEnabled, setLoopEnabled] = useState(false);
@@ -593,6 +600,13 @@ export default function WizardPage() {
     setLoopInterval(c?.loopInterval ?? '24h');
     setLoopAgents(c?.loopAgents ?? 'ads,compliance');
     setGoogleCampaignId(c?.googleCampaignId ?? null);
+    // Snapshot inicial pra detecção de staleness (Fase 2): assume que os campos batiam com a
+    // presell na última vez que essa campanha foi salva — só divergências feitas NESTA sessão
+    // de edição (a partir daqui) vão acender o aviso, o que cobre o cenário real do pedido
+    // ("corrigi algo no passo 5 que invalida o passo 4").
+    if (c?.presellGeneratedAt) {
+      setPresellSnapshot({ channel: c?.channel ?? 'SEARCH', pageType: c?.pageType ?? 'advertorial', videoUrl: c?.videoUrl ?? '', name: c?.name ?? '' });
+    }
     if (Array.isArray(c?.keywords) && c.keywords.length > 0) {
       setSelectedKeywords(c.keywords.map((k: any) => ({
         keyword: k.keyword, layer: k.layer, matchType: k.matchType, relevance: k.relevanceScore, selected: k.isSelected,
@@ -619,13 +633,18 @@ export default function WizardPage() {
   // Roda a verificação real (SSL, disclaimer/privacy no HTML, sync do Google Ads, etc.) em vez
   // de confiar só no que o usuário marcou — substitui o resultado dos itens `auto` pelo checado
   // de verdade; itens autoatestados continuam intocados (só o toggle manual do usuário).
-  const runChecklistVerify = async () => {
-    if (!campaignId) { toast.error('Salve a campanha (avance um passo) antes de verificar o checklist.'); return; }
+  // Retorna o `byStep` fresco (corrigido 2026-07-27, Fase 2): quem chama isso e precisa decidir
+  // algo NO MESMO fluxo (ex.: next()/launch() checando canAdvance logo depois) não pode ler os
+  // estados setAntistrikeChecks/setBridgeChecks/etc. — são assíncronos, só valem no próximo
+  // render, então o valor lido ali seria sempre o antigo (mesma classe de bug de
+  // generatePresellHtml/saveCampaign, ver commit c90bafc).
+  const runChecklistVerify = async (): Promise<Record<number, Record<string, boolean>> | null> => {
+    if (!campaignId) { toast.error('Salve a campanha (avance um passo) antes de verificar o checklist.'); return null; }
     setVerifyingChecklist(true);
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/checklists/verify`, { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) { toast.error(data?.error ?? 'Erro ao verificar checklist'); return; }
+      if (!res.ok) { toast.error(data?.error ?? 'Erro ao verificar checklist'); return null; }
       const meta = { ...checklistMeta };
       const byStep: Record<number, Record<string, boolean>> = {};
       for (const row of data.items ?? []) {
@@ -640,8 +659,10 @@ export default function WizardPage() {
       if (byStep[8]) setTrackingChecks((prev) => ({ ...prev, ...byStep[8] }));
       if (byStep[9]) setGoLiveChecks((prev) => ({ ...prev, ...byStep[9] }));
       toast.success(`Checklist verificado de verdade — ${data.verified} item(ns) checado(s) automaticamente.`);
+      return byStep;
     } catch {
       toast.error('Erro de rede ao verificar checklist.');
+      return null;
     } finally {
       setVerifyingChecklist(false);
     }
@@ -824,15 +845,26 @@ export default function WizardPage() {
     await runAutofill({ productResearchId: id });
   };
 
-  const canAdvance = () => {
+  // `fresh` (opcional): resultado recém-vindo de runChecklistVerify() — usa ele em vez do
+  // estado local quando disponível (corrigido 2026-07-27, Fase 2: o estado só reflete a
+  // verificação depois do próximo render, ver comentário em runChecklistVerify).
+  const canAdvance = (fresh?: Record<number, Record<string, boolean>> | null) => {
     if (step === 1) return name.trim().length > 0 && commVal > 0;
+    const checksFor = (s: number, fallback: Record<string, boolean>) => fresh?.[s] ? { ...fallback, ...fresh[s] } : fallback;
     if (step === 3 && platform === 'ClickBank') {
-      return ANTISTRIKE_ITEMS.filter(i => i.critical).every(i => antistrikeChecks[i.key]);
+      return ANTISTRIKE_ITEMS.filter(i => i.critical).every(i => checksFor(3, antistrikeChecks)[i.key]);
     }
-    if (step === 4) return BRIDGE_CHECKLIST.filter(i => i.critical).every(i => bridgeChecks[i.key]);
-    if (step === 9) return GOLIVE_CHECKLIST.filter(i => i.critical).every(i => goLiveChecks[i.key]);
+    if (step === 4) return BRIDGE_CHECKLIST.filter(i => i.critical).every(i => checksFor(4, bridgeChecks)[i.key]);
+    if (step === 9) return GOLIVE_CHECKLIST.filter(i => i.critical).every(i => checksFor(9, goLiveChecks)[i.key]);
     return true;
   };
+
+  // Passos com checklist 'auto' — precisam de verificação fresca do servidor antes de avançar
+  // (corrigido 2026-07-27, Fase 2): canAdvance() sozinho só lia estado local, que podia estar
+  // desatualizado (ex.: presell regenerada depois da última verificação, ou correção feita num
+  // campo que afeta um item 'auto' de um passo anterior). Ver
+  // ~/.claude/plans/velvet-finding-cherny.md.
+  const STEPS_COM_VERIFICACAO_AUTO = new Set([3, 4, 7, 8, 9]);
 
   const next = async () => {
     await saveCampaign();
@@ -843,10 +875,20 @@ export default function WizardPage() {
       const items = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
       await saveChecklists(8, items, trackingChecks);
     }
+    let freshChecks: Record<number, Record<string, boolean>> | null = null;
+    if (STEPS_COM_VERIFICACAO_AUTO.has(step) && campaignId) {
+      setAdvancing(true);
+      try {
+        freshChecks = await runChecklistVerify();
+      } finally {
+        setAdvancing(false);
+      }
+    }
     // Trava real: não avança com item crítico pendente (auto ou autoatestado) — antes disso só
     // mostrava um aviso e deixava passar mesmo assim. Use "Verificar automaticamente" pra
-    // confirmar os itens verificáveis, ou marque manualmente os autoatestados.
-    if (!canAdvance()) {
+    // confirmar os itens verificáveis, ou marque manualmente os autoatestados. Agora sempre
+    // roda em cima do resultado FRESCO acima, nunca de estado que pode estar velho.
+    if (!canAdvance(freshChecks)) {
       toast.error('Não é possível avançar: complete os itens críticos deste passo primeiro (use "Verificar automaticamente" ou marque os autoatestados pendentes).');
       return;
     }
@@ -858,6 +900,22 @@ export default function WizardPage() {
   const launch = async () => {
     await saveCampaign();
     await saveChecklists(9, GOLIVE_CHECKLIST, goLiveChecks);
+    // Última validação fresca antes de lançar de verdade (Fase 2, 2026-07-27) — nunca lança em
+    // cima de goLiveChecks potencialmente velho (ex.: usuário ficou um tempo no Passo 9 e algo
+    // mudou nesse meio tempo, como o status da presell vinculada ou da campanha no Google Ads).
+    if (campaignId) {
+      setAdvancing(true);
+      let freshChecks: Record<number, Record<string, boolean>> | null = null;
+      try {
+        freshChecks = await runChecklistVerify();
+      } finally {
+        setAdvancing(false);
+      }
+      if (!canAdvance(freshChecks)) {
+        toast.error('A verificação final encontrou item(ns) crítico(s) pendente(s) — confira o checklist antes de lançar.');
+        return;
+      }
+    }
     if (campaignId) {
       await fetch(`/api/campaigns/${campaignId}`, {
         method: 'PATCH',
@@ -974,6 +1032,12 @@ export default function WizardPage() {
         : data.url;
       if (absoluteUrl) setPresellUrl(absoluteUrl);
       setShowPreview(true);
+      setPresellSnapshot({ channel, pageType, videoUrl, name });
+      fetch(`/api/campaigns/${cid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ presellGeneratedAt: new Date().toISOString() }),
+      }).catch(() => {});
       toast.success('Presell gerada pelo Presell Builder (IA) — revise antes de avançar.');
     } catch {
       toast.error('Erro de rede ao gerar a presell.');
@@ -1116,6 +1180,27 @@ export default function WizardPage() {
           })}
         </div>
       </div>
+
+      {/* Aviso de presell desatualizada (Fase 2, 2026-07-27): canal/tipo de página/vídeo/nome
+          mudaram depois da última geração — a presell publicada pode não bater mais com a
+          configuração atual da campanha. Não bloqueia sozinho (bridge_ok em GOLIVE_CHECKLIST é
+          o gate real), só avisa cedo pra evitar lançar em cima de conteúdo desatualizado. */}
+      {presellSnapshot && step >= 5 && (
+        presellSnapshot.channel !== channel || presellSnapshot.pageType !== pageType ||
+        presellSnapshot.videoUrl !== videoUrl || presellSnapshot.name !== name
+      ) && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+            <p className="text-sm text-amber-200">
+              Canal, tipo de página, vídeo ou nome mudaram desde a última geração da pré-sell — ela pode estar desatualizada. Regenere antes de lançar.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => { setStep(4); generatePresellHtml(); }} disabled={generatingPresell} className="border-amber-500/40 text-amber-200 gap-1.5 shrink-0">
+            {generatingPresell ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Regenerar agora
+          </Button>
+        </div>
+      )}
 
       {/* Step Content */}
       <Card className="bg-[#1e293b] border-[#334155]">
@@ -1826,14 +1911,14 @@ export default function WizardPage() {
           </Button>
         </div>
         {step < 9 ? (
-          <Button onClick={next} disabled={saving} className="bg-green-600 hover:bg-green-700 text-white gap-2">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Próximo <ArrowRight className="h-4 w-4" />
+          <Button onClick={next} disabled={saving || advancing} className="bg-green-600 hover:bg-green-700 text-white gap-2">
+            {(saving || advancing) && <Loader2 className="h-4 w-4 animate-spin" />}
+            {advancing ? 'Validando...' : 'Próximo'} <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
-          <Button onClick={launch} disabled={saving || !canAdvance()} className="bg-green-600 hover:bg-green-700 text-white gap-2">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            <Rocket className="h-4 w-4" /> Lançar Campanha
+          <Button onClick={launch} disabled={saving || advancing || !canAdvance()} className="bg-green-600 hover:bg-green-700 text-white gap-2">
+            {(saving || advancing) && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Rocket className="h-4 w-4" /> {advancing ? 'Validando...' : 'Lançar Campanha'}
           </Button>
         )}
       </div>

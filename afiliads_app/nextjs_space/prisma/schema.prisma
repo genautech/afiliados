@@ -95,6 +95,7 @@ model Campaign {
   cpcMax                Float               @default(0)
   cpcScale              Float               @default(0)
   presellUrl            String?             @db.Text
+  presellGeneratedAt    DateTime?
   flowpageUrl           String?             @db.Text
   hostingerDomain       String?
   budgetTest            Float               @default(50)

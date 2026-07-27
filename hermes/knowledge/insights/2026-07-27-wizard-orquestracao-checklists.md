@@ -88,9 +88,28 @@ script de teste.
 
 - N/A — Fase 1 já está em produção.
 
+## Fase 2 (implementada no mesmo dia)
+
+**2a — validação fresca por etapa.** `next()` e `launch()` agora rodam
+`runChecklistVerify()` de verdade (não confiam em estado local potencialmente velho) antes
+de decidir se pode avançar/lançar, nos passos 3/4/7/8/9. Loading (`advancing`) no botão
+durante isso. Achado corrigindo isso: `runChecklistVerify()` só atualizava estado React via
+`setXChecks(...)` (assíncrono) — quem chamasse e tentasse ler o estado *logo em seguida*,
+no mesmo fluxo síncrono, pegava o valor VELHO (mesma classe de bug do `saveCampaign()`/
+`generatePresellHtml()` corrigida antes, commit `c90bafc`). Corrigido fazendo
+`runChecklistVerify()` **retornar** o `byStep` fresco, e `canAdvance()` aceitar um override
+opcional com esse resultado em vez de só ler o estado.
+
+**2b — staleness cross-step.** Novo campo `Campaign.presellGeneratedAt`. Snapshot
+client-side (`presellSnapshot`) dos campos que afetam a presell (`channel`/`pageType`/
+`videoUrl`/`name`) tirado no momento da geração — se algum divergir depois (passo 5+), um
+banner amarelo aparece com atalho "Regenerar agora". Não é o gate real (isso continua sendo
+`bridge_ok`/`GOLIVE_CHECKLIST`), é só aviso antecipado pro usuário não descobrir só no
+Passo 9 que mudou o canal depois de gerar a presell.
+
 ## Próxima ação (uma só)
 
-- Implementar Fase 2 (validação fresca por etapa com loading + aviso de presell
-  desatualizada cross-step) e Fase 3 (base de conhecimento `ChecklistLearning` + botão
-  "Corrigir com agente" nos itens de checklist) — plano completo já escrito, só falta
-  executar. Ver `~/.claude/plans/velvet-finding-cherny.md`.
+- Implementar Fase 3 (base de conhecimento `ChecklistLearning` + botão "Corrigir com
+  agente" nos itens de checklist que falharem + injeção em wizard-autofill/product-research)
+  — plano completo já escrito, só falta executar. Ver
+  `~/.claude/plans/velvet-finding-cherny.md`.
