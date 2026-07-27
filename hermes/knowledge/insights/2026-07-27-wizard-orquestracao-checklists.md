@@ -200,6 +200,28 @@ re-verificou, e `passouAVerificar: true` voltou — confirmando o ciclo completo
 aplicar→re-verificar→passou. Campanha de teste restaurada pro estado original (`platform:
 'ClickBank'`, `postbackUrl: ''`) depois do teste.
 
+## Achado extra — presellUrl nunca persistido logo após gerar (mesmo dia, testando Fase 3)
+
+Testando "Corrigir com agente" no item "SSL ativo" pra valer, o agente sugeriu hospedar a
+presell no Netlify — errado, o usuário hospeda no Hostinger (API key já configurada) e/ou
+usa a própria hospedagem do AfiliAds (`/p/<slug>`, HTTPS automático via Railway). A causa
+raiz real: `generatePresellHtml()` só fazia `PATCH {presellGeneratedAt}` depois de gerar,
+nunca `presellUrl` — então `checkSsl(campaign.presellUrl)` sempre lia vazio até o próximo
+`saveCampaign()` completo (avançar de passo). Corrigido: o PATCH pós-geração agora inclui
+`presellUrl` também. Além disso, o prompt genérico de `checklists/fix` agora recebe
+`presell_gerada_pelo_afiliads` (URL real da Presell vinculada) e
+`hostinger_domain_configurado` como contexto, com instrução explícita de NUNCA sugerir
+hospedagem de terceiro — ver [[feedback_hostinger_hosting_not_thirdparty]] na memória.
+
+Também adicionado: link "Ver no Google Ads" (`https://ads.google.com/aw/campaigns?campaignId=
+<id>`) no Passo 7 do wizard e na página de detalhes da campanha, quando `googleCampaignId`
+existe — funciona se a conta ativa no navegador já for a certa; senão o Google Ads pede pra
+trocar de conta, sem risco de nada quebrar.
+
+**Regra de processo confirmada de novo:** rodar `npm run build` enquanto o `next dev` está
+ativo na mesma pasta corrompe o `.next` compartilhado (erro `MODULE_NOT_FOUND` no dev
+server) — sempre rodar build isolado ou reiniciar o dev depois.
+
 ## Próxima ação (uma só)
 
 - Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-
