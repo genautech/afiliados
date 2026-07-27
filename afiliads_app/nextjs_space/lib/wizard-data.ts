@@ -12,30 +12,40 @@ export const CVR_DEFAULTS: Record<string, number> = {
 // nunca depende do cliente informar isChecked. 'self_attested' = ação humana fora do sistema
 // (contrato assinado, terms lidos) que nenhuma API consegue confirmar — continua checkbox
 // manual, mas a UI rotula como autoatestado em vez de fingir que é a mesma coisa que 'auto'.
+//
+// IMPORTANTE (corrigido 2026-07-27): Anti-strike é o Passo 3 do wizard, Pré-sell/Bridge é o
+// Passo 4 — ou seja, o Passo 3 roda ANTES de existir qualquer HTML de presell. Itens 'auto'
+// que dependem de HTML (getPresellHtml() em lib/complianceVerifier.ts) NUNCA podem estar em
+// ANTISTRIKE_ITEMS como críticos, senão travam 100% das campanhas no Passo 3 pra sempre (não
+// existe presell ainda, o item nunca passa, e itens 'auto' não aceitam autoatestação do
+// cliente). Esses itens moraram aqui antes e foram movidos pra BRIDGE_CHECKLIST — ver
+// hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md.
 export const ANTISTRIKE_ITEMS = [
   { key: 'client_contract', label: 'Client Contract assinado no ClickBank', critical: true, verificationType: 'self_attested' as const },
   { key: 'vendor_terms', label: 'Vendor Terms da oferta lidos e entendidos', critical: true, verificationType: 'self_attested' as const },
   { key: 'geo_permitido', label: 'Geo permitido nos Terms', critical: true, verificationType: 'self_attested' as const },
   { key: 'hop_proprio', label: 'HopLink próprio (não link de terceiro)', critical: true, verificationType: 'self_attested' as const },
   { key: 'sem_cloaking', label: 'Sem cloaking (mesma experiência bot/user)', critical: true, verificationType: 'self_attested' as const },
-  { key: 'sem_claims', label: 'Sem claims de cura/renda garantida na bridge', critical: true, verificationType: 'auto' as const },
-  { key: 'disclaimer_afiliado', label: 'Disclaimer de afiliado na bridge page', critical: true, verificationType: 'auto' as const },
-  { key: 'privacy_policy', label: 'Privacy Policy com contato na bridge', critical: true, verificationType: 'auto' as const },
   { key: 'trademark_ok', label: 'Trademark verificado (não usar se proibido)', critical: false, verificationType: 'self_attested' as const },
   { key: 'mobile_testado', label: 'Mobile testado e responsivo', critical: false, verificationType: 'self_attested' as const },
-  { key: 'ga4_configurado', label: 'GA4 configurado na bridge', critical: false, verificationType: 'auto' as const },
-  { key: 'ssl_ativo', label: 'SSL ativo (HTTPS)', critical: false, verificationType: 'auto' as const },
 ];
 
+// Todos os itens 'auto' que dependem de HTML da presell (getPresellHtml()) vivem aqui, no
+// Passo 4 — é o primeiro passo em que a presell já existe de verdade. sem_claims/
+// disclaimer_afiliado/privacy_policy vieram de ANTISTRIKE_ITEMS (ver comentário acima);
+// disclaimer/ssl já existiam aqui e não foram duplicados.
 export const BRIDGE_CHECKLIST = [
   { key: 'h1_keyword', label: 'H1 alinhado à keyword principal', critical: true, verificationType: 'self_attested' as const },
   { key: 'cta_unico', label: 'CTA único e claro', critical: true, verificationType: 'self_attested' as const },
   { key: 'disclaimer', label: 'Disclaimer de afiliado visível', critical: true, verificationType: 'auto' as const },
   { key: 'mobile_first', label: 'Mobile-first / responsivo', critical: true, verificationType: 'self_attested' as const },
   { key: 'ssl', label: 'SSL ativo', critical: true, verificationType: 'auto' as const },
+  { key: 'sem_claims', label: 'Sem claims de cura/renda garantida na bridge', critical: true, verificationType: 'auto' as const },
+  { key: 'privacy_policy', label: 'Privacy Policy com contato na bridge', critical: true, verificationType: 'auto' as const },
   { key: 'sem_popup', label: 'Sem pop-up enganoso', critical: false, verificationType: 'self_attested' as const },
   { key: 'faq', label: 'FAQ inclusa', critical: false, verificationType: 'auto' as const },
   { key: 'resultados_variam', label: '"Resultados variam" visível', critical: false, verificationType: 'auto' as const },
+  { key: 'ga4_configurado', label: 'GA4 configurado na bridge', critical: false, verificationType: 'auto' as const },
 ];
 
 // search_on/partners_off/display_off/location_presence ainda são autoatestados porque

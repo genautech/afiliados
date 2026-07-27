@@ -1,5 +1,19 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+**Estado em 2026-07-27 (~11h) — Wizard destravado (Fase 1 de 3):** o wizard
+(`app/(app)/wizard/page.tsx`) tinha 3 travas estruturais reais que impediam QUALQUER campanha
+nova de terminar do Passo 1 ao 9 (deadlock Passo 3 vs 4 no checklist Anti-strike/Bridge,
+gerador de presell mockado desconectado do pipeline real, criação do Google Ads fora do
+wizard) — todas corrigidas, mais 2 bugs de compliance achados testando a correção
+(`lib/complianceVerifier.ts` só reconhecia português; falso positivo em "guaranteed"/
+"garantido" reprovando disclaimers corretos). Detalhes completos, achados e um aviso
+importante sobre testar `createGoogleCampaign()` (pode mutar conta real do Google Ads sem
+querer) em `hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md`. Plano
+das 3 fases (Fase 1 feita; Fase 2 = validação fresca por etapa com loading + staleness;
+Fase 3 = base de conhecimento `ChecklistLearning` + botão "Corrigir com agente") em
+`~/.claude/plans/velvet-finding-cherny.md` — se for continuar, comece lendo esses dois
+arquivos antes de mexer no wizard de novo.
+
 **Estado em 2026-07-27 (~04h):** gerador de presell (`lib/presell.ts` +
 `lib/presell-template*.html`) corrigido e enriquecido na mesma sessão que corrigiu o caso
 FemiCore acima: bug real de i18n (textos fixos do template — footer, cookie banner, FAQ

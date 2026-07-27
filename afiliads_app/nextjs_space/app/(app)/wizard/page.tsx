@@ -22,7 +22,7 @@ import {
   PLATFORMS, VERTICALS, CHANNELS, GEOS, CVR_DEFAULTS, ANTISTRIKE_ITEMS,
   BRIDGE_CHECKLIST, GOOGLE_ADS_CHECKLIST, TRACKING_CHECKLIST_MAXWEB,
   TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST, KEYWORDS_BY_VERTICAL,
-  NEGATIVES_BY_VERTICAL, BRIDGE_TEMPLATE
+  NEGATIVES_BY_VERTICAL
 } from '@/lib/wizard-data';
 
 const STEPS = [
@@ -432,6 +432,8 @@ export default function WizardPage() {
   const [popupGate, setPopupGate] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [generatingPresell, setGeneratingPresell] = useState(false);
+  const [presellId, setPresellId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
 
@@ -444,6 +446,8 @@ export default function WizardPage() {
 
   // Step 7
   const [googleAdsChecks, setGoogleAdsChecks] = useState<Record<string, boolean>>({});
+  const [creatingGads, setCreatingGads] = useState(false);
+  const [googleCampaignId, setGoogleCampaignId] = useState<string | null>(null);
 
   // Step 8
   const [trackingChecks, setTrackingChecks] = useState<Record<string, boolean>>({});
@@ -580,6 +584,7 @@ export default function WizardPage() {
     setLoopEnabled(!!c?.loopEnabled);
     setLoopInterval(c?.loopInterval ?? '24h');
     setLoopAgents(c?.loopAgents ?? 'ads,compliance');
+    setGoogleCampaignId(c?.googleCampaignId ?? null);
     if (Array.isArray(c?.keywords) && c.keywords.length > 0) {
       setSelectedKeywords(c.keywords.map((k: any) => ({
         keyword: k.keyword, layer: k.layer, matchType: k.matchType, relevance: k.relevanceScore, selected: k.isSelected,
@@ -631,6 +636,35 @@ export default function WizardPage() {
       toast.error('Erro de rede ao verificar checklist.');
     } finally {
       setVerifyingChecklist(false);
+    }
+  };
+
+  // Cria a campanha de verdade no Google Ads (PAUSED) — corrigido 2026-07-27: antes só existia
+  // em app/(app)/campanhas/[id]/page.tsx, fora do wizard, então o Passo 9 (Go-live) travava
+  // pedindo googleCampaignId sem nenhuma ação disponível no próprio wizard pra consegui-lo.
+  // Reaproveita literalmente o mesmo endpoint (/api/google-ads/create) e o mesmo gate de
+  // checklist crítico que já existe lá.
+  const createInGoogleAds = async () => {
+    if (!campaignId) { toast.error('Salve a campanha (avance um passo) antes de criar no Google Ads.'); return; }
+    setCreatingGads(true);
+    try {
+      const res = await fetch('/api/google-ads/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGoogleCampaignId(data.googleCampaignId ?? 'criada');
+        toast.success(data.mock ? 'Campanha criada em modo simulação (credenciais reais do Google Ads não configuradas)' : 'Campanha criada no Google Ads como PAUSED — ative manualmente quando estiver pronta');
+        await runChecklistVerify();
+      } else {
+        toast.error(data.error || 'Erro ao criar campanha no Google Ads');
+      }
+    } catch {
+      toast.error('Erro de rede ao criar campanha no Google Ads');
+    } finally {
+      setCreatingGads(false);
     }
   };
 
@@ -885,21 +919,63 @@ export default function WizardPage() {
     }
   };
 
-  const generatePresellHtml = () => {
-    let html = BRIDGE_TEMPLATE;
-    const mainKw = selectedKeywords.find(k => k.selected)?.keyword ?? name ?? '[SUA KEYWORD]';
-    html = html.replace('[KEYWORD]', mainKw);
-    html = html.replace('[H1 alinhado à keyword]', mainKw + ' \u2014 Guia Completo');
-    html = html.replace('[Subhead com benefício específico]', `Descubra o que funciona de verdade para ${vertical.toLowerCase()}`);
-    html = html.replace('[Empatia \u2014 descreva o problema que a audiência enfrenta]', `Milhares de pessoas enfrentam desafios com ${vertical.toLowerCase()} todos os dias...`);
-    html = html.replace('[O que é a solução, sem milagre]', 'Uma abordagem baseada em pesquisa que pode ajudar a alcançar seus objetivos.');
-    html = html.replace('[Lista honesta de prós e contras]', '\u2705 Abordagem natural\n\u2705 Fácil de seguir\n\u274c Resultados variam por pessoa\n\u274c Requer consistência');
-    html = html.replace('[Defina o público ideal e quem NÃO deve usar]', 'Ideal para quem busca uma solução comprovada. Não indicado para quem espera resultados instantâneos.');
-    html = html.replace('[SEU_HOPLINK_AQUI]', offerUrl || '#');
-    html = html.replace('[Mencione a garantia do produto, se houver]', 'Consulte a página oficial para detalhes sobre garantia.');
-    setPresellHtml(html);
-    setShowPreview(true);
-    toast.success('Template gerado! Personalize o conteúdo.');
+  // Chama o pipeline real de geração (lib/presell.ts via /api/presells) — corrigido
+  // 2026-07-27: antes disso era um preenchimento de string local (BRIDGE_TEMPLATE), nunca
+  // criava um Presell vinculado à campanha, e por isso o checklist 'auto' (que procura um
+  // Presell real via campaignId — ver getPresellHtml() em lib/complianceVerifier.ts) nunca
+  // encontrava nada pra verificar. Precisa de campaignId (salva a campanha antes, se preciso)
+  // e de um hopLink real (offerUrl).
+  const generatePresellHtml = async () => {
+    if (!offerUrl || !/^https?:\/\//.test(offerUrl)) {
+      toast.error('Preencha a URL da oferta (offerUrl, passo 1) com um link https:// válido antes de gerar a presell.');
+      return;
+    }
+    let cid = campaignId;
+    if (!cid) {
+      await saveCampaign();
+      cid = campaignId;
+    }
+    if (!cid) {
+      toast.error('Não foi possível salvar a campanha antes de gerar a presell.');
+      return;
+    }
+    const productName = researchProducts.find(p => p.id === sourceProductResearchId)?.name || name || vertical;
+    setGeneratingPresell(true);
+    try {
+      const res = await fetch('/api/presells', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName,
+          hopLink: offerUrl,
+          productId: sourceProductResearchId || undefined,
+          campaignId: cid,
+          pageType,
+          popupGate,
+          videoUrl: pageType === 'vsl' ? videoUrl : undefined,
+          channel,
+          geo,
+          trackingId: name || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error ?? 'Erro ao gerar a presell com o agente.');
+        return;
+      }
+      setPresellHtml(data.html ?? '');
+      setPresellId(data.id ?? null);
+      const absoluteUrl = typeof data.url === 'string' && data.url.startsWith('/')
+        ? `${window.location.origin}${data.url}`
+        : data.url;
+      if (absoluteUrl) setPresellUrl(absoluteUrl);
+      setShowPreview(true);
+      toast.success('Presell gerada pelo Presell Builder (IA) — revise antes de avançar.');
+    } catch {
+      toast.error('Erro de rede ao gerar a presell.');
+    } finally {
+      setGeneratingPresell(false);
+    }
   };
 
   const inputCls = "bg-[#0f172a] border-[#334155] text-white placeholder:text-slate-500";
@@ -1265,10 +1341,11 @@ export default function WizardPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-white font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-yellow-400" /> Builder de Pré-sell</h3>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={generatePresellHtml} className="bg-green-600 hover:bg-green-700 text-white gap-1">
-                      <Sparkles className="h-3 w-3" /> Gerar Template
+                    <Button size="sm" onClick={generatePresellHtml} disabled={generatingPresell} className="bg-green-600 hover:bg-green-700 text-white gap-1">
+                      {generatingPresell ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      {generatingPresell ? 'Gerando com IA...' : 'Gerar com Presell Builder (IA)'}
                     </Button>
-                    <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard(presellHtml || BRIDGE_TEMPLATE)}>
+                    <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard(presellHtml)} disabled={!presellHtml}>
                       <Copy className="h-3 w-3" /> Copiar HTML
                     </Button>
                   </div>
@@ -1540,6 +1617,21 @@ export default function WizardPage() {
                     meta={checklistMeta[item.key]}
                   />
                 ))}
+              </div>
+
+              <div className="bg-[#0f172a] rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-sm text-white">Criar a campanha de verdade no Google Ads</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {googleCampaignId
+                      ? `Já criada (PAUSED) — ID ${googleCampaignId}. Necessário pro Passo 9 (Go-live).`
+                      : 'Cria em modo PAUSED (não gasta nada até você ativar manualmente). Exige os itens críticos deste checklist marcados/verificados antes.'}
+                  </p>
+                </div>
+                <Button size="sm" onClick={createInGoogleAds} disabled={creatingGads || !!googleCampaignId} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shrink-0">
+                  {creatingGads ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                  {googleCampaignId ? 'Já criada' : creatingGads ? 'Criando...' : 'Criar no Google Ads (PAUSED)'}
+                </Button>
               </div>
             </div>
           )}
