@@ -22,6 +22,7 @@
 </script>
 {{GA4_TAG}}
 {{META_PIXEL_TAG}}
+{{GTM_HEAD}}
 
 <style>
   :root{--cor:#1f3864;--acento:#e07b39;--texto:#2b2b2b;--fundo:#12141c;--cinza:#f5f6f8}
@@ -63,6 +64,7 @@
 </style>
 </head>
 <body>
+{{GTM_BODY}}
 {{COOKIE_CONSENT}}
 <div class="bg"></div>
 <div class="bg-overlay"></div>
@@ -70,31 +72,22 @@
 
 <div id="seg-gate">
   <form class="seg-card" id="seg-form">
-    <div class="seg-eyebrow">Antes de continuar</div>
-    <div class="seg-lead">Responda rapidinho pra gente te mostrar a oferta certa:</div>
+    <div class="seg-eyebrow">{{SEG_EYEBROW}}</div>
+    <div class="seg-lead">{{SEG_LEAD}}</div>
 
-    <label for="seg-geo">País</label>
+    <label for="seg-geo">{{SEG_COUNTRY_LABEL}}</label>
     <select id="seg-geo" required>
-      <option value="">Selecione</option>
-      <option value="US">Estados Unidos</option>
-      <option value="UK">Reino Unido</option>
-      <option value="AU">Austrália</option>
-      <option value="CA">Canadá</option>
-      <option value="BR">Brasil</option>
-      <option value="OUTRO">Outro</option>
+      {{SEG_COUNTRY_OPTIONS}}
     </select>
 
-    <label for="seg-gender">Gênero</label>
+    <label for="seg-gender">{{SEG_GENDER_LABEL}}</label>
     <select id="seg-gender" required>
-      <option value="">Selecione</option>
-      <option value="F">Feminino</option>
-      <option value="M">Masculino</option>
-      <option value="O">Prefiro não dizer</option>
+      {{SEG_GENDER_OPTIONS}}
     </select>
 
-    <label for="seg-age">Faixa etária</label>
+    <label for="seg-age">{{SEG_AGE_LABEL}}</label>
     <select id="seg-age" required>
-      <option value="">Selecione</option>
+      <option value="">{{SEG_SELECT_PLACEHOLDER}}</option>
       <option value="18-24">18–24</option>
       <option value="25-34">25–34</option>
       <option value="35-44">35–44</option>
@@ -102,7 +95,7 @@
       <option value="55+">55+</option>
     </select>
 
-    <button type="submit" class="seg-submit">Continuar</button>
+    <button type="submit" class="seg-submit">{{SEG_CONTINUE}}</button>
   </form>
 </div>
 
@@ -118,14 +111,14 @@
   <div class="cta-sub">{{Reforço sob o botão — ex.: Garantia incondicional de 7 dias}}</div>
 
   <div class="disclosure">
-    Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você.
+    {{DISCLOSURE_TEXT}}
     {{DISCLAIMER_SAUDE}}
   </div>
 
   <footer>
-    <a href="/politica-de-privacidade">Política de Privacidade</a>
-    <a href="/termos">Termos de Uso</a>
-    <a href="/contato">Contato</a>
+    <a href="/politica-de-privacidade">{{PRIVACY_LABEL}}</a>
+    <a href="/termos">{{TERMS_LABEL}}</a>
+    <a href="/contato">{{CONTACT_LABEL}}</a>
     <span>© {{ANO}} {{NOME_DO_SITE}}</span>
   </footer>
 </div>
@@ -172,36 +165,7 @@
 })();
 </script>
 
-<script>
-/* ===== Captura do gclid + conversão de clique no CTA =====
-   1) Anexa o gclid da URL ao link de afiliado (rastreio ponta a ponta) — SÓ depois de
-      consentimento real (cc_consent === 'granted' no banner de Consent Mode v2 acima).
-   2) Dispara a conversão secundária CLIQUE-CTA no Google Ads.
-   Substitua CONVERSION_LABEL pelo rótulo da ação de conversão. */
-(function(){
-  var params = new URLSearchParams(window.location.search);
-  var gclid = params.get('gclid');
-  function consentGranted(){ return localStorage.getItem('cc_consent') === 'granted'; }
-  function attachTracking(){
-    if (!gclid || !consentGranted()) return;
-    document.querySelectorAll('.cta').forEach(function(btn){
-      var destino = btn.getAttribute('data-href');
-      if (destino.indexOf('gclid=') > -1) return;
-      destino += (destino.indexOf('?') > -1 ? '&' : '?') + 'gclid=' + encodeURIComponent(gclid)
-               + '&sck=' + encodeURIComponent(gclid);
-      btn.setAttribute('href', destino);
-    });
-  }
-  attachTracking();
-  window.__attachTracking = attachTracking;
-  document.querySelectorAll('.cta').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      if (typeof gtag === 'function') {
-        gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});
-      }
-    });
-  });
-})();
-</script>
+{{TRACKING_SCRIPT}}
+{{CUSTOM_CODE}}
 </body>
 </html>

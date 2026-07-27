@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
       salesPageUrl: body?.salesPageUrl,
       segmentRoutes: body?.segmentRoutes,
       campaignId: body?.campaignId,
+      customCode: body?.customCode,
     });
     return NextResponse.json({
       id: presell.id, slug: presell.slug, title: presell.title,

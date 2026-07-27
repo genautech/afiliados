@@ -43,8 +43,11 @@ Dado o produto, vertical e keywords, aponte riscos de: claims de saúde/renda, t
 Também defina a estratégia recomendada.
 Se a vertical for sensível (saúde, corpo, finanças, relacionamentos, fases da vida), gere de 3 a 8 pares de substituição de linguagem: frases/claims que NÃO podem aparecer na presell (diagnóstico, cura, garantia de resultado, termos médicos/explícitos) e a reescrita segura equivalente focada em benefício/experiência condicional. Se a vertical não for sensível, retorne "regras_reescrita": [].
 
-REGRA CRÍTICA (aprendida do caso FemiCore, não repetir): a maioria dos vendors de nutra/saúde de ticket alto no ClickBank PROÍBE Google Search/AdWords inteiramente nas próprias regras de tráfego — não é só brand bidding, é o canal inteiro. Isso costuma ficar numa cláusula tipo "Use for any purpose Google Search Advertising" ou "does not allow ... any traffic from Google unless it is Display or YouTube", separada dos claims de saúde. NUNCA assuma que Google Search é permitido só porque a vertical em si é ok — isso é uma decisão comercial do vendor, não uma política do Google.
-Se o texto real da página de afiliados do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE AFILIADOS"), baseie "google_search_permitido" NELE, citando a frase exata como fonte. Se NÃO foi fornecido (fetch falhou), responda "google_search_permitido": "nao_verificado" e gere um alerta nível "critico" mandando o usuário confirmar manualmente na página de afiliados/advertising rules do vendor antes de gastar em Search — nunca responda true/false sem fonte real.
+REGRA CRÍTICA: alguns vendors de nutra/saúde de ticket alto no ClickBank restringem tráfego pago do Google nas próprias regras de afiliados, e há DOIS tipos de restrição bem diferentes que NUNCA podem ser confundidos:
+(a) Bloqueio do canal inteiro — cláusula tipo "does not allow any traffic from Google unless it is Display or YouTube": aí sim "google_search_permitido" é false.
+(b) Restrição de brand bidding — cláusula tipo "proibido fazer bid ou usar o termo '<NOME DO PRODUTO>' em anúncios/keywords": isso NÃO bloqueia o canal, Google Search continua permitido normalmente com keywords genéricas/de categoria; só o nome da marca não pode aparecer em keyword ou copy. Nesse caso "google_search_permitido" é true, "brand_bidding_permitido" é false, e o nome do produto entra em "termos_proibidos".
+Caso real corrigido (não repetir o erro): a FemiCore foi mal registrada como bloqueio total de Search quando na verdade sua cláusula 10a só proíbe usar/dar bid no termo "FemiCore" — o canal Search é permitido. Leia a cláusula com atenção: se ela cita o nome do produto/marca dentro da frase de restrição, é caso (b), não (a).
+Se o texto real da página de afiliados do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE AFILIADOS"), baseie "google_search_permitido" E "brand_bidding_permitido" NELE, citando a frase exata como fonte. Se NÃO foi fornecido (fetch falhou), responda "google_search_permitido": "nao_verificado" e gere um alerta nível "critico" mandando o usuário confirmar manualmente na página de afiliados/advertising rules do vendor antes de gastar em Search — nunca responda true/false sem fonte real.
 
 Se o texto real da página de vendas do vendor foi fornecido abaixo (marcado "TEXTO REAL DA PÁGINA DE VENDAS DO VENDOR"), extraia dela "elementos_presell_referencia": headline real, ângulo/promessa principal, prova social real (números, garantia, depoimentos citados) — dados verificáveis que o Presell Builder vai usar como referência de estrutura/ângulo (nunca copiar texto literal, é só referência). Se não foi fornecida, retorne "elementos_presell_referencia" como array vazio.
 
@@ -52,7 +55,7 @@ Responda APENAS JSON:
 { "risco_geral": "baixo|medio|alto",
   "alertas": [{ "nivel": "info|atencao|critico", "texto": "..." }],
   "regras_reescrita": [{ "evitar": "claim ou termo proibido", "usar": "reescrita segura equivalente" }],
-  "canais": { "google_search_permitido": true|false|"nao_verificado", "fonte": "URL + trecho exato que embasa a resposta, ou 'página de afiliados não encontrada'", "canais_permitidos": ["..."], "canais_proibidos": ["..."] },
+  "canais": { "google_search_permitido": true|false|"nao_verificado", "brand_bidding_permitido": true|false|"nao_verificado", "termos_proibidos": ["nome da marca/produto, só quando brand_bidding_permitido for false"], "fonte": "URL + trecho exato que embasa a resposta, ou 'página de afiliados não encontrada'", "canais_permitidos": ["..."], "canais_proibidos": ["... (só canais inteiros, nunca um termo/keyword específico aqui)"] },
   "elementos_presell_referencia": [{ "tipo": "headline|angulo|prova_social", "texto": "..." }],
   "presell": { "tipo": "review|advertorial|quiz|vsl-bridge", "motivo": "1 frase", "elementos": ["4-6 elementos obrigatórios da página"] },
   "tipo_venda": { "funil": "bridge|direct|search-intent|youtube", "motivo": "1 frase" },
@@ -187,17 +190,21 @@ JSON puro.`,
         const canaisInfo = {
           campaignValidation: {
             googleSearchAllowed: comp?.canais?.google_search_permitido ?? 'nao_verificado',
+            brandBiddingAllowed: comp?.canais?.brand_bidding_permitido ?? 'nao_verificado',
             notes: comp?.canais?.fonte ?? 'Página de afiliados não confirmada — verificar manualmente antes de rodar Search.',
           },
           allowedChannels: comp?.canais?.canais_permitidos ?? [],
           forbiddenChannels: comp?.canais?.canais_proibidos ?? [],
+          forbiddenTerms: comp?.canais?.termos_proibidos ?? [],
         };
         const affiliatePageUrlFinal = affiliatePageUrlUsed || urlGuess || existing?.affiliatePageUrl || null;
         const vendorPageUrlFinal = vendorPageUrlUsed || vendorUrlGuess || existing?.vendorPageUrl || null;
         const vendorPageInsights = { elementosPresellReferencia: comp?.elementos_presell_referencia ?? [] };
 
-        // Garantido em código, não depende do LLM lembrar (caso FemiCore: o agente simplesmente não
-        // reportou a restrição). Se não está explicitamente confirmado "true", entra alerta crítico.
+        // Garantido em código, não depende do LLM lembrar. Se não está explicitamente
+        // confirmado "true", entra alerta crítico de canal. Brand bidding é um alerta
+        // SEPARADO (não bloqueia o canal) — caso FemiCore, corrigido 2026-07-27: o vendor só
+        // proíbe usar o termo da marca, o canal Search continua permitido.
         const alertasFinal = [...(comp?.alertas ?? [])];
         if (canaisInfo.campaignValidation.googleSearchAllowed !== true) {
           alertasFinal.unshift({
@@ -205,6 +212,12 @@ JSON puro.`,
             texto: canaisInfo.campaignValidation.googleSearchAllowed === false
               ? `Google Search/AdWords é PROIBIDO por este vendor. Fonte: ${canaisInfo.campaignValidation.notes}`
               : `Permissão de Google Search NÃO confirmada com a página real de afiliados — não rodar Search antes de verificar manualmente (${affiliatePageUrlFinal ?? 'página de afiliados não encontrada'}).`,
+          });
+        }
+        if (canaisInfo.campaignValidation.brandBiddingAllowed === false) {
+          alertasFinal.unshift({
+            nivel: 'critico',
+            texto: `Brand bidding proibido: não usar/dar bid no(s) termo(s) ${(canaisInfo.forbiddenTerms.length ? canaisInfo.forbiddenTerms : [productName]).join(', ')} em keywords ou copy de anúncio (adicionar como negativa exata). O canal Search em si continua permitido.`,
           });
         }
 

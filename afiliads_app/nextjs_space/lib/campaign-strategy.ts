@@ -20,6 +20,10 @@ export type CampaignStrategy = {
   bridgeTypeSource: 'estatico' | 'historico_real';
   blockedChannels: Channel[];
   channelBlockReason: string | null;
+  /** Termos que não podem aparecer em keywords/copy de anúncio (tipicamente a marca do
+   * produto, quando o vendor proíbe brand bidding mas permite o canal normalmente — caso
+   * FemiCore, corrigido em 2026-07-27: NÃO bloqueia o canal, só exige negativa exata do termo). */
+  forbiddenAdTerms: string[];
   budgetGuidance: {
     testDurationDays: number;
     budgetTestMultiplier: [number, number];
@@ -93,20 +97,29 @@ function dominantKeywordLayer(keywords: SelectedKeywordInput[]): KeywordLayer | 
 }
 
 /** Lê o gate de canal do vendor gravado pelo Affiliate Page Analyst (fix do caso FemiCore)
- * — ProductResearch.affiliateInsights = { googleSearchPermitido, allowedChannels[],
- * forbiddenChannels[] }. Trata "não confirmado" como bloqueio, não como liberado por
- * omissão (mesma regra da skill: sem fonte real, trata como não verificado). */
-function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; reason: string | null } {
+ * — ProductResearch.affiliateInsights.campaignValidation = { googleSearchAllowed,
+ * brandBiddingAllowed }, além de allowedChannels[]/forbiddenChannels[]/forbiddenTerms[].
+ * Trata "não confirmado" (null/undefined/"nao_verificado") como bloqueio, não como liberado
+ * por omissão (mesma regra da skill: sem fonte real, trata como não verificado).
+ *
+ * IMPORTANTE (corrigido 2026-07-27): brand bidding proibido (não pode usar o nome do
+ * produto/marca em keywords ou copy) é uma restrição DIFERENTE de canal bloqueado — não
+ * derruba SEARCH inteiro. O caso original do FemiCore foi mal registrado como bloqueio total
+ * de Google Search quando na verdade só o termo "FemiCore" era proibido (brand bidding);
+ * ver hermes/knowledge/femicore-approval-details.md. Esse termo vira `forbiddenAdTerms`,
+ * consumido por quem gera keyword/RSA (negativa exata obrigatória), não por este gate. */
+function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; reason: string | null; forbiddenAdTerms: string[] } {
   const insights = (product.affiliateInsights as any) ?? {};
+  const validation = insights.campaignValidation ?? {};
   const blocked = new Set<Channel>();
   const reasons: string[] = [];
 
-  const googleSearchPermitido = insights.googleSearchPermitido;
-  if (googleSearchPermitido !== true) {
+  const googleSearchAllowed = validation.googleSearchAllowed;
+  if (googleSearchAllowed !== true) {
     blocked.add('SEARCH');
     reasons.push(
-      googleSearchPermitido === false
-        ? 'Página de afiliados do vendor proíbe Google Search explicitamente.'
+      googleSearchAllowed === false
+        ? 'Página de afiliados do vendor proíbe o canal Google Search inteiro (não é só brand bidding).'
         : 'Permissão de Google Search não confirmada com a página real de afiliados do vendor.'
     );
   }
@@ -114,14 +127,32 @@ function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; 
   const forbidden: string[] = Array.isArray(insights.forbiddenChannels) ? insights.forbiddenChannels : [];
   for (const raw of forbidden) {
     const s = String(raw).toLowerCase();
+    // Entradas que qualificam a proibição a um termo/keyword específico (brand bidding) não
+    // bloqueiam o canal — só entram como forbiddenAdTerms, tratado abaixo.
+    if (/\b(bid|keyword|termo|marca|palavra)\b/.test(s)) continue;
     if (s.includes('search')) blocked.add('SEARCH');
     else if (s.includes('youtube')) blocked.add('YOUTUBE');
     else if (s.includes('demand')) blocked.add('DEMAND_GEN');
     else if (s.includes('pmax') || s.includes('performance max')) blocked.add('PMAX');
   }
-  if (forbidden.length) reasons.push(`Vendor proíbe explicitamente: ${forbidden.join(', ')}.`);
+  const channelLevelForbidden = forbidden.filter((raw) => !/\b(bid|keyword|termo|marca|palavra)\b/i.test(raw));
+  if (channelLevelForbidden.length) reasons.push(`Vendor proíbe explicitamente: ${channelLevelForbidden.join(', ')}.`);
 
-  return { blocked: Array.from(blocked), reason: reasons.length ? reasons.join(' ') : null };
+  return { blocked: Array.from(blocked), reason: reasons.length ? reasons.join(' ') : null, forbiddenAdTerms: getForbiddenAdTerms(product) };
+}
+
+/** Termos que não podem aparecer em keyword ou copy de anúncio (brand bidding proibido pelo
+ * vendor) — independente de canal bloqueado. Exportado pra ser usado como gate determinístico
+ * na hora de criar a campanha real no Google Ads (`app/api/google-ads/create/route.ts`), não só
+ * como sugestão no dossiê: nunca confiar só no LLM (RSA/keyword generator) pra lembrar disso. */
+export function getForbiddenAdTerms(product: ProductResearch): string[] {
+  const insights = (product.affiliateInsights as any) ?? {};
+  const validation = insights.campaignValidation ?? {};
+  const forbiddenAdTerms = new Set<string>(
+    Array.isArray(insights.forbiddenTerms) ? insights.forbiddenTerms.map((t: unknown) => String(t)) : []
+  );
+  if (validation.brandBiddingAllowed === false && product.name) forbiddenAdTerms.add(product.name);
+  return Array.from(forbiddenAdTerms);
 }
 
 function budgetGuidanceForStage(stage: FunnelStage, riskLevel: string): CampaignStrategy['budgetGuidance'] {
@@ -162,7 +193,7 @@ export async function deriveCampaignStrategy(
   const presellNorm = normalizePresellTipo(strategy?.presell?.tipo);
   const channelFromStrategy = normalizeChannel(strategy?.campanha?.tipo);
 
-  const { blocked: blockedChannels, reason: channelBlockReason } = deriveBlockedChannels(product);
+  const { blocked: blockedChannels, reason: channelBlockReason, forbiddenAdTerms } = deriveBlockedChannels(product);
 
   let recommendedChannel: Channel | null = channelFromStrategy && !blockedChannels.includes(channelFromStrategy)
     ? channelFromStrategy
@@ -238,6 +269,7 @@ export async function deriveCampaignStrategy(
     bridgeTypeSource,
     blockedChannels,
     channelBlockReason,
+    forbiddenAdTerms,
     budgetGuidance: budgetGuidanceForStage(funnelStage, product.riskLevel),
   };
 }

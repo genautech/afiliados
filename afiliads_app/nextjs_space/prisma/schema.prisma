@@ -489,6 +489,7 @@ model Presell {
   pageType    String   @default("advertorial")
   popupGate   Boolean  @default(false)
   videoUrl    String   @default("")
+  customCode  String   @default("") @db.Text
   variantGroupId String? @db.Text
   geo         String   @default("US")
   language    String   @default("en")

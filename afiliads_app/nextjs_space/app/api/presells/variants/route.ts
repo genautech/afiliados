@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
       variantGroupId,
       channel,
       campaignId: typeof body?.campaignId === 'string' ? body.campaignId : undefined,
+      customCode: typeof body?.customCode === 'string' ? body.customCode : undefined,
     };
 
     const results = await Promise.allSettled(

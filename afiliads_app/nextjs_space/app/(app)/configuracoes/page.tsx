@@ -62,7 +62,7 @@ const SERVICES = [
     ],
   },
   {
-    name: 'Tags de Rastreamento (GA4 + Meta Pixel)',
+    name: 'Tags de Rastreamento (GA4 + Meta Pixel + GTM)',
     key: 'tracking',
     link: 'https://analytics.google.com/',
     fields: [
@@ -70,6 +70,7 @@ const SERVICES = [
       { name: 'meta_pixel_id', label: 'Meta Pixel ID', placeholder: 'Ex.: 1234567890123456' },
       { name: 'google_ads_conversion_id', label: 'Google Ads Conversion ID (Tag)', placeholder: 'AW-XXXXXXXXX' },
       { name: 'google_ads_conversion_label', label: 'Google Ads Conversion Label', placeholder: 'Ex.: AbCdEfGhIj-K1LmNoPqR' },
+      { name: 'gtm_container_id', label: 'Google Tag Manager Container ID (opcional)', placeholder: 'GTM-XXXXXXX' },
     ],
   },
   {

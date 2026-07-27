@@ -87,6 +87,9 @@ export async function POST(request: NextRequest) {
         canal_recomendado: derivedStrategy.recommendedChannel,
         canais_bloqueados: derivedStrategy.blockedChannels,
         motivo_bloqueio: derivedStrategy.channelBlockReason,
+        termos_proibidos_em_anuncio: derivedStrategy.forbiddenAdTerms.length
+          ? { termos: derivedStrategy.forbiddenAdTerms, regra: 'Brand bidding proibido pelo vendor — NUNCA incluir esses termos em keywords ou copy de anúncio; adicione como negativa exata. Isso não bloqueia o canal, só o termo.' }
+          : null,
         funil_recomendado: derivedStrategy.recommendedFunnel,
         tipo_de_bridge_recomendado: derivedStrategy.recommendedBridgeType,
         guia_de_budget: derivedStrategy.budgetGuidance,

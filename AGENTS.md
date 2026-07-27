@@ -1,5 +1,18 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+**Estado em 2026-07-27 (~04h):** gerador de presell (`lib/presell.ts` +
+`lib/presell-template*.html`) corrigido e enriquecido na mesma sessão que corrigiu o caso
+FemiCore acima: bug real de i18n (textos fixos do template — footer, cookie banner, FAQ
+heading, disclaimer de saúde, `<html lang>` — ficavam sempre em pt-BR mesmo pedindo inglês,
+corrigido via `pickLocale()`), pros/contras estruturado, segunda imagem de produto, CTA com
+pulse, sticky CTA mobile, cookie de atribuição de 30 dias (`afp_track`, mais robusto que o
+mecanismo equivalente da FlowPages, pesquisado ao vivo), suporte a GTM opcional
+(`gtm_container_id` em Integrations) e bloco de código customizado (`Presell.customCode`,
+ainda sem UI no Wizard). Detalhes completos, incluindo o que foi avaliado e descartado de
+propósito (contadores de urgência, exit pop-up com desconto, botões WhatsApp/pagamento,
+formulário+CRM — não se aplicam ao nosso modelo ClickBank+Google Search) em
+`hermes/knowledge/insights/2026-07-27-flowpages-guia-gerador-presell.md`.
+
 ## Coordenação entre sessões simultâneas (leia antes de começar)
 
 Mais de um agente/CLI trabalha neste repo às vezes na mesma janela de tempo (Claude Code,
@@ -12,7 +25,7 @@ conflito do que uma leva grande no final).
 **Estado em 2026-07-26 (~00h):** as duas mudanças de schema Prisma commitadas em 2026-07-25
 (`Campaign.productResearchId` e `Presell.pageType`/`popupGate`/`videoUrl`) já foram
 aplicadas ao banco via `prisma db push` e `npm run build` passou limpo — item resolvido,
-sem ação pendente.
+sem ação pendente. Comandos executados pelo Hermes.
 
 Teste ponta-a-ponta da criação de campanha real (PAUSED) na conta Yoobe via Google Ads API
 encontrou e corrigiu um bug: a API v25 passou a exigir `containsEuPoliticalAdvertising` na
@@ -23,13 +36,40 @@ Fluxo completo validado (orçamento → campanha PAUSED → geo/idioma → ad gr
 RSA) e objetos de teste já removidos da conta. Detalhes:
 `hermes/knowledge/insights/2026-07-26-google-ads-eu-political-ads-field.md`.
 
+**Estado em 2026-07-26 (~01h):** novo `lib/campaign-strategy.ts` (`deriveCampaignStrategy`)
+— motor determinístico que decide `channel`/`funnel`/budget do Wizard a partir do que o
+pipeline de pesquisa de produto já sabe (camada de keyword dominante A–D, gate de canal do
+Affiliate Page Analyst, recomendação do Compliance Sentinel), em vez de cada um desses
+sinais ficar solto no dossiê. Ligado em `app/api/wizard-autofill/route.ts` (bloqueio de
+canal é validado **server-side**, não só no prompt) e no Wizard (aviso se o humano escolher
+canal bloqueado manualmente). Testado contra os produtos reais do banco.
+
+**Correção em 2026-07-27:** o incidente original do FemiCore estava mal diagnosticado — o
+vendor NÃO proíbe o canal Google Search inteiro, só proíbe brand bidding (usar/dar bid no
+termo "FemiCore" em keywords/copy). O registro em `ProductResearch.affiliateInsights` e o
+`compliance.alertas` da FemiCore foram corrigidos no banco (`googleSearchAllowed: true`,
+`brandBiddingAllowed: false`, `forbiddenTerms: ["FemiCore", ...]`). `deriveBlockedChannels`
+em `lib/campaign-strategy.ts` tinha um bug de nome de campo (lia `googleSearchPermitido`,
+um campo que nunca era escrito — o campo real é `campaignValidation.googleSearchAllowed`),
+o que bloqueava `SEARCH` por omissão pra QUALQUER produto, não só FemiCore; corrigido, e
+agora existe `forbiddenAdTerms` (separado de `blockedChannels`) pra brand bidding: exige
+negativa exata do termo, não bloqueia o canal. Prompts do Compliance Sentinel
+(`app/api/product-research/route.ts`) e `SKILL.md` regra #1 atualizados pra nunca mais
+confundir "vendor proíbe o canal inteiro" com "vendor proíbe só o termo de marca". Detalhes
+e próximos passos (loop-engine, MCP, `SKILL.md` regra #12) em
+`hermes/knowledge/insights/2026-07-26-strategy-engine-funil-budget.md` — se for continuar
+essa frente, comece lendo esse insight antes de reimplementar algo parecido.
+
 Divisão de trabalho que emergiu hoje (não é regra fixa, só o que aconteceu):
-- **Claude Code**: Wizard (Campaign Setup Strategist / autofill), conexão real com a
-  Google Ads API (OAuth, MCC, criação de campanha), blindagem de compliance genérica do
-  Presell Builder (claims sensíveis, disclaimers garantidos no template).
+- **Claude Code**: Wizard (Campaign Setup Strategist / autofill, agora com o Strategy
+  Engine acima), conexão real com a Google Ads API (OAuth, MCC, criação de campanha),
+  blindagem de compliance genérica do Presell Builder (claims sensíveis, disclaimers
+  garantidos no template).
 - **Codex CLI**: variantes estruturais de presell (pogo/vsl além de advertorial), pop-up
   de retenção sem cloaking, integração Gmail read-only no MCP, correções de bugs no
-  Trend Lab (trackingId, listagem de campanhas com presell, botão de regenerar).
+  Trend Lab (trackingId, listagem de campanhas com presell, botão de regenerar), Sales Page
+  Analyzer + Bridge Page Recommender (`/estrategia`), reescrita do `SKILL.md` em formato
+  "8 Fluxos + 11 regras de negócio".
 
 Ambos escrevem em `hermes/knowledge/insights/` ao concluir algo relevante — é a memória
 compartilhada entre sessões que não se veem em tempo real. Ler os insights mais recentes

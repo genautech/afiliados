@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { prisma } from './prisma';
 import { callAgent } from './llm';
 import { computeEconomics } from './campaign-rules';
@@ -22,6 +23,8 @@ export interface PresellContent {
   cta_reforco: string;
   secao3_titulo: string;
   secao3_texto: string;
+  pros: string[];
+  contras: string[];
   faq: { pergunta: string; resposta: string }[];
   cta_final: string;
   titulo_pagina: string;
@@ -71,9 +74,14 @@ TÉCNICAS DE BRIDGE PAGE (não são decorativas — aplicar sempre):
 - "abertura" mostra que você entende a dor do leitor ANTES de mencionar a solução — sem isso a
   página lê como anúncio, não como conteúdo editorial (é o que reprova no Google Ads).
 - Pontos fracos reais na seção 3 não são só "compliance" — aumentam conversão porque parecem
-  honestos; um review sem nenhum contra soa falso.
+  honestos; um review sem nenhum contra soa falso. Gere "pros" (3-4 itens curtos, começando com
+  o benefício, ex.: "Ingredientes 100% naturais") e "contras" (2-3 itens reais e específicos, ex.:
+  "Resultados variam conforme o organismo" / "Disponível só no site oficial") — formato de lista
+  visual pros/contras converte mais que texto corrido porque é honesto E fácil de escanear.
+- Idioma do conteúdo TEM que ser exatamente o idioma pedido em "Idioma" no prompt do usuário —
+  nunca misture idiomas dentro da mesma página (ex.: título de seção em português numa página en).
 Responda APENAS JSON válido com exatamente estas chaves:
-{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
+{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","pros":["3-4 itens"],"contras":["2-3 itens"],"faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;
 
 const HEALTH_NICHE_RE = /health|sa[uú]de|nutra|beauty|beleza|wellness|bem-estar|supplement|suplemento|weight loss|emagrec|menopaus|urin[aá]r|incontin/i;
@@ -83,10 +91,115 @@ function detectHealthNiche(vertical?: string | null, tags?: unknown, extra?: str
   return HEALTH_NICHE_RE.test(`${vertical ?? ''} ${tagsStr} ${extra ?? ''}`);
 }
 
-const DISCLAIMER_SAUDE_HTML = '<br>Este produto não se destina a diagnosticar, tratar, curar ou prevenir qualquer doença.<br>Sempre consulte um profissional de saúde antes de iniciar qualquer novo suplemento ou programa de bem-estar.';
-
 function esc(s: string): string {
   return String(s ?? '');
+}
+
+/** Idioma da presell vem de `args.language` em generatePresell ('en'|'pt-BR'|...) — tudo que é
+ * texto FIXO do template (footer, disclosure, cookie banner, popup gate, FAQ heading, gate de
+ * segmentação) precisa seguir esse idioma, não só o conteúdo gerado pelo LLM. Bug real
+ * encontrado 2026-07-27: esses textos estavam hardcoded em pt-BR em TODOS os templates,
+ * inclusive `<html lang="pt-BR">` fixo — uma presell em inglês (ex.: FemiCore/US) saía com
+ * footer, cookie banner e "Perguntas frequentes" em português. */
+function isEnglish(language?: string): boolean {
+  return !language || !language.toLowerCase().startsWith('pt');
+}
+
+interface Locale {
+  htmlLang: string;
+  dateLocale: string;
+  metaLineTemplate: string;
+  faqHeading: string;
+  prosHeading: string;
+  consHeading: string;
+  disclosureFull: string;
+  disclosureShort: string;
+  disclosureInterstitial: string;
+  disclaimerSaude: string;
+  privacyLabel: string;
+  termsLabel: string;
+  contactLabel: string;
+  rightsReserved: string;
+  cookieMsg: string;
+  cookieAccept: string;
+  cookieReject: string;
+  popupHoldMsg: string;
+  popupHoldLabel: string;
+  segEyebrow: string;
+  segLead: string;
+  segCountryLabel: string;
+  segSelectPlaceholder: string;
+  segCountries: [string, string][];
+  segGenderLabel: string;
+  segGenders: [string, string][];
+  segAgeLabel: string;
+  segContinue: string;
+}
+
+const LOCALE_EN: Locale = {
+  htmlLang: 'en',
+  dateLocale: 'en-US',
+  metaLineTemplate: 'By {{AUTOR}} · Updated {{DATA}} · {{X}} min read',
+  faqHeading: 'Frequently Asked Questions',
+  prosHeading: 'What we liked',
+  consHeading: 'What to consider',
+  disclosureFull: 'Affiliate Disclosure: this site participates in affiliate programs and may earn a commission from purchases made through the links, at no extra cost to you. We only recommend what we have independently evaluated.<br>Individual results may vary.',
+  disclosureShort: 'Affiliate Disclosure: this site participates in affiliate programs and may earn a commission from purchases made through the links, at no extra cost to you.<br>Individual results may vary.',
+  disclosureInterstitial: 'Affiliate Disclosure: this site participates in affiliate programs and may earn a commission from purchases made through the links, at no extra cost to you.',
+  disclaimerSaude: '<br>This product is not intended to diagnose, treat, cure, or prevent any disease.<br>Always consult a healthcare professional before starting any new supplement or wellness program.',
+  privacyLabel: 'Privacy Policy',
+  termsLabel: 'Terms of Use',
+  contactLabel: 'Contact',
+  rightsReserved: 'All rights reserved.',
+  cookieMsg: 'We use cookies to analyze traffic and show more relevant ads.',
+  cookieAccept: 'Accept',
+  cookieReject: 'Decline',
+  popupHoldMsg: 'Tap and hold the button for 2 seconds to continue',
+  popupHoldLabel: 'HOLD',
+  segEyebrow: 'Before you continue',
+  segLead: "Quick question so we can show you the right offer:",
+  segCountryLabel: 'Country',
+  segSelectPlaceholder: 'Select',
+  segCountries: [['US', 'United States'], ['UK', 'United Kingdom'], ['AU', 'Australia'], ['CA', 'Canada'], ['BR', 'Brazil'], ['OUTRO', 'Other']],
+  segGenderLabel: 'Gender',
+  segGenders: [['F', 'Female'], ['M', 'Male'], ['O', 'Prefer not to say']],
+  segAgeLabel: 'Age range',
+  segContinue: 'Continue',
+};
+
+const LOCALE_PT: Locale = {
+  htmlLang: 'pt-BR',
+  dateLocale: 'pt-BR',
+  metaLineTemplate: 'Por {{AUTOR}} · Atualizado em {{DATA}} · Leitura de {{X}} min',
+  faqHeading: 'Perguntas frequentes',
+  prosHeading: 'O que gostamos',
+  consHeading: 'Pontos de atenção',
+  disclosureFull: 'Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você. Recomendamos apenas o que avaliamos de forma independente.<br>Resultados individuais podem variar.',
+  disclosureShort: 'Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você.<br>Resultados individuais podem variar.',
+  disclosureInterstitial: 'Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você.',
+  disclaimerSaude: '<br>Este produto não se destina a diagnosticar, tratar, curar ou prevenir qualquer doença.<br>Sempre consulte um profissional de saúde antes de iniciar qualquer novo suplemento ou programa de bem-estar.',
+  privacyLabel: 'Política de Privacidade',
+  termsLabel: 'Termos de Uso',
+  contactLabel: 'Contato',
+  rightsReserved: 'Todos os direitos reservados.',
+  cookieMsg: 'Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes.',
+  cookieAccept: 'Aceitar',
+  cookieReject: 'Recusar',
+  popupHoldMsg: 'Toque e segure o botão por 2 segundos para continuar',
+  popupHoldLabel: 'SEGURE',
+  segEyebrow: 'Antes de continuar',
+  segLead: 'Responda rapidinho pra gente te mostrar a oferta certa:',
+  segCountryLabel: 'País',
+  segSelectPlaceholder: 'Selecione',
+  segCountries: [['US', 'Estados Unidos'], ['UK', 'Reino Unido'], ['AU', 'Austrália'], ['CA', 'Canadá'], ['BR', 'Brasil'], ['OUTRO', 'Outro']],
+  segGenderLabel: 'Gênero',
+  segGenders: [['F', 'Feminino'], ['M', 'Masculino'], ['O', 'Prefiro não dizer']],
+  segAgeLabel: 'Faixa etária',
+  segContinue: 'Continuar',
+};
+
+function pickLocale(language?: string): Locale {
+  return isEnglish(language) ? LOCALE_EN : LOCALE_PT;
 }
 
 export function slugify(name: string): string {
@@ -121,15 +234,15 @@ async function captureSalesPageScreenshot(url: string): Promise<string | undefin
 // (não distingue bot/humano — não é cloaking), só adiciona um passo de interação real antes
 // de revelar o conteúdo. Baseado no formato "Press and Hold" descrito no insight
 // hermes/knowledge/insights/2026-07-26-tipos-de-presell-e-popup-gate.md.
-function popupGateHtml(): string {
+function popupGateHtml(locale: Locale): string {
   return `<div id="pg-overlay" style="position:fixed;inset:0;z-index:9999;background:rgba(20,20,25,.92);display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;font-family:Arial,sans-serif">
-  <div style="color:#fff;font-size:16px;margin-bottom:22px;max-width:320px">Toque e segure o botão por 2 segundos para continuar</div>
+  <div style="color:#fff;font-size:16px;margin-bottom:22px;max-width:320px">${esc(locale.popupHoldMsg)}</div>
   <button id="pg-btn" style="position:relative;width:110px;height:110px;border-radius:50%;background:#1f3864;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">
     <svg width="110" height="110" style="position:absolute;top:0;left:0;transform:rotate(-90deg)">
       <circle cx="55" cy="55" r="48" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="6"/>
       <circle id="pg-ring" cx="55" cy="55" r="48" fill="none" stroke="#e07b39" stroke-width="6" stroke-dasharray="301.6" stroke-dashoffset="301.6" stroke-linecap="round"/>
     </svg>
-    <span style="color:#fff;font-size:13px;font-weight:bold;pointer-events:none">SEGURE</span>
+    <span style="color:#fff;font-size:13px;font-weight:bold;pointer-events:none">${esc(locale.popupHoldLabel)}</span>
   </button>
 </div>
 <script>
@@ -169,11 +282,11 @@ function popupGateHtml(): string {
 // vivo nesta sessão). "Aceitar"/"Recusar" persistem em localStorage; recusar mantém o consent
 // mode em "denied" (Google ainda registra conversão agregada/modelada, sem cookie individual —
 // comportamento padrão do Consent Mode, não é workaround nosso) e não inicializa o Meta Pixel.
-function cookieConsentHtml(): string {
+function cookieConsentHtml(locale: Locale): string {
   return `<div id="cc-banner" style="position:fixed;left:0;right:0;bottom:0;z-index:9998;background:#0f172a;color:#e2e8f0;padding:14px 18px;font-family:Arial,sans-serif;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;box-shadow:0 -2px 12px rgba(0,0,0,.25)">
-  <span style="max-width:480px">Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes. <a href="/politica-de-privacidade" style="color:#e07b39">Política de Privacidade</a></span>
-  <button id="cc-accept" style="background:#e07b39;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:bold;cursor:pointer">Aceitar</button>
-  <button id="cc-reject" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:8px 18px;border-radius:6px;cursor:pointer">Recusar</button>
+  <span style="max-width:480px">${esc(locale.cookieMsg)} <a href="/politica-de-privacidade" style="color:#e07b39">${esc(locale.privacyLabel)}</a></span>
+  <button id="cc-accept" style="background:#e07b39;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:bold;cursor:pointer">${esc(locale.cookieAccept)}</button>
+  <button id="cc-reject" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:8px 18px;border-radius:6px;cursor:pointer">${esc(locale.cookieReject)}</button>
 </div>
 <script>
 (function(){
@@ -196,8 +309,103 @@ function cookieConsentHtml(): string {
 </script>`;
 }
 
+/** Captura gclid/wbraid/gbraid/fbclid/msclkid/ttclid/utm_* da URL e GRAVA num cookie próprio
+ * (afp_track, 1ª parte, 30 dias) — não só repassa na URL como o concorrente FlowPages faz
+ * (confirmado pesquisando a central de ajuda deles em 2026-07-27: o script deles só reanexa os
+ * parâmetros da querystring atual nos links, sem persistir nada — se o visitante voltar depois
+ * sem os parâmetros na URL, a origem se perde). Aqui o cookie sobrevive a essa perda, e os
+ * parâmetros ficam disponíveis em document.cookie pra qualquer postback/CRM que precise deles.
+ * Só grava com consentimento já concedido (mesmo gate do Consent Mode acima) — cookie de
+ * atribuição é não-essencial. Roda de novo a cada clique no CTA (não só no load) porque o
+ * visitante pode aceitar cookies só depois de já estar lendo a página. */
+/** clickBeaconUrl: endpoint absoluto (não relativo — a presell pode estar hospedada num
+ * domínio WordPress externo do afiliado, não no domínio do app) que incrementa
+ * `Presell.ctaClicks` a cada clique real no CTA. Sem isso o contador nunca é incrementado —
+ * achado na revisão de 2026-07-27: `rankPresellOutcomes()` (aprendizado contínuo) já lia
+ * `ctaClicks` pra rankear pageType por canal, mas nada no HTML gerado jamais escrevia nesse
+ * campo. `sendBeacon` é fire-and-forget: não bloqueia navegação, não precisa esperar resposta,
+ * e funciona cross-origin sem CORS porque é uma requisição "simples" (sem header custom). */
+function trackingScriptHtml(clickBeaconUrl?: string): string {
+  return `<script>
+(function(){
+  var COOKIE_NAME = 'afp_track';
+  var CLICK_BEACON_URL = ${JSON.stringify(clickBeaconUrl ?? null)};
+  var TRACK_KEYS = ['gclid','wbraid','gbraid','fbclid','msclkid','ttclid','sck','utm_source','utm_medium','utm_campaign','utm_term','utm_content'];
+  function consentGranted(){ return localStorage.getItem('cc_consent') === 'granted'; }
+  function readCookie(name){
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  function writeCookie(name, value, days){
+    var d = new Date(); d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+  }
+  function paramsFromUrl(){
+    var out = {};
+    var sp = new URLSearchParams(window.location.search);
+    TRACK_KEYS.forEach(function(k){ var v = sp.get(k); if (v) out[k] = v; });
+    if (out.gclid && !out.sck) out.sck = out.gclid; // sck: alias aceito por plataformas de tracking BR
+    return out;
+  }
+  function storedParams(){
+    try { return JSON.parse(readCookie(COOKIE_NAME) || localStorage.getItem(COOKIE_NAME) || '{}'); } catch (e) { return {}; }
+  }
+  function mergedParams(){
+    return Object.assign({}, storedParams(), paramsFromUrl()); // parâmetro presente na URL atual sempre vence o salvo
+  }
+  function persist(){
+    if (!consentGranted()) return;
+    var merged = mergedParams();
+    if (!Object.keys(merged).length) return;
+    var json = JSON.stringify(merged);
+    writeCookie(COOKIE_NAME, json, 30);
+    try { localStorage.setItem(COOKIE_NAME, json); } catch (e) {}
+  }
+  function queryString(obj){
+    return Object.keys(obj).map(function(k){ return k + '=' + encodeURIComponent(obj[k]); }).join('&');
+  }
+  function attachTracking(){
+    if (!consentGranted()) return;
+    var qs = queryString(mergedParams());
+    if (!qs) return;
+    document.querySelectorAll('.cta').forEach(function(btn){
+      var destino = btn.getAttribute('data-href');
+      if (!destino) return;
+      var base = destino.split('?')[0];
+      var existing = destino.indexOf('?') > -1 ? destino.split('?')[1] : '';
+      btn.setAttribute('href', base + '?' + (existing ? existing + '&' + qs : qs));
+    });
+  }
+  persist();
+  attachTracking();
+  window.__attachTracking = function(){ persist(); attachTracking(); };
+  document.querySelectorAll('.cta').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      persist();
+      if (CLICK_BEACON_URL && navigator.sendBeacon) { try { navigator.sendBeacon(CLICK_BEACON_URL); } catch (e) {} }
+      if (typeof gtag === 'function') gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});
+    });
+  });
+})();
+</script>`;
+}
+
 function ga4TagHtml(measurementId: string): string {
   return `<script>gtag('config', '${measurementId.replace(/[^\w-]/g, '')}');</script>`;
+}
+
+/** GTM (opcional, além de GA4/Meta/Google Ads individuais já suportados) — pedido explícito
+ * do usuário após pesquisa da FlowPages (guia em hermes/knowledge/insights/, 2026-07-27):
+ * container só decide quais tags disparar dentro dele mesmo, então não tentamos replicar o
+ * Consent Mode aqui — quem configura o container é responsável por respeitar consentimento
+ * lá dentro (Google recomenda isso via "Consent Overview" do próprio GTM). */
+function gtmHeadHtml(containerId: string): string {
+  const id = containerId.replace(/[^\w-]/g, '');
+  return `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');</script>`;
+}
+function gtmBodyHtml(containerId: string): string {
+  const id = containerId.replace(/[^\w-]/g, '');
+  return `<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${id}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>`;
 }
 
 // Meta Pixel não integra com o Consent Mode do Google — por isso o init/track ficam numa função
@@ -227,13 +435,45 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[] }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
+  const locale = pickLocale(opts.language);
 
   const now = new Date();
-  const dataFmt = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dataFmt = now.toLocaleDateString(locale.dateLocale, { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Textos fixos do template (idioma, footer, disclosure, FAQ heading, meta-linha do autor) —
+  // via tokens {{TOKEN}} dedicados no arquivo-fonte (não literal PT casado por string, frágil a
+  // qualquer mudança de espaçamento) — trocados ANTES dos replaces de {{AUTOR}}/{{DATA}}/{{X}}
+  // genéricos abaixo, já que META_LINE embute esses tokens dentro de si.
+  t = t.replace('<html lang="pt-BR">', `<html lang="${locale.htmlLang}">`);
+  t = t.replace('{{META_LINE}}', locale.metaLineTemplate);
+  t = t.replace('{{FAQ_HEADING}}', esc(locale.faqHeading));
+  const disclosureByType: Record<string, string> = {
+    advertorial: locale.disclosureFull,
+    vsl: locale.disclosureFull,
+    pogo: locale.disclosureShort,
+    interstitial: locale.disclosureInterstitial,
+  };
+  t = t.replace('{{DISCLOSURE_TEXT}}', disclosureByType[pageType] ?? locale.disclosureFull);
+  t = t.replace(/\{\{PRIVACY_LABEL\}\}/g, esc(locale.privacyLabel));
+  t = t.replace(/\{\{TERMS_LABEL\}\}/g, esc(locale.termsLabel));
+  t = t.replace(/\{\{CONTACT_LABEL\}\}/g, esc(locale.contactLabel));
+  t = t.replace(/\{\{RIGHTS_RESERVED\}\}/g, esc(locale.rightsReserved));
+  if (pageType === 'interstitial') {
+    t = t.replace('{{SEG_EYEBROW}}', esc(locale.segEyebrow));
+    t = t.replace('{{SEG_LEAD}}', esc(locale.segLead));
+    t = t.replace('{{SEG_COUNTRY_LABEL}}', esc(locale.segCountryLabel));
+    t = t.replace('{{SEG_GENDER_LABEL}}', esc(locale.segGenderLabel));
+    t = t.replace('{{SEG_AGE_LABEL}}', esc(locale.segAgeLabel));
+    t = t.replace('{{SEG_CONTINUE}}', esc(locale.segContinue));
+    const optionTag = ([v, label]: [string, string]) => `<option value="${v}">${esc(label)}</option>`;
+    t = t.replace('{{SEG_SELECT_PLACEHOLDER}}', esc(locale.segSelectPlaceholder));
+    t = t.replace('{{SEG_COUNTRY_OPTIONS}}', [['', locale.segSelectPlaceholder] as [string, string], ...locale.segCountries].map(optionTag).join('\n      '));
+    t = t.replace('{{SEG_GENDER_OPTIONS}}', [['', locale.segSelectPlaceholder] as [string, string], ...locale.segGenders].map(optionTag).join('\n      '));
+  }
 
   t = t.replace(/\{\{TITULO_DA_PAGINA\}\}/g, esc(c.titulo_pagina));
   t = t.replace(/\{\{META_DESCRICAO\}\}/g, esc(c.meta_descricao));
@@ -259,9 +499,14 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
 
   t = t.replace('{{PROVA REAL — número de alunos/avaliação/garantia oficial da oferta. Somente dados verificáveis da página do produtor.}}', esc(c.prova));
   t = t.replace('{{TEXTO DO CTA — ex.: Conhecer o {{PRODUTO}} Agora}}', esc(c.cta_texto));
+  t = t.replace('{{STICKY_CTA_TEXT}}', esc(c.cta_texto));
   t = t.replace('{{Reforço sob o botão — ex.: Garantia incondicional de 7 dias}}', esc(c.cta_reforco));
   t = t.replace('{{SEÇÃO 3 — Pontos fortes e pontos fracos}}', esc(c.secao3_titulo));
   t = t.replace('{{Review honesto inclui contras reais. Isso aumenta conversão E aprova na revisão do Google.}}', esc(c.secao3_texto));
+  t = t.replace('{{PROS_HEADING}}', esc(locale.prosHeading));
+  t = t.replace('{{CONS_HEADING}}', esc(locale.consHeading));
+  t = t.replace('{{PROS_LIST}}', (c.pros ?? []).map((p) => `<li>${esc(p)}</li>`).join(''));
+  t = t.replace('{{CONS_LIST}}', (c.contras ?? []).map((p) => `<li>${esc(p)}</li>`).join(''));
 
   const faq = c.faq ?? [];
   t = t.replace('{{Pergunta 1?}}', esc(faq[0]?.pergunta ?? ''));
@@ -272,13 +517,19 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{CTA FINAL}}', esc(c.cta_final));
 
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
-  if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
-  if (opts.conversionLabel) t = t.replace(/CONVERSION_LABEL/g, esc(opts.conversionLabel));
-  t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
+  t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? locale.disclaimerSaude : '');
   t = t.replace('{{GA4_TAG}}', opts.ga4Id?.trim() ? ga4TagHtml(opts.ga4Id.trim()) : '');
   t = t.replace('{{META_PIXEL_TAG}}', opts.metaPixelId?.trim() ? metaPixelTagHtml(opts.metaPixelId.trim()) : '');
-  t = t.replace('{{COOKIE_CONSENT}}', cookieConsentHtml());
-  t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml() : '');
+  t = t.replace('{{GTM_HEAD}}', opts.gtmContainerId?.trim() ? gtmHeadHtml(opts.gtmContainerId.trim()) : '');
+  t = t.replace('{{GTM_BODY}}', opts.gtmContainerId?.trim() ? gtmBodyHtml(opts.gtmContainerId.trim()) : '');
+  // Bloco de código customizado (HTML/CSS/JS livre) — inserido cru, sem esc(): é conteúdo que o
+  // próprio usuário escreve pra si mesmo (embed de terceiros, copy extra), não input de visitante.
+  t = t.replace('{{CUSTOM_CODE}}', opts.customCode?.trim() ?? '');
+  t = t.replace('{{COOKIE_CONSENT}}', cookieConsentHtml(locale));
+  t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml(locale) : '');
+  const appBaseUrl = process.env.NEXTAUTH_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
+  const clickBeaconUrl = opts.presellId && appBaseUrl ? `${appBaseUrl}/api/presells/click?id=${opts.presellId}` : undefined;
+  t = t.replace('{{TRACKING_SCRIPT}}', trackingScriptHtml(clickBeaconUrl));
   if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
   if (pageType === 'interstitial') {
     t = t.replace('{{SALES_PAGE_SCREENSHOT_URL}}', esc(opts.salesPageScreenshotUrl ?? ''));
@@ -288,6 +539,15 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
     ? `<img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy">`
     : '');
+  t = t.replace('{{IMAGEM_ROTULO}}', opts.imagemRotuloUrl
+    ? `<img class="produto-img produto-img-sm" src="${esc(opts.imagemRotuloUrl)}" alt="${esc(opts.productName)} label" loading="lazy">`
+    : '');
+
+  // GOOGLE_ADS_ID/CONVERSION_LABEL substituídos por último, de propósito: {{TRACKING_SCRIPT}}
+  // (injetado acima) também contém esses tokens no próprio JS gerado — se essa troca rodasse
+  // antes da injeção, o texto ficaria literal "GOOGLE_ADS_ID/CONVERSION_LABEL" no HTML final.
+  if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
+  if (opts.conversionLabel) t = t.replace(/CONVERSION_LABEL/g, esc(opts.conversionLabel));
 
   return t;
 }
@@ -562,6 +822,7 @@ export async function generatePresell(userId: string, args: {
   salesPageUrl?: string;
   segmentRoutes?: SegmentRoute[];
   campaignId?: string;
+  customCode?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
@@ -579,6 +840,7 @@ export async function generatePresell(userId: string, args: {
   let productCtx = args.context ?? '';
   let isHealthNiche = detectHealthNiche(undefined, undefined, `${angle} ${args.context ?? ''}`);
   let imagemProdutoUrl: string | undefined;
+  let imagemRotuloUrl: string | undefined;
   let vendorPageUrlFromProduct: string | undefined;
   if (args.productId) {
     const p = await prisma.productResearch.findFirst({ where: { id: args.productId, userId } });
@@ -601,11 +863,12 @@ export async function generatePresell(userId: string, args: {
       }
       // Assets oficiais do vendor (pasta compartilhada pelo afiliado): usados como contexto de
       // ângulo/público e, quando há foto de produto real, embutidos na presell no lugar de nada.
-      const assets = (p.affiliateInsights as any)?.assets as { pastaUrl?: string; estrutura?: string[]; imagemProdutoUrl?: string } | undefined;
+      const assets = (p.affiliateInsights as any)?.assets as { pastaUrl?: string; estrutura?: string[]; imagemProdutoUrl?: string; imagemRotuloUrl?: string } | undefined;
       if (assets?.estrutura?.length) {
         productCtx += `\nASSETS OFICIAIS DO VENDOR DISPONÍVEIS (pasta: ${p.assetsUrl ?? assets.pastaUrl}): ${assets.estrutura.join(' | ')}. Use como referência de público/ângulo real do vendor — NÃO copie claims agressivos de banners de rede social, mantenha a linguagem compliance-safe já definida acima.`;
       }
       if (assets?.imagemProdutoUrl) imagemProdutoUrl = assets.imagemProdutoUrl;
+      if (assets?.imagemRotuloUrl) imagemRotuloUrl = assets.imagemRotuloUrl;
 
       // Elementos reais extraídos da página de vendas do vendor (Task 3 do pipeline de pesquisa)
       // — headline/ângulo/prova social verdadeiros, só como referência, nunca cópia literal.
@@ -635,10 +898,11 @@ export async function generatePresell(userId: string, args: {
   }
 
   const trackingIntegrations = await prisma.integration.findMany({
-    where: { userId, serviceName: 'tracking', fieldName: { in: ['ga4_measurement_id', 'meta_pixel_id', 'google_ads_conversion_id', 'google_ads_conversion_label'] } },
+    where: { userId, serviceName: 'tracking', fieldName: { in: ['ga4_measurement_id', 'meta_pixel_id', 'google_ads_conversion_id', 'google_ads_conversion_label', 'gtm_container_id'] } },
   });
   const ga4Id = trackingIntegrations.find(i => i.fieldName === 'ga4_measurement_id')?.fieldValue;
   const metaPixelId = trackingIntegrations.find(i => i.fieldName === 'meta_pixel_id')?.fieldValue;
+  const gtmContainerId = trackingIntegrations.find(i => i.fieldName === 'gtm_container_id')?.fieldValue;
   // googleAdsId explícito (ex.: vindo de uma Campaign específica) vence o cadastro geral do
   // usuário em Integrations — mas sem nenhum dos dois, o placeholder GOOGLE_ADS_ID/CONVERSION_LABEL
   // fica literal no HTML (silencioso antes; hoje pelo menos há um lugar pra cadastrar o valor real).
@@ -661,10 +925,15 @@ export async function generatePresell(userId: string, args: {
     finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(tid);
   }
 
+  // Id gerado ANTES do HTML de propósito: o beacon de clique (ctaClicks) precisa saber o id
+  // da presell embutido no próprio HTML gerado, mas o registro só é criado no banco depois
+  // (create() abaixo usa esse mesmo id explicitamente em vez de deixar o Prisma gerar um novo).
+  const presellId = randomUUID();
   const html = renderPresellHtml(content, {
     productName, hopLink: finalHop, googleAdsId, conversionLabel, ga4Id, metaPixelId, isHealthNiche,
-    pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
-    salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes,
+    gtmContainerId, customCode: args.customCode,
+    pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl, imagemRotuloUrl,
+    salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes, language, presellId,
   });
 
   const baseSlug = slugify(`${productName}-${pageType}-${angle}`);
@@ -681,6 +950,7 @@ export async function generatePresell(userId: string, args: {
 
   const presell = await prisma.presell.create({
     data: {
+      id: presellId,
       userId,
       productId: args.productId ?? null,
       campaignId: args.campaignId ?? null,
@@ -693,6 +963,7 @@ export async function generatePresell(userId: string, args: {
       pageType,
       popupGate,
       videoUrl: args.videoUrl ?? '',
+      customCode: args.customCode ?? '',
       variantGroupId: args.variantGroupId ?? null,
       geo,
       language,

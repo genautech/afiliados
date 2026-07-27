@@ -49,12 +49,13 @@ Responda APENAS com JSON válido no formato:
 
 Responda com JSON puro, sem blocos markdown ou explicações.`;
 
-export async function generateRsaCopy(userId: string, args: { keyword: string; benefit?: string; angle?: string; vertical?: string }): Promise<RsaResult> {
+export async function generateRsaCopy(userId: string, args: { keyword: string; benefit?: string; angle?: string; vertical?: string; forbiddenTerms?: string[] }): Promise<RsaResult> {
   const userPrompt = `Gere um RSA para:
 - Keyword principal: ${args.keyword}
 - Benefício: ${args.benefit ?? 'geral'}
 - Ângulo: ${args.angle ?? 'informativo'}
 - Vertical: ${args.vertical ?? 'geral'}
+${args.forbiddenTerms?.length ? `- PROIBIDO (brand bidding do vendor): NUNCA use ${args.forbiddenTerms.join(', ')} em nenhum título ou descrição, nem variações/plural. Fale só da categoria/benefício.` : ''}
 
 Lembre: títulos max 30 chars, descrições max 90 chars. JSON puro.`;
 

@@ -22,7 +22,7 @@
 </script>
 {{GA4_TAG}}
 {{META_PIXEL_TAG}}
-<!-- ===== OU Google Tag Manager: cole aqui o snippet do container GTM-XXXXXXX ===== -->
+{{GTM_HEAD}}
 
 <style>
   :root{--cor:#1f3864;--acento:#e07b39;--texto:#2b2b2b;--fundo:#ffffff;--cinza:#f5f6f8}
@@ -41,16 +41,35 @@
   li{margin-bottom:8px}
   .destaque{background:var(--cinza);border-left:4px solid var(--acento);padding:18px 20px;margin:24px 0;font-size:18px}
   .produto-img{display:block;max-width:280px;width:100%;height:auto;margin:0 auto 24px}
-  .cta{display:block;text-align:center;background:var(--acento);color:#fff;font-family:Arial,sans-serif;font-weight:bold;font-size:20px;text-decoration:none;padding:18px 24px;border-radius:8px;margin:30px 0;box-shadow:0 4px 12px rgba(224,123,57,.35)}
-  .cta:hover{filter:brightness(1.08)}
+  .produto-img-sm{max-width:180px;margin:0 auto 20px}
+  .cta{display:block;text-align:center;background:var(--acento);color:#fff;font-family:Arial,sans-serif;font-weight:bold;font-size:20px;text-decoration:none;padding:18px 24px;border-radius:8px;margin:30px 0;box-shadow:0 4px 12px rgba(224,123,57,.35);animation:cta-pulse 2.6s ease-in-out infinite}
+  .cta:hover{filter:brightness(1.08);animation-play-state:paused}
+  @keyframes cta-pulse{0%,100%{box-shadow:0 4px 12px rgba(224,123,57,.35)}50%{box-shadow:0 4px 20px rgba(224,123,57,.65)}}
   .cta-sub{text-align:center;font-family:Arial,sans-serif;font-size:13px;color:#888;margin-top:-20px;margin-bottom:26px}
+  .pros-cons{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0 8px}
+  .pros-cons h3{font-family:Arial,sans-serif;font-size:15px;margin-bottom:10px}
+  .pros-cons ul{margin:0;padding:0;list-style:none}
+  .pros-cons li{font-size:16px;margin-bottom:10px;padding-left:26px;position:relative}
+  .pros{background:#f2f8f4;border-radius:8px;padding:16px 18px}
+  .pros h3{color:#1f7a4d}
+  .pros li:before{content:"✓";position:absolute;left:0;color:#1f7a4d;font-weight:bold}
+  .cons{background:#fbf4f0;border-radius:8px;padding:16px 18px}
+  .cons h3{color:#a34a1f}
+  .cons li:before{content:"–";position:absolute;left:0;color:#a34a1f;font-weight:bold}
+  @media(max-width:600px){.pros-cons{grid-template-columns:1fr}}
   .disclosure{font-family:Arial,sans-serif;font-size:13px;color:#777;background:var(--cinza);padding:12px 16px;border-radius:6px;margin:30px 0}
   footer{border-top:1px solid #ddd;margin-top:48px;padding-top:18px;font-family:Arial,sans-serif;font-size:13px;color:#777}
   footer a{color:var(--cor);margin-right:14px}
+  .sticky-cta{position:fixed;left:0;right:0;bottom:0;z-index:9997;background:#fff;border-top:1px solid #ddd;padding:10px 14px;display:none;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.12)}
+  .sticky-cta.show{display:flex}
+  .sticky-cta-label{font-family:Arial,sans-serif;font-size:12px;color:#666;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sticky-cta-btn{margin:0;padding:12px 20px;font-size:16px;flex-shrink:0;animation:none}
+  @media(min-width:601px){.sticky-cta{display:none!important}}
   @media(max-width:600px){h1{font-size:27px}body{font-size:17px}}
 </style>
 </head>
 <body>
+{{GTM_BODY}}
 {{POPUP_GATE}}
 {{COOKIE_CONSENT}}
 <div class="wrap">
@@ -63,7 +82,7 @@
   <div class="categoria">{{CATEGORIA — ex.: REVIEW HONESTO}}</div>
   <h1>{{HEADLINE — a promessa editorial, sem promessa de resultado}}</h1>
   <p class="sub">{{SUBHEADLINE — expande a headline com o benefício de LER o artigo}}</p>
-  <div class="meta">Por {{AUTOR}} · Atualizado em {{DATA}} · Leitura de {{X}} min</div>
+  <div class="meta">{{META_LINE}}</div>
 
   {{IMAGEM_PRODUTO}}
 
@@ -74,6 +93,9 @@
 
   <h2>{{SEÇÃO 2 — O que é {{PRODUTO}} e como funciona}}</h2>
   <p>{{Descrição honesta: o que entrega, para quem é, para quem NÃO é.}}</p>
+
+  {{IMAGEM_ROTULO}}
+
   <ul>
     <li>{{Entregável/benefício 1}}</li>
     <li>{{Entregável/benefício 2}}</li>
@@ -88,61 +110,63 @@
   <h2>{{SEÇÃO 3 — Pontos fortes e pontos fracos}}</h2>
   <p>{{Review honesto inclui contras reais. Isso aumenta conversão E aprova na revisão do Google.}}</p>
 
-  <h2>Perguntas frequentes</h2>
+  <div class="pros-cons">
+    <div class="pros">
+      <h3>{{PROS_HEADING}}</h3>
+      <ul>{{PROS_LIST}}</ul>
+    </div>
+    <div class="cons">
+      <h3>{{CONS_HEADING}}</h3>
+      <ul>{{CONS_LIST}}</ul>
+    </div>
+  </div>
+
+  <h2>{{FAQ_HEADING}}</h2>
   <p><strong>{{Pergunta 1?}}</strong><br>{{Resposta.}}</p>
   <p><strong>{{Pergunta 2?}}</strong><br>{{Resposta.}}</p>
 
   <a class="cta" href="LINK_DE_AFILIADO_AQUI" data-href="LINK_DE_AFILIADO_AQUI">{{CTA FINAL}}</a>
 
   <div class="disclosure">
-    Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você. Recomendamos apenas o que avaliamos de forma independente.<br>
-    Resultados individuais podem variar.
+    {{DISCLOSURE_TEXT}}
     {{DISCLAIMER_SAUDE}}
   </div>
 </article>
 
 <footer>
-  <a href="/politica-de-privacidade">Política de Privacidade</a>
-  <a href="/termos">Termos de Uso</a>
-  <a href="/contato">Contato</a>
-  <div style="margin-top:8px">© {{ANO}} {{NOME_DO_SITE}}. Todos os direitos reservados.</div>
+  <a href="/politica-de-privacidade">{{PRIVACY_LABEL}}</a>
+  <a href="/termos">{{TERMS_LABEL}}</a>
+  <a href="/contato">{{CONTACT_LABEL}}</a>
+  <div style="margin-top:8px">© {{ANO}} {{NOME_DO_SITE}}. {{RIGHTS_RESERVED}}</div>
 </footer>
+
+<div id="sticky-cta" class="sticky-cta">
+  <span class="sticky-cta-label">{{NOME_DO_SITE}}</span>
+  <a class="cta sticky-cta-btn" href="LINK_DE_AFILIADO_AQUI" data-href="LINK_DE_AFILIADO_AQUI">{{STICKY_CTA_TEXT}}</a>
+</div>
 
 </div>
 
+{{TRACKING_SCRIPT}}
 <script>
-/* ===== Captura do gclid + conversão de clique no CTA =====
-   1) Anexa o gclid da URL ao link de afiliado (rastreio ponta a ponta) — SÓ depois de
-      consentimento real (cc_consent === 'granted' no banner de Consent Mode v2 acima).
-      Sem consentimento, o CTA mantém o data-href original (hoplink limpo, sem gclid/sck).
-   2) Dispara a conversão secundária CLIQUE-CTA no Google Ads (o próprio Consent Mode do
-      gtag já modela essa conversão sem cookie quando ad_storage está 'denied' — não precisa
-      de gate manual aqui).
-   Substitua CONVERSION_LABEL pelo rótulo da ação de conversão. */
+/* Sticky CTA mobile: some depois que o CTA principal (#cta-afiliado) sai da tela, some de novo
+   perto do fim da página (onde o CTA final já está visível) pra não duplicar sem necessidade. */
 (function(){
-  var params = new URLSearchParams(window.location.search);
-  var gclid = params.get('gclid');
-  function consentGranted(){ return localStorage.getItem('cc_consent') === 'granted'; }
-  function attachTracking(){
-    if (!gclid || !consentGranted()) return;
-    document.querySelectorAll('.cta').forEach(function(btn){
-      var destino = btn.getAttribute('data-href');
-      if (destino.indexOf('gclid=') > -1) return;
-      destino += (destino.indexOf('?') > -1 ? '&' : '?') + 'gclid=' + encodeURIComponent(gclid)
-               + '&sck=' + encodeURIComponent(gclid); /* sck: parâmetro de tracking aceito por plataformas BR */
-      btn.setAttribute('href', destino);
-    });
+  var bar = document.getElementById('sticky-cta');
+  var mainCta = document.getElementById('cta-afiliado');
+  if (!bar || !mainCta) return;
+  var footer = document.querySelector('footer');
+  function toggle(){
+    var mainRect = mainCta.getBoundingClientRect();
+    var footerRect = footer ? footer.getBoundingClientRect() : { top: Infinity };
+    var pastMain = mainRect.bottom < 0;
+    var nearFooter = footerRect.top < window.innerHeight;
+    bar.classList.toggle('show', pastMain && !nearFooter);
   }
-  attachTracking();
-  window.__attachTracking = attachTracking; /* reprocessa quando o visitante clicar "Aceitar" no banner */
-  document.querySelectorAll('.cta').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      if (typeof gtag === 'function') {
-        gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});
-      }
-    });
-  });
+  document.addEventListener('scroll', toggle, { passive: true });
+  toggle();
 })();
 </script>
+{{CUSTOM_CODE}}
 </body>
 </html>
