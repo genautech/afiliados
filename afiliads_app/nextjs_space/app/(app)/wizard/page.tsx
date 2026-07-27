@@ -499,7 +499,11 @@ export default function WizardPage() {
     9: GOLIVE_CHECKLIST.filter(i => i.critical).every(i => goLiveChecks[i.key]),
   } as Record<number, boolean>;
 
-  const saveCampaign = async () => {
+  // Retorna o id salvo (corrigido 2026-07-27): quem chama isso pra depois usar o id (ex.:
+  // generatePresellHtml) não pode confiar em ler `campaignId` do estado logo em seguida — o
+  // setCampaignId() daqui é assíncrono, o valor só aparece no próximo render, então o closure
+  // de quem chamou ainda vê o valor antigo (null na primeira campanha nova).
+  const saveCampaign = async (): Promise<string | null> => {
     setSaving(true);
     try {
       const payload = {
@@ -527,6 +531,7 @@ export default function WizardPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        return campaignId;
       } else {
         const res = await fetch('/api/campaigns', {
           method: 'POST',
@@ -534,11 +539,14 @@ export default function WizardPage() {
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        setCampaignId(data?.id ?? null);
+        const newId = data?.id ?? null;
+        setCampaignId(newId);
+        return newId;
       }
     } catch (err) {
       console.error(err);
       toast.error('Erro ao salvar campanha');
+      return null;
     } finally {
       setSaving(false);
     }
@@ -930,11 +938,7 @@ export default function WizardPage() {
       toast.error('Preencha a URL da oferta (offerUrl, passo 1) com um link https:// válido antes de gerar a presell.');
       return;
     }
-    let cid = campaignId;
-    if (!cid) {
-      await saveCampaign();
-      cid = campaignId;
-    }
+    const cid = campaignId || (await saveCampaign());
     if (!cid) {
       toast.error('Não foi possível salvar a campanha antes de gerar a presell.');
       return;
