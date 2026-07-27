@@ -79,6 +79,7 @@ export default function TrendLabPage() {
   const [sourceProductId, setSourceProductId] = useState<string | null>(null);
   const [sourceCampaignId, setSourceCampaignId] = useState<string | null>(null);
   const [sourceCampaignTrackingId, setSourceCampaignTrackingId] = useState<string | null>(null);
+  const [sourceChannel, setSourceChannel] = useState<string | null>(null);
   const [autoLoading, setAutoLoading] = useState(false);
   const [listsLoaded, setListsLoaded] = useState({ products: false, campaigns: false });
 
@@ -130,6 +131,7 @@ export default function TrendLabPage() {
       setSourceProductId(id);
       setSourceCampaignId(null);
       setSourceCampaignTrackingId(null);
+      setSourceChannel(null);
       const vals = {
         trend: `Interesse crescente em ${p.vertical || 'soluções para esse público'} — produto pesquisado com score ${p.score}/100.${p.summary ? ' ' + p.summary : ''}`,
         productName: p.name,
@@ -152,6 +154,7 @@ export default function TrendLabPage() {
       if (!c) return;
       setSourceCampaignId(id);
       setSourceCampaignTrackingId(c.utmCampaign || c.name || null);
+      setSourceChannel(c.channel || null);
       setSourceProductId(null);
       const supportedGeo = ['BR', 'US', 'UK', 'AU'].includes(c.geo) ? c.geo : 'US';
       const vals = {
@@ -221,6 +224,8 @@ Requisitos:
           trackingId,
           popupGate,
           videoUrl: videoUrl.trim() || undefined,
+          channel: sourceChannel || undefined,
+          campaignId: cid || undefined,
           context,
         }),
       });

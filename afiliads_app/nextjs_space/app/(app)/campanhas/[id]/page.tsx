@@ -281,11 +281,12 @@ export default function CampaignDetailPage() {
           {!campaign.googleCampaignId ? (
             <Button
               onClick={createInGoogleAds}
-              disabled={creatingGads}
+              disabled={creatingGads || criticalUnchecked > 0}
+              title={criticalUnchecked > 0 ? `${criticalUnchecked} item(ns) crítico(s) do checklist pendente(s) — complete antes de criar no Google Ads` : undefined}
               className="bg-green-600 hover:bg-green-700 text-white gap-2"
             >
               {creatingGads ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-              {creatingGads ? 'Criando...' : 'Criar no Google Ads'}
+              {creatingGads ? 'Criando...' : criticalUnchecked > 0 ? `Checklist pendente (${criticalUnchecked})` : 'Criar no Google Ads'}
             </Button>
           ) : (
             <Button

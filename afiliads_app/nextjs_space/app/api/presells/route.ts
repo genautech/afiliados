@@ -59,6 +59,10 @@ export async function POST(request: NextRequest) {
       pageType: body?.pageType,
       popupGate: !!body?.popupGate,
       videoUrl: body?.videoUrl,
+      channel: body?.channel,
+      salesPageUrl: body?.salesPageUrl,
+      segmentRoutes: body?.segmentRoutes,
+      campaignId: body?.campaignId,
     });
     return NextResponse.json({
       id: presell.id, slug: presell.slug, title: presell.title,

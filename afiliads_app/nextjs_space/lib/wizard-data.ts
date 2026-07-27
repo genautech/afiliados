@@ -8,72 +8,91 @@ export const CVR_DEFAULTS: Record<string, number> = {
   'Health': 1.3, 'Beauty': 1.4, 'Cursos BR': 2.0, 'Outro': 1.0,
 };
 
+// verificationType: 'auto' = checável por código de verdade (lib/complianceVerifier.ts),
+// nunca depende do cliente informar isChecked. 'self_attested' = ação humana fora do sistema
+// (contrato assinado, terms lidos) que nenhuma API consegue confirmar — continua checkbox
+// manual, mas a UI rotula como autoatestado em vez de fingir que é a mesma coisa que 'auto'.
 export const ANTISTRIKE_ITEMS = [
-  { key: 'client_contract', label: 'Client Contract assinado no ClickBank', critical: true },
-  { key: 'vendor_terms', label: 'Vendor Terms da oferta lidos e entendidos', critical: true },
-  { key: 'geo_permitido', label: 'Geo permitido nos Terms', critical: true },
-  { key: 'hop_proprio', label: 'HopLink próprio (não link de terceiro)', critical: true },
-  { key: 'sem_cloaking', label: 'Sem cloaking (mesma experiência bot/user)', critical: true },
-  { key: 'sem_claims', label: 'Sem claims de cura/renda garantida na bridge', critical: true },
-  { key: 'disclaimer_afiliado', label: 'Disclaimer de afiliado na bridge page', critical: true },
-  { key: 'privacy_policy', label: 'Privacy Policy com contato na bridge', critical: true },
-  { key: 'trademark_ok', label: 'Trademark verificado (não usar se proibido)', critical: false },
-  { key: 'mobile_testado', label: 'Mobile testado e responsivo', critical: false },
-  { key: 'ga4_configurado', label: 'GA4 configurado na bridge', critical: false },
-  { key: 'ssl_ativo', label: 'SSL ativo (HTTPS)', critical: false },
+  { key: 'client_contract', label: 'Client Contract assinado no ClickBank', critical: true, verificationType: 'self_attested' as const },
+  { key: 'vendor_terms', label: 'Vendor Terms da oferta lidos e entendidos', critical: true, verificationType: 'self_attested' as const },
+  { key: 'geo_permitido', label: 'Geo permitido nos Terms', critical: true, verificationType: 'self_attested' as const },
+  { key: 'hop_proprio', label: 'HopLink próprio (não link de terceiro)', critical: true, verificationType: 'self_attested' as const },
+  { key: 'sem_cloaking', label: 'Sem cloaking (mesma experiência bot/user)', critical: true, verificationType: 'self_attested' as const },
+  { key: 'sem_claims', label: 'Sem claims de cura/renda garantida na bridge', critical: true, verificationType: 'auto' as const },
+  { key: 'disclaimer_afiliado', label: 'Disclaimer de afiliado na bridge page', critical: true, verificationType: 'auto' as const },
+  { key: 'privacy_policy', label: 'Privacy Policy com contato na bridge', critical: true, verificationType: 'auto' as const },
+  { key: 'trademark_ok', label: 'Trademark verificado (não usar se proibido)', critical: false, verificationType: 'self_attested' as const },
+  { key: 'mobile_testado', label: 'Mobile testado e responsivo', critical: false, verificationType: 'self_attested' as const },
+  { key: 'ga4_configurado', label: 'GA4 configurado na bridge', critical: false, verificationType: 'auto' as const },
+  { key: 'ssl_ativo', label: 'SSL ativo (HTTPS)', critical: false, verificationType: 'auto' as const },
 ];
 
 export const BRIDGE_CHECKLIST = [
-  { key: 'h1_keyword', label: 'H1 alinhado à keyword principal', critical: true },
-  { key: 'cta_unico', label: 'CTA único e claro', critical: true },
-  { key: 'disclaimer', label: 'Disclaimer de afiliado visível', critical: true },
-  { key: 'mobile_first', label: 'Mobile-first / responsivo', critical: true },
-  { key: 'ssl', label: 'SSL ativo', critical: true },
-  { key: 'sem_popup', label: 'Sem pop-up enganoso', critical: false },
-  { key: 'faq', label: 'FAQ inclusa', critical: false },
-  { key: 'resultados_variam', label: '"Resultados variam" visível', critical: false },
+  { key: 'h1_keyword', label: 'H1 alinhado à keyword principal', critical: true, verificationType: 'self_attested' as const },
+  { key: 'cta_unico', label: 'CTA único e claro', critical: true, verificationType: 'self_attested' as const },
+  { key: 'disclaimer', label: 'Disclaimer de afiliado visível', critical: true, verificationType: 'auto' as const },
+  { key: 'mobile_first', label: 'Mobile-first / responsivo', critical: true, verificationType: 'self_attested' as const },
+  { key: 'ssl', label: 'SSL ativo', critical: true, verificationType: 'auto' as const },
+  { key: 'sem_popup', label: 'Sem pop-up enganoso', critical: false, verificationType: 'self_attested' as const },
+  { key: 'faq', label: 'FAQ inclusa', critical: false, verificationType: 'auto' as const },
+  { key: 'resultados_variam', label: '"Resultados variam" visível', critical: false, verificationType: 'auto' as const },
 ];
 
+// search_on/partners_off/display_off/location_presence ainda são autoatestados porque
+// lib/google-ads.ts (fetchGoogleCampaign) hoje só sincroniza status/budget/bidStrategy — não
+// consulta network_settings/location targeting da API real ainda. Virar 'auto' exige estender
+// essa query primeiro (não fazer isso agora seria trocar um mock por outro).
 export const GOOGLE_ADS_CHECKLIST = [
-  { key: 'search_on', label: 'Search Network: ON', critical: true },
-  { key: 'partners_off', label: 'Search Partners: OFF', critical: true },
-  { key: 'display_off', label: 'Display Network: OFF', critical: true },
-  { key: 'geo_correto', label: 'Geo correto configurado', critical: true },
-  { key: 'location_presence', label: 'Location targeting: "Presence"', critical: true },
-  { key: 'budget_diario', label: 'Budget diário calculado', critical: true },
-  { key: 'lance_manual', label: 'Lance Manual CPC com teto definido', critical: true },
-  { key: 'ad_group', label: '1 ad group temático criado', critical: false },
-  { key: 'rsa', label: 'RSA com 10-15 títulos / 4 descrições', critical: false },
-  { key: 'conversao_cta', label: 'Conversão CTA configurada', critical: false },
-  { key: 'utms', label: 'UTMs nos anúncios', critical: false },
+  { key: 'search_on', label: 'Search Network: ON', critical: true, verificationType: 'self_attested' as const },
+  { key: 'partners_off', label: 'Search Partners: OFF', critical: true, verificationType: 'self_attested' as const },
+  { key: 'display_off', label: 'Display Network: OFF', critical: true, verificationType: 'self_attested' as const },
+  { key: 'geo_correto', label: 'Geo correto configurado', critical: true, verificationType: 'self_attested' as const },
+  { key: 'location_presence', label: 'Location targeting: "Presence"', critical: true, verificationType: 'self_attested' as const },
+  { key: 'budget_diario', label: 'Budget diário calculado', critical: true, verificationType: 'auto' as const },
+  { key: 'lance_manual', label: 'Lance Manual CPC com teto definido', critical: true, verificationType: 'auto' as const },
+  { key: 'ad_group', label: '1 ad group temático criado', critical: false, verificationType: 'self_attested' as const },
+  { key: 'rsa', label: 'RSA com 10-15 títulos / 4 descrições', critical: false, verificationType: 'self_attested' as const },
+  { key: 'conversao_cta', label: 'Conversão CTA configurada', critical: false, verificationType: 'self_attested' as const },
+  { key: 'utms', label: 'UTMs nos anúncios', critical: false, verificationType: 'auto' as const },
 ];
 
 export const TRACKING_CHECKLIST_MAXWEB = [
-  { key: 'postback_url', label: 'Postback URL configurada', critical: true },
-  { key: 'clickid_token', label: 'Token clickid configurado', critical: true },
-  { key: 'teste_postback', label: 'Teste de postback realizado e OK', critical: true },
-  { key: 'gtm_container', label: 'GTM Container instalado', critical: false },
-  { key: 'gtm_cta', label: 'Tag CTA clique no GTM', critical: false },
-  { key: 'ga4_evento', label: 'GA4 evento configurado', critical: false },
+  { key: 'postback_url', label: 'Postback URL configurada', critical: true, verificationType: 'auto' as const },
+  { key: 'clickid_token', label: 'Token clickid configurado', critical: true, verificationType: 'auto' as const },
+  { key: 'teste_postback', label: 'Teste de postback realizado e OK', critical: true, verificationType: 'self_attested' as const },
+  { key: 'gtm_container', label: 'GTM Container instalado', critical: false, verificationType: 'self_attested' as const },
+  { key: 'gtm_cta', label: 'Tag CTA clique no GTM', critical: false, verificationType: 'self_attested' as const },
+  { key: 'ga4_evento', label: 'GA4 evento configurado', critical: false, verificationType: 'auto' as const },
 ];
 
 export const TRACKING_CHECKLIST_CB = [
-  { key: 'hop_stats', label: 'Hop stats verificados no ClickBank', critical: true },
-  { key: 'gtm_container', label: 'GTM Container instalado', critical: false },
-  { key: 'gtm_cta', label: 'Tag CTA clique no GTM', critical: false },
-  { key: 'ga4_evento', label: 'GA4 evento configurado', critical: false },
+  { key: 'hop_stats', label: 'Hop stats verificados no ClickBank', critical: true, verificationType: 'self_attested' as const },
+  { key: 'gtm_container', label: 'GTM Container instalado', critical: false, verificationType: 'self_attested' as const },
+  { key: 'gtm_cta', label: 'Tag CTA clique no GTM', critical: false, verificationType: 'self_attested' as const },
+  { key: 'ga4_evento', label: 'GA4 evento configurado', critical: false, verificationType: 'auto' as const },
 ];
 
 export const GOLIVE_CHECKLIST = [
-  { key: 'oferta_ok', label: 'Oferta/produto verificado', critical: true },
-  { key: 'breakeven_ok', label: 'Break-even calculado', critical: true },
-  { key: 'compliance_ok', label: 'Compliance checklist completo', critical: true },
-  { key: 'bridge_ok', label: 'Bridge page publicada e testada', critical: true },
-  { key: 'keywords_ok', label: 'Keywords selecionadas', critical: true },
-  { key: 'google_ads_ok', label: 'Google Ads configurado', critical: true },
-  { key: 'tracking_ok', label: 'Tracking/postback testado', critical: true },
-  { key: 'budget_ok', label: 'Budget e prazo definidos', critical: true },
+  { key: 'oferta_ok', label: 'Oferta/produto verificado', critical: true, verificationType: 'auto' as const },
+  { key: 'breakeven_ok', label: 'Break-even calculado', critical: true, verificationType: 'auto' as const },
+  { key: 'compliance_ok', label: 'Compliance checklist completo', critical: true, verificationType: 'auto' as const },
+  { key: 'bridge_ok', label: 'Bridge page publicada e testada', critical: true, verificationType: 'auto' as const },
+  { key: 'keywords_ok', label: 'Keywords selecionadas', critical: true, verificationType: 'auto' as const },
+  { key: 'google_ads_ok', label: 'Google Ads configurado', critical: true, verificationType: 'auto' as const },
+  { key: 'tracking_ok', label: 'Tracking/postback testado', critical: true, verificationType: 'auto' as const },
+  { key: 'budget_ok', label: 'Budget e prazo definidos', critical: true, verificationType: 'auto' as const },
 ];
+
+// Lookup itemKey -> verificationType, usado no servidor (app/api/campaigns/[id]/checklists/*)
+// pra impedir que o cliente autoateste (`isChecked: true` via POST) um item que é `auto` — só
+// a rota /verify pode escrever o resultado desses itens, com base em checagem real.
+const ALL_CHECKLIST_ITEMS = [
+  ...ANTISTRIKE_ITEMS, ...BRIDGE_CHECKLIST, ...GOOGLE_ADS_CHECKLIST,
+  ...TRACKING_CHECKLIST_MAXWEB, ...TRACKING_CHECKLIST_CB, ...GOLIVE_CHECKLIST,
+];
+export function getChecklistVerificationType(itemKey: string): 'auto' | 'self_attested' {
+  return ALL_CHECKLIST_ITEMS.find((i) => i.key === itemKey)?.verificationType ?? 'self_attested';
+}
 
 export const KEYWORDS_BY_VERTICAL: Record<string, Record<string, string[]>> = {
   'Weight Loss': {

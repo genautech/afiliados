@@ -20,6 +20,17 @@ export async function POST(request: NextRequest) {
     const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, include: { keywords: true } });
     if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
 
+    // Gate real de compliance: mesmo em modo PAUSED, criar a campanha na conta real do Google
+    // Ads só é permitido com o checklist crítico do Wizard completo — antes, o "Criar no Google
+    // Ads" não olhava pra isso (achado da auditoria de mock/simulação).
+    const checklists = await prisma.campaignChecklist.findMany({ where: { campaignId } });
+    const criticalUnchecked = checklists.filter((c) => c.isCritical && !c.isChecked);
+    if (criticalUnchecked.length > 0) {
+      return NextResponse.json({
+        error: `Complete os itens críticos do checklist antes de criar a campanha no Google Ads (${criticalUnchecked.length} pendente(s)): ${criticalUnchecked.map((c) => c.itemLabel).join(', ')}.`,
+      }, { status: 422 });
+    }
+
     const finalUrl = campaign.presellUrl || campaign.offerUrl || '';
     if (!finalUrl) {
       return NextResponse.json({ error: 'Configure a URL da pré-sell ou da oferta (Wizard, passo 4) antes de criar a campanha no Google Ads.' }, { status: 422 });

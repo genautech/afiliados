@@ -7,6 +7,10 @@ import { prisma } from '@/lib/prisma';
 import { callAgent } from '@/lib/llm';
 import { PLATFORMS, VERTICALS, GEOS, CHANNELS, CVR_DEFAULTS } from '@/lib/wizard-data';
 import { FUNNELS, SYSTEM_PROMPT, buildSchemaHint, pickKeywordsFromResearch } from '@/lib/wizard-autofill';
+import { deriveCampaignStrategy } from '@/lib/campaign-strategy';
+import { getMarketIntelReferencia } from '@/lib/marketIntel';
+
+const TEST_DURATIONS = ['48h', '72h', '5', '7'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +32,22 @@ export async function POST(request: NextRequest) {
 
     if (productResearchId && !product) return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
     if (campaignId && !campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+
+    // Se só campaignId veio, busca o produto vinculado (se houver) pra alimentar o motor de estratégia também.
+    const productForStrategy = product ?? (campaign?.productResearchId
+      ? await prisma.productResearch.findFirst({ where: { id: campaign.productResearchId, userId } })
+      : null);
+
+    const { selected: preselectedKeywords, negatives } = pickKeywordsFromResearch(product?.keywords, product?.chosenKeyword);
+
+    // Motor determinístico (não-LLM): normaliza a recomendação já feita pelo pipeline de
+    // pesquisa (SEO Architect, Affiliate Page Analyst, Compliance Sentinel) em uma restrição
+    // autoritativa — igual comissão real, isso vence estimativa do agente, não é só contexto.
+    const derivedStrategy = productForStrategy ? await deriveCampaignStrategy(userId, productForStrategy, preselectedKeywords) : null;
+
+    const marketIntel = productForStrategy
+      ? await getMarketIntelReferencia(userId, productForStrategy.vertical ?? '', productForStrategy.id).catch(() => '')
+      : '';
 
     const dossie = {
       produto_pesquisado: product ? {
@@ -60,8 +80,24 @@ export async function POST(request: NextRequest) {
         budget_atual: campaign.budgetTest,
         budget_scale_atual: campaign.budgetScale || null,
       } : null,
+      estrategia_derivada: derivedStrategy ? {
+        aviso: 'Estes valores vêm de regras determinísticas sobre o dossiê do produto (camada de keyword dominante + gate de canal do vendor) — são RESTRIÇÃO, não sugestão. Nunca escolha um channel presente em canais_bloqueados. Siga funil_recomendado e o guia_de_budget salvo se compliance.alertas críticos do produto indicarem outra coisa mais segura.',
+        estagio_de_funil: derivedStrategy.funnelStage,
+        camada_de_keyword_dominante: derivedStrategy.dominantLayer,
+        canal_recomendado: derivedStrategy.recommendedChannel,
+        canais_bloqueados: derivedStrategy.blockedChannels,
+        motivo_bloqueio: derivedStrategy.channelBlockReason,
+        funil_recomendado: derivedStrategy.recommendedFunnel,
+        tipo_de_bridge_recomendado: derivedStrategy.recommendedBridgeType,
+        guia_de_budget: derivedStrategy.budgetGuidance,
+      } : null,
+      sinais_de_mercado: marketIntel || null,
     };
 
+    // Números fora do razoável (alucinação do LLM ou parsing ruim) disparam uma retentativa
+    // automática (mecanismo já existente em callAgent/lib/llm.ts) em vez de virar Number(x)||
+    // fallback silencioso — os limites abaixo são os mesmos já declarados em texto no
+    // SYSTEM_PROMPT (lib/wizard-autofill.ts), só que agora impostos de verdade.
     const validate = (data: any) => {
       if (!data) return 'JSON inválido';
       if (!PLATFORMS.includes(data.platform)) return `platform inválido: ${data.platform}`;
@@ -69,6 +105,32 @@ export async function POST(request: NextRequest) {
       if (!GEOS.includes(data.geo)) return `geo inválido: ${data.geo}`;
       if (!CHANNELS.includes(data.channel)) return `channel inválido: ${data.channel}`;
       if (!FUNNELS.includes(data.funnel)) return `funnel inválido: ${data.funnel}`;
+      if (derivedStrategy?.blockedChannels.includes(data.channel)) {
+        return `channel "${data.channel}" está bloqueado para este produto (${derivedStrategy.channelBlockReason}) — escolha outro canal.`;
+      }
+      const refundPct = Number(data.refundPct);
+      if (data.refundPct !== undefined && (!Number.isFinite(refundPct) || refundPct < 0 || refundPct > 100)) {
+        return `refundPct fora da faixa 0-100: ${data.refundPct}`;
+      }
+      const cvr = Number(data.cvrExpected);
+      if (data.cvrExpected !== undefined && (!Number.isFinite(cvr) || cvr < 0 || cvr > 100)) {
+        return `cvrExpected fora da faixa 0-100: ${data.cvrExpected}`;
+      }
+      const budgetTest = Number(data.budgetTest);
+      if (data.budgetTest !== undefined && (!Number.isFinite(budgetTest) || budgetTest < 10 || budgetTest > 1000)) {
+        return `budgetTest fora da faixa razoável ($10-$1000): ${data.budgetTest}`;
+      }
+      const budgetScale = Number(data.budgetScale);
+      if (data.budgetScale !== undefined && (!Number.isFinite(budgetScale) || budgetScale < 0 || budgetScale > 5000)) {
+        return `budgetScale fora da faixa razoável ($0-$5000/dia): ${data.budgetScale}`;
+      }
+      const aov = Number(data.aov);
+      if (data.aov !== undefined && (!Number.isFinite(aov) || aov < 0)) {
+        return `aov não pode ser negativo: ${data.aov}`;
+      }
+      if (!TEST_DURATIONS.includes(data.testDuration)) {
+        return `testDuration inválido (esperado ${TEST_DURATIONS.join('|')}): ${data.testDuration}`;
+      }
       return null;
     };
 
@@ -96,7 +158,6 @@ ${buildSchemaHint()}`;
     // Dados reais conhecidos do dossiê sempre vencem estimativa do agente.
     const commission = typeof product?.avgPayout === 'number' ? product.avgPayout : Number(data.commission) || 0;
     const cvrExpected = Number(data.cvrExpected) || CVR_DEFAULTS[data.vertical] || 1.0;
-    const { selected: keywords, negatives } = pickKeywordsFromResearch(product?.keywords, product?.chosenKeyword);
 
     return NextResponse.json({
       name: data.name,
@@ -113,10 +174,11 @@ ${buildSchemaHint()}`;
       testDuration: data.testDuration || '72h',
       budgetScale: Number(data.budgetScale) || 0,
       offerUrl: product?.hopLink || undefined,
-      keywords,
+      keywords: preselectedKeywords,
       negatives,
       summary: data.summary || '',
       rationale: data.rationale || {},
+      strategy: derivedStrategy,
       usage: agentResult.usage,
       provider: agentResult.provider,
       model: agentResult.model,

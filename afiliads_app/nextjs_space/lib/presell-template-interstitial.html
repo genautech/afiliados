@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITULO_DA_PAGINA}}</title>
+<meta name="description" content="{{META_DESCRICAO}}">
+
+<!-- ===== GOOGLE ADS: TAG GLOBAL (gtag.js) — substitua GOOGLE_ADS_ID (AW-XXXXXXXXX) ===== -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=GOOGLE_ADS_ID"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    ad_storage: 'denied',
+    analytics_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
+  gtag('js', new Date());
+  gtag('config', 'GOOGLE_ADS_ID');
+</script>
+{{GA4_TAG}}
+{{META_PIXEL_TAG}}
+
+<style>
+  :root{--cor:#1f3864;--acento:#e07b39;--texto:#2b2b2b;--fundo:#12141c;--cinza:#f5f6f8}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;color:#fff;background:var(--fundo);min-height:100vh}
+
+  /* ===== Fundo: screenshot real da sales page do vendor, com overlay escuro pra legibilidade ===== */
+  .bg{position:fixed;inset:0;background:var(--fundo) center top/cover no-repeat;background-image:url('{{SALES_PAGE_SCREENSHOT_URL}}');filter:blur(1.5px) saturate(.9)}
+  .bg-overlay{position:fixed;inset:0;background:linear-gradient(180deg,rgba(10,12,20,.55) 0%,rgba(10,12,20,.75) 55%,rgba(10,12,20,.92) 100%)}
+
+  .badge{position:fixed;top:14px;left:14px;z-index:20;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:rgba(255,255,255,.12);color:#fff;padding:6px 10px;border-radius:20px;backdrop-filter:blur(4px)}
+
+  /* ===== Oferta (revelada após o gate de segmentação) ===== */
+  #oferta{display:none;position:relative;z-index:10;min-height:100vh;flex-direction:column;justify-content:flex-end;padding:28px 20px 34px;max-width:620px;margin:0 auto}
+  #oferta.show{display:flex}
+  .site-nome{font-weight:bold;color:#fff;font-size:14px;margin-bottom:14px;letter-spacing:.5px;opacity:.85}
+  .categoria{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--acento);margin-bottom:8px;font-weight:bold}
+  h1{font-size:28px;line-height:1.28;color:#fff;margin-bottom:10px}
+  .sub{font-size:16px;color:#e2e2e2;margin-bottom:18px}
+  .destaque{background:rgba(255,255,255,.08);border-left:4px solid var(--acento);padding:12px 16px;margin:0 0 22px;font-size:14px;color:#f1f1f1;border-radius:0 6px 6px 0}
+  .cta{display:block;text-align:center;background:var(--acento);color:#fff;font-weight:bold;font-size:20px;text-decoration:none;padding:18px 22px;border-radius:10px;margin:0 0 10px;box-shadow:0 8px 24px rgba(224,123,57,.45)}
+  .cta:hover{filter:brightness(1.08)}
+  .cta-sub{font-size:12px;color:#cfcfcf;margin-bottom:20px;text-align:center}
+  .disclosure{font-size:11px;color:#cfcfcf;background:rgba(255,255,255,.06);padding:10px 14px;border-radius:6px;margin-bottom:14px}
+  footer{font-size:11px;color:#b8b8b8}
+  footer a{color:#fff;margin-right:12px;opacity:.8}
+
+  /* ===== Gate de segmentação (país/gênero/idade) — pré-qualificação honesta, sem captcha simulado ===== */
+  #seg-gate{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:20px}
+  #seg-gate.hidden{display:none}
+  .seg-card{position:relative;background:#fff;color:var(--texto);border-radius:14px;padding:26px 24px;max-width:360px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+  .seg-eyebrow{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--acento);font-weight:bold;margin-bottom:6px}
+  .seg-lead{font-size:14px;color:#444;margin-bottom:18px}
+  .seg-card label{display:block;font-size:12px;color:#666;margin-bottom:4px;font-weight:bold}
+  .seg-card select{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin-bottom:14px;font-size:14px;color:var(--texto);background:#fff}
+  .seg-submit{width:100%;background:var(--cor);color:#fff;border:none;padding:14px;border-radius:8px;font-weight:bold;font-size:15px;cursor:pointer}
+  .seg-submit:hover{filter:brightness(1.1)}
+  @media(max-width:600px){h1{font-size:23px}}
+</style>
+</head>
+<body>
+{{COOKIE_CONSENT}}
+<div class="bg"></div>
+<div class="bg-overlay"></div>
+<div class="badge">{{NOME_DO_SITE}}</div>
+
+<div id="seg-gate">
+  <form class="seg-card" id="seg-form">
+    <div class="seg-eyebrow">Antes de continuar</div>
+    <div class="seg-lead">Responda rapidinho pra gente te mostrar a oferta certa:</div>
+
+    <label for="seg-geo">País</label>
+    <select id="seg-geo" required>
+      <option value="">Selecione</option>
+      <option value="US">Estados Unidos</option>
+      <option value="UK">Reino Unido</option>
+      <option value="AU">Austrália</option>
+      <option value="CA">Canadá</option>
+      <option value="BR">Brasil</option>
+      <option value="OUTRO">Outro</option>
+    </select>
+
+    <label for="seg-gender">Gênero</label>
+    <select id="seg-gender" required>
+      <option value="">Selecione</option>
+      <option value="F">Feminino</option>
+      <option value="M">Masculino</option>
+      <option value="O">Prefiro não dizer</option>
+    </select>
+
+    <label for="seg-age">Faixa etária</label>
+    <select id="seg-age" required>
+      <option value="">Selecione</option>
+      <option value="18-24">18–24</option>
+      <option value="25-34">25–34</option>
+      <option value="35-44">35–44</option>
+      <option value="45-54">45–54</option>
+      <option value="55+">55+</option>
+    </select>
+
+    <button type="submit" class="seg-submit">Continuar</button>
+  </form>
+</div>
+
+<div id="oferta">
+  <div class="site-nome">{{NOME_DO_SITE}}</div>
+  <div class="categoria">{{CATEGORIA — ex.: REVIEW HONESTO}}</div>
+  <h1 id="of-headline">{{HEADLINE — a promessa editorial, sem promessa de resultado}}</h1>
+  <p class="sub">{{SUBHEADLINE — expande a headline com o benefício de LER o artigo}}</p>
+
+  <div class="destaque">{{PROVA REAL — número de alunos/avaliação/garantia oficial da oferta. Somente dados verificáveis da página do produtor.}}</div>
+
+  <a class="cta" href="LINK_DE_AFILIADO_AQUI" id="cta-afiliado" data-href="LINK_DE_AFILIADO_AQUI">{{TEXTO DO CTA — ex.: Conhecer o {{PRODUTO}} Agora}}</a>
+  <div class="cta-sub">{{Reforço sob o botão — ex.: Garantia incondicional de 7 dias}}</div>
+
+  <div class="disclosure">
+    Divulgação: este site participa de programas de afiliados e pode receber comissão por compras feitas pelos links, sem custo adicional para você.
+    {{DISCLAIMER_SAUDE}}
+  </div>
+
+  <footer>
+    <a href="/politica-de-privacidade">Política de Privacidade</a>
+    <a href="/termos">Termos de Uso</a>
+    <a href="/contato">Contato</a>
+    <span>© {{ANO}} {{NOME_DO_SITE}}</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var ROUTES = {{SEGMENT_ROUTES_JSON}};
+
+  function pickRoute(geo, gender, age){
+    for (var i = 0; i < ROUTES.length; i++){
+      var r = ROUTES[i];
+      var geoOk = !r.geo || r.geo === 'ANY' || r.geo === geo;
+      var genderOk = !r.gender || r.gender === 'ANY' || r.gender === gender;
+      var ageOk = !r.ageRange || r.ageRange === 'ANY' || r.ageRange === age;
+      if (geoOk && genderOk && ageOk) return r;
+    }
+    return null;
+  }
+
+  var gate = document.getElementById('seg-gate');
+  var oferta = document.getElementById('oferta');
+  var form = document.getElementById('seg-form');
+  var cta = document.getElementById('cta-afiliado');
+  var headlineEl = document.getElementById('of-headline');
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var geo = document.getElementById('seg-geo').value;
+    var gender = document.getElementById('seg-gender').value;
+    var age = document.getElementById('seg-age').value;
+
+    var route = pickRoute(geo, gender, age);
+    if (route) {
+      if (route.hopLink) { cta.setAttribute('data-href', route.hopLink); cta.setAttribute('href', route.hopLink); }
+      if (route.headline) headlineEl.textContent = route.headline;
+      if (route.ctaTexto) cta.textContent = route.ctaTexto;
+    }
+    if (typeof window.__attachTracking === 'function') window.__attachTracking();
+
+    gate.classList.add('hidden');
+    oferta.classList.add('show');
+    if (typeof gtag === 'function') gtag('event', 'segment_gate_complete', { geo: geo, gender: gender, age_range: age });
+  });
+})();
+</script>
+
+<script>
+/* ===== Captura do gclid + conversão de clique no CTA =====
+   1) Anexa o gclid da URL ao link de afiliado (rastreio ponta a ponta) — SÓ depois de
+      consentimento real (cc_consent === 'granted' no banner de Consent Mode v2 acima).
+   2) Dispara a conversão secundária CLIQUE-CTA no Google Ads.
+   Substitua CONVERSION_LABEL pelo rótulo da ação de conversão. */
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var gclid = params.get('gclid');
+  function consentGranted(){ return localStorage.getItem('cc_consent') === 'granted'; }
+  function attachTracking(){
+    if (!gclid || !consentGranted()) return;
+    document.querySelectorAll('.cta').forEach(function(btn){
+      var destino = btn.getAttribute('data-href');
+      if (destino.indexOf('gclid=') > -1) return;
+      destino += (destino.indexOf('?') > -1 ? '&' : '?') + 'gclid=' + encodeURIComponent(gclid)
+               + '&sck=' + encodeURIComponent(gclid);
+      btn.setAttribute('href', destino);
+    });
+  }
+  attachTracking();
+  window.__attachTracking = attachTracking;
+  document.querySelectorAll('.cta').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if (typeof gtag === 'function') {
+        gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

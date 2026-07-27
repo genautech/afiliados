@@ -43,9 +43,11 @@ export async function POST(req: NextRequest) {
     if (!product) return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
 
     let trackingId: string | undefined;
+    let channel: string | undefined;
     if (campaignId) {
       const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId } });
       trackingId = campaign?.utmCampaign ?? undefined;
+      channel = campaign?.channel ?? undefined;
     }
 
     if (bridgePageType === BridgePageType.POGO || bridgePageType === BridgePageType.ADVERTORIAL) {
@@ -60,11 +62,42 @@ export async function POST(req: NextRequest) {
         pageType,
         context,
         trackingId,
+        channel,
+        campaignId: campaignId ?? undefined,
         publicar: false,
       });
       return NextResponse.json({
         success: true,
         message: `Presell "${pageType}" gerada como rascunho — revise o preview antes de publicar.`,
+        dispatchedAgent: 'presell-builder',
+        presellId: presell.id,
+        presellUrl: `/p/${presell.slug}`,
+        usage, provider, model,
+      }, { status: 200 });
+    }
+
+    if (bridgePageType === BridgePageType.INTERSTITIAL) {
+      if (!product.hopLink) {
+        return NextResponse.json({ error: `Produto "${product.name}" não tem hopLink cadastrado — cadastre antes de gerar a bridge page.` }, { status: 422 });
+      }
+      // generatePresell já bloqueia por código se channel for SEARCH/PMAX (INTERSTITIAL_BLOCKED_CHANNELS
+      // em lib/presell.ts) — recommendBridgePage() também só chega em INTERSTITIAL com canal seguro,
+      // mas o gate real fica no gerador, não na recomendação.
+      const { presell, usage, provider, model } = await generatePresell(userId, {
+        productName: product.name,
+        hopLink: product.hopLink,
+        productId: product.id,
+        pageType: 'interstitial',
+        context,
+        trackingId,
+        channel,
+        campaignId: campaignId ?? undefined,
+        salesPageUrl: product.vendorPageUrl ?? undefined,
+        publicar: false,
+      });
+      return NextResponse.json({
+        success: true,
+        message: 'Presell "interstitial" gerada como rascunho — revise o preview antes de publicar.',
         dispatchedAgent: 'presell-builder',
         presellId: presell.id,
         presellUrl: `/p/${presell.slug}`,

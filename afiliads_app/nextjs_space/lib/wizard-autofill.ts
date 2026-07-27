@@ -8,6 +8,8 @@ REGRAS:
 - Escolha "platform", "vertical", "geo", "channel" e "funnel" ESTRITAMENTE dentre as opções permitidas fornecidas. Nunca invente uma opção fora da lista.
 - Quando o dossiê já trouxer um valor numérico real (comissão, payout, CVR estimada), use exatamente esse valor — não invente um diferente.
 - Quando faltar um dado, estime com base nas melhores práticas de marketing de afiliados (regra de 3x CPA, refund rate típico da vertical).
+- Se o dossiê trouxer "estrategia_derivada", ela é RESTRIÇÃO, não sugestão: NUNCA escolha um "channel" presente em "canais_bloqueados" (é gate de compliance do vendor, não preferência). Prefira "canal_recomendado" e "funil_recomendado" quando fizerem sentido com o resto do dossiê.
+- "testDuration", "budgetTest" e "budgetScale" devem seguir o "guia_de_budget" de "estrategia_derivada" quando presente — ele já ajusta a régua abaixo pelo estágio de funil (fundo de funil converte rápido e testa em menos dias; topo de funil precisa de mais amostra antes de julgar). Na ausência desse guia, use a régua padrão:
 - "budgetTest" deve ficar entre $50 e $150, normalmente 1x a 2x o valor da comissão — nunca sugira valores muito acima disso para um teste inicial.
 - "budgetScale" é o orçamento DIÁRIO só aplicado depois que o teste validar (decisão SCALE humana) — sugira 3x a 5x o budget diário de teste (budgetTest/dias de teste) se a economia da oferta (payout, CVR estimada) sustentar esse CPC; nunca sugira scale maior que o afiliado consegue perder com segurança.
 - O nome da campanha deve seguir o padrão [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_v1, usando as SIGLAS abaixo (nunca o nome por extenso):

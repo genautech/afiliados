@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from './prisma';
 import { callAgent } from './llm';
+import { computeEconomics } from './campaign-rules';
+import { getMarketIntelReferencia } from './marketIntel';
 
 export interface PresellContent {
   categoria: string;
@@ -27,6 +29,20 @@ export interface PresellContent {
   nome_site: string;
 }
 
+// Rota de oferta por segmento, usada só pelo pageType 'interstitial'. O popup de
+// segmentação (país/gênero/idade) escolhe a primeira rota cujos critérios batem com a
+// resposta do visitante; campos ausentes ou 'ANY' equivalem a "qualquer valor". Sem match
+// (ou sem rotas configuradas), a página usa o hopLink/headline padrão da presell.
+export interface SegmentRoute {
+  label: string;
+  geo?: string;
+  gender?: 'M' | 'F' | 'O' | 'ANY';
+  ageRange?: '18-24' | '25-34' | '35-44' | '45-54' | '55+' | 'ANY';
+  hopLink: string;
+  headline?: string;
+  ctaTexto?: string;
+}
+
 const BUILDER_PROMPT = `Você é o Presell Builder do AfiliAds: redator de páginas de pré-venda (bridge pages) para afiliados ClickBank que precisam ser APROVADAS pelo Google Ads.
 
 Regras invioláveis (valem para QUALQUER produto/nicho):
@@ -38,8 +54,13 @@ Regras invioláveis (valem para QUALQUER produto/nicho):
 - CTA visível, direto e persuasivo, mas sem promessa de resultado (ex.: "Descubra Como Funciona", "Veja a Análise Completa").
 - Se o contexto abaixo trouxer riscos de compliance específicos do produto (seção "RISCOS DE COMPLIANCE A EVITAR"), reescreva o conteúdo especificamente para não incorrer em NENHUM deles.
 - Idioma conforme solicitado (en para US/UK/AU, pt-BR para Brasil).
-- Tipos de página curtos (pogo, vsl) só exibem headline/subheadline/abertura/prova/cta — capriche
-  nesses campos especificamente, mesmo respondendo o JSON completo abaixo.
+- Tipos de página curtos (pogo, vsl, interstitial) só exibem headline/subheadline/abertura/prova/cta —
+  capriche nesses campos especificamente, mesmo respondendo o JSON completo abaixo.
+- pageType "interstitial": SEM artigo, é um teaser sobre o screenshot real da sales page do vendor.
+  Headline/prova/cta devem funcionar soltos, sem depender do resto do texto. Nunca use linguagem que
+  simule ser a própria página do vendor (ex.: "clique para continuar carregando") — a divulgação de
+  afiliado continua obrigatória. Este tipo é restrito a Native/Display/YouTube/social; NUNCA gerar
+  para uma campanha de Google Search (o Compliance Sentinel bloqueia isso no fluxo de geração).
 
 TÉCNICAS DE BRIDGE PAGE (não são decorativas — aplicar sempre):
 - Coerência de jornada: headline e ângulo aqui devem ecoar a promessa do anúncio/keyword de origem
@@ -77,7 +98,24 @@ const TEMPLATE_FILE_BY_TYPE: Record<string, string> = {
   advertorial: 'presell-template.html',
   pogo: 'presell-template-pogo.html',
   vsl: 'presell-template-vsl.html',
+  interstitial: 'presell-template-interstitial.html',
 };
+
+// Screenshot da sales page real do vendor (usado só pelo pageType 'interstitial'), via
+// microlink.io — sem chave de API para uso pontual (geração de presell, não por visitante).
+// Falha de captura (página bloqueia bot, timeout, etc.) não derruba a geração: a página cai
+// pra um fundo neutro em vez de screenshot.
+async function captureSalesPageScreenshot(url: string): Promise<string | undefined> {
+  try {
+    const api = `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=true&meta=false&viewport.width=1280&viewport.height=1600`;
+    const res = await fetch(api, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return (data?.data?.screenshot?.url as string | undefined) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // Gate de retenção (pop-up "pressione e segure"): mesma experiência pra qualquer visitante
 // (não distingue bot/humano — não é cloaking), só adiciona um passo de interação real antes
@@ -145,6 +183,7 @@ function cookieConsentHtml(): string {
   function grant(){
     if (typeof gtag === 'function') gtag('consent', 'update', { ad_storage: 'granted', analytics_storage: 'granted', ad_user_data: 'granted', ad_personalization: 'granted' });
     if (typeof window.__initMetaPixel === 'function') window.__initMetaPixel();
+    if (typeof window.__attachTracking === 'function') window.__attachTracking();
   }
   var saved = localStorage.getItem(KEY);
   if (saved === 'granted') { grant(); hide(); return; }
@@ -188,7 +227,7 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[] }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
@@ -240,6 +279,11 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{COOKIE_CONSENT}}', cookieConsentHtml());
   t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml() : '');
   if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
+  if (pageType === 'interstitial') {
+    t = t.replace('{{SALES_PAGE_SCREENSHOT_URL}}', esc(opts.salesPageScreenshotUrl ?? ''));
+    // < escapado pra JSON embutido em <script> não fechar a tag prematuramente (</script> dentro de string).
+    t = t.replace('{{SEGMENT_ROUTES_JSON}}', JSON.stringify(opts.segmentRoutes ?? []).replace(/</g, '\\u003c'));
+  }
   t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
     ? `<img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy">`
     : '');
@@ -312,6 +356,103 @@ export async function getPresellReferencia(userId: string, vertical?: string | n
   return `REFERÊNCIA DE PERFORMANCE REAL (${scopeLabel}): ${lines.join(' | ')}. "${best.pageType}" teve a melhor conversão até agora — use como referência de estrutura/ângulo, NUNCA copie texto literal de outra presell (risco de conteúdo duplicado).`;
 }
 
+export interface PresellOutcomeRanking {
+  pageType: string;
+  profit: number;
+  roiPct: number;
+  conversions: number;
+  campaigns: number;
+}
+
+// Ranking estruturado de RESULTADO REAL (receita/lucro) por pageType, ligando
+// Presell.campaignId -> Campaign -> DailyLog (mesma economia usada pelo loop de campanha em
+// lib/campaign-rules.ts). Usado tanto pelo prompt do Presell Builder (getPresellOutcomeReferencia,
+// formatado em texto) quanto pelo motor determinístico (lib/campaign-strategy.ts, que pode usar
+// o "best" pra sobrepor a recomendação estática — nunca o gate de canal do interstitial, que é
+// sempre a autoridade final). Mínimo de conversões evita conclusão precipitada com amostra pequena.
+export async function rankPresellOutcomes(userId: string, vertical?: string | null, channel?: string | null): Promise<{ ranked: PresellOutcomeRanking[]; scopeLabel: string }> {
+  const MIN_CONVERSIONS = 3;
+  const presells = await prisma.presell.findMany({
+    where: { userId, campaignId: { not: null } },
+    select: {
+      pageType: true,
+      campaign: {
+        select: {
+          id: true, vertical: true, channel: true,
+          commissionNet: true, epcBreakeven: true, cpcMax: true, budgetTest: true, offerUrl: true,
+          dailyLogs: { select: { spend: true, revenue: true, clicks: true, hops: true, conversions: true, logDate: true } },
+        },
+      },
+    },
+  });
+  const withCampaign = presells.filter((p): p is typeof p & { campaign: NonNullable<typeof p.campaign> } => !!p.campaign);
+  if (withCampaign.length === 0) return { ranked: [], scopeLabel: '' };
+
+  const verticalNorm = (vertical ?? '').trim().toLowerCase();
+  const channelNorm = (channel ?? '').trim().toUpperCase();
+
+  const sameVerticalChannel = verticalNorm && channelNorm
+    ? withCampaign.filter(p => (p.campaign.vertical ?? '').toLowerCase() === verticalNorm && (p.campaign.channel ?? '').toUpperCase() === channelNorm)
+    : [];
+  const sameVertical = verticalNorm
+    ? withCampaign.filter(p => (p.campaign.vertical ?? '').toLowerCase() === verticalNorm)
+    : [];
+
+  let pool = withCampaign;
+  let scopeLabel = 'no histórico geral de campanhas (dado insuficiente ainda na vertical/canal específicos)';
+  if (sameVerticalChannel.length >= 3) {
+    pool = sameVerticalChannel;
+    scopeLabel = `nas suas campanhas da vertical "${vertical}" no canal ${channel}`;
+  } else if (sameVertical.length >= 3) {
+    pool = sameVertical;
+    scopeLabel = `nas suas campanhas da vertical "${vertical}" (todos os canais)`;
+  }
+
+  const byType = new Map<string, { profit: number; spend: number; conversions: number; campaignIds: Set<string> }>();
+  for (const p of pool) {
+    const c = p.campaign;
+    const econ = computeEconomics(
+      { commissionNet: c.commissionNet, epcBreakeven: c.epcBreakeven, cpcMax: c.cpcMax, budgetTest: c.budgetTest, offerUrl: c.offerUrl },
+      c.dailyLogs,
+    );
+    const cur = byType.get(p.pageType) ?? { profit: 0, spend: 0, conversions: 0, campaignIds: new Set<string>() };
+    cur.profit += econ.profit;
+    cur.spend += econ.spend;
+    cur.conversions += econ.conversions;
+    cur.campaignIds.add(c.id);
+    byType.set(p.pageType, cur);
+  }
+
+  const ranked = Array.from(byType.entries())
+    .map(([pageType, s]) => ({
+      pageType,
+      profit: s.profit,
+      roiPct: s.spend > 0 ? (s.profit / s.spend) * 100 : 0,
+      conversions: s.conversions,
+      campaigns: s.campaignIds.size,
+    }))
+    .filter(r => r.conversions >= MIN_CONVERSIONS)
+    .sort((a, b) => b.profit - a.profit);
+
+  return { ranked, scopeLabel };
+}
+
+// Formata rankPresellOutcomes() em texto pro prompt do Presell Builder — nunca copia texto,
+// só aponta qual pageType lucrou mais de verdade (complementa getPresellReferencia, que mede
+// só CTR/clique no CTA).
+export async function getPresellOutcomeReferencia(userId: string, vertical?: string | null, channel?: string | null): Promise<string> {
+  const { ranked, scopeLabel } = await rankPresellOutcomes(userId, vertical, channel);
+  if (ranked.length === 0) return '';
+  const best = ranked[0];
+  const lines = ranked.map(r => `${r.pageType}: lucro real $${r.profit.toFixed(2)} (ROI ${r.roiPct.toFixed(0)}%, ${r.conversions} conversões em ${r.campaigns} campanha${r.campaigns > 1 ? 's' : ''})`);
+  return `REFERÊNCIA DE RESULTADO REAL — receita/lucro (${scopeLabel}): ${lines.join(' | ')}. "${best.pageType}" teve o melhor lucro real até agora — isso é sobre VENDA de verdade, não só clique no CTA; use como referência de estrutura/ângulo, NUNCA copie texto literal de outra presell.`;
+}
+
+// Canais do Google Ads (lib/wizard-data.ts CHANNELS) em que o pageType 'interstitial' é
+// seguro: YOUTUBE e DEMAND_GEN cobrem o equivalente do app a Native/Display/YouTube/social.
+// SEARCH é bloqueado sempre; PMAX também, porque Performance Max inclui inventário de Search.
+const INTERSTITIAL_BLOCKED_CHANNELS = new Set(['SEARCH', 'PMAX']);
+
 export async function generatePresell(userId: string, args: {
   productName: string;
   hopLink: string;
@@ -329,24 +470,33 @@ export async function generatePresell(userId: string, args: {
   videoUrl?: string;
   publicar?: boolean;
   variantGroupId?: string;
+  channel?: string;
+  salesPageUrl?: string;
+  segmentRoutes?: SegmentRoute[];
+  campaignId?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
-  const pageType = args.pageType && ['advertorial', 'pogo', 'vsl'].includes(args.pageType) ? args.pageType : 'advertorial';
+  const pageType = args.pageType && ['advertorial', 'pogo', 'vsl', 'interstitial'].includes(args.pageType) ? args.pageType : 'advertorial';
   const popupGate = !!args.popupGate;
   if (pageType === 'vsl' && !args.videoUrl?.trim()) {
     throw new Error('pageType "vsl" exige videoUrl (link do vídeo do VSL — YouTube, Vimeo ou .mp4 direto)');
+  }
+  if (pageType === 'interstitial' && args.channel && INTERSTITIAL_BLOCKED_CHANNELS.has(args.channel)) {
+    throw new Error(`pageType "interstitial" não é permitido no canal ${args.channel} (só Native/Display/YouTube/social — no Google Ads: YOUTUBE ou DEMAND_GEN). Página com screenshot+popup de segmentação reprova revisão de Search.`);
   }
 
   let productCtx = args.context ?? '';
   let isHealthNiche = detectHealthNiche(undefined, undefined, `${angle} ${args.context ?? ''}`);
   let imagemProdutoUrl: string | undefined;
+  let vendorPageUrlFromProduct: string | undefined;
   if (args.productId) {
     const p = await prisma.productResearch.findFirst({ where: { id: args.productId, userId } });
     if (p) {
       isHealthNiche = detectHealthNiche(p.vertical, p.tags, `${angle} ${args.context ?? ''}`);
+      vendorPageUrlFromProduct = p.vendorPageUrl ?? undefined;
       productCtx += `\nDossiê: vertical ${p.vertical}; resumo: ${p.summary}; melhor keyword: ${p.chosenKeyword}`;
       const strategy = p.strategy as any;
       if (strategy?.presell?.elementos?.length) {
@@ -378,7 +528,22 @@ export async function generatePresell(userId: string, args: {
 
       const presellRef = await getPresellReferencia(userId, p.vertical);
       if (presellRef) productCtx += `\n${presellRef}`;
+
+      const outcomeRef = await getPresellOutcomeReferencia(userId, p.vertical, args.channel);
+      if (outcomeRef) productCtx += `\n${outcomeRef}`;
+
+      const marketRef = await getMarketIntelReferencia(userId, p.vertical ?? '', args.productId).catch(() => '');
+      if (marketRef) productCtx += `\n${marketRef}`;
     }
+  }
+
+  let salesPageScreenshotUrl: string | undefined;
+  if (pageType === 'interstitial') {
+    const salesPageUrl = args.salesPageUrl?.trim() || vendorPageUrlFromProduct;
+    if (!salesPageUrl) {
+      throw new Error('pageType "interstitial" exige salesPageUrl (ou vendorPageUrl cadastrado no produto) — é a página que vira o screenshot de fundo.');
+    }
+    salesPageScreenshotUrl = await captureSalesPageScreenshot(salesPageUrl);
   }
 
   const trackingIntegrations = await prisma.integration.findMany({
@@ -406,6 +571,7 @@ export async function generatePresell(userId: string, args: {
   const html = renderPresellHtml(content, {
     productName, hopLink: finalHop, googleAdsId: args.googleAdsId, ga4Id, metaPixelId, isHealthNiche,
     pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
+    salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes,
   });
 
   const baseSlug = slugify(`${productName}-${pageType}-${angle}`);
@@ -424,6 +590,7 @@ export async function generatePresell(userId: string, args: {
     data: {
       userId,
       productId: args.productId ?? null,
+      campaignId: args.campaignId ?? null,
       slug,
       title: content.titulo_pagina,
       productName,
@@ -437,7 +604,9 @@ export async function generatePresell(userId: string, args: {
       geo,
       language,
       html,
-      content: content as any,
+      content: (pageType === 'interstitial' && args.segmentRoutes?.length
+        ? { ...content, segmentRoutes: args.segmentRoutes }
+        : content) as any,
       status: publicar ? 'publicada' : 'rascunho',
       googleAdsId: args.googleAdsId ?? '',
       publishTarget: destino,

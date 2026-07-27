@@ -3,6 +3,62 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
+import { PLATFORMS, VERTICALS, GEOS, CHANNELS } from '@/lib/wizard-data';
+import { getPresellOutcomeReferencia } from '@/lib/presell';
+import { getMarketIntelReferencia } from '@/lib/marketIntel';
+
+// Schema real por campo — garante que "valor_sugerido" (texto livre do LLM) só vira uma
+// correção aplicável se for de fato compatível com o TIPO do campo no Wizard. Sem isso, uma
+// sugestão fora do formato (ex.: enum inválido, número fora de faixa, URL quebrada) seria
+// aplicada cegamente pelo AgentHelp no cliente — ver lib/wizard-data.ts / app/(app)/wizard/page.tsx.
+type FieldKind =
+  | { kind: 'enum'; options: readonly string[] }
+  | { kind: 'number'; min?: number; max?: number }
+  | { kind: 'url' }
+  | { kind: 'text' };
+
+const FIELD_KINDS: Record<string, FieldKind> = {
+  platform: { kind: 'enum', options: PLATFORMS },
+  vertical: { kind: 'enum', options: VERTICALS },
+  geo: { kind: 'enum', options: GEOS },
+  channel: { kind: 'enum', options: CHANNELS },
+  funnel: { kind: 'enum', options: ['BRIDGE', 'DIRECT', 'REVIEW', 'SL'] },
+  pageType: { kind: 'enum', options: ['advertorial', 'pogo', 'vsl', 'interstitial'] },
+  popupGate: { kind: 'enum', options: ['true', 'false'] },
+  testDuration: { kind: 'enum', options: ['48h', '72h', '5', '7'] },
+  commission: { kind: 'number', min: 0 },
+  refundPct: { kind: 'number', min: 0, max: 100 },
+  aov: { kind: 'number', min: 0 },
+  cvrExpected: { kind: 'number', min: 0, max: 100 },
+  budgetTest: { kind: 'number', min: 0 },
+  offerUrl: { kind: 'url' },
+  presellUrl: { kind: 'url' },
+  flowpageUrl: { kind: 'url' },
+  postbackUrl: { kind: 'url' },
+  videoUrl: { kind: 'url' },
+};
+
+function validateSuggestedValue(fieldKey: string, raw: string): { value: string | null; reason?: string } {
+  const kind = FIELD_KINDS[fieldKey];
+  const v = raw.trim();
+  if (!kind) return { value: v }; // sem schema definido pra esse campo — mantém comportamento de texto livre
+
+  if (kind.kind === 'enum') {
+    const match = kind.options.find((o) => o.toLowerCase() === v.toLowerCase());
+    return match ? { value: match } : { value: null, reason: `"${v}" não é uma opção válida (esperado: ${kind.options.join(', ')})` };
+  }
+  if (kind.kind === 'number') {
+    const n = Number(v.replace(/[^0-9.\-]/g, ''));
+    if (!Number.isFinite(n)) return { value: null, reason: `"${v}" não é um número válido` };
+    if (kind.min !== undefined && n < kind.min) return { value: null, reason: `valor ${n} abaixo do mínimo permitido (${kind.min})` };
+    if (kind.max !== undefined && n > kind.max) return { value: null, reason: `valor ${n} acima do máximo permitido (${kind.max})` };
+    return { value: String(n) };
+  }
+  if (kind.kind === 'url') {
+    return /^https?:\/\/\S+$/i.test(v) ? { value: v } : { value: null, reason: `"${v}" não parece uma URL válida (precisa começar com http:// ou https://)` };
+  }
+  return { value: v };
+}
 
 const agentPrompts: Record<string, { agent: string; prompt: string }> = {
   name: {
@@ -52,9 +108,22 @@ Verifique apenas: (1) é uma URL https válida de hop.clickbank.net ou domínio 
     agent: 'CRO & Conversion Specialist',
     prompt: 'Analise a taxa de conversão (CVR %) esperada. Taxas realistas de CVR para tráfego frio em página ponte estão entre 0.5% e 2.0%. Se o usuário inseriu um valor muito alto ou irrealista, explique as implicações financeiras (breakeven EPC artificialmente alto) e sugira o valor recomendado.'
   },
+  pageType: {
+    agent: 'Compliance Sentinel',
+    prompt: `Analise o pageType de presell escolhido (advertorial, pogo, vsl, interstitial) considerando o canal (channel) do contexto da campanha.
+REGRA INVIOLÁVEL: pageType "interstitial" (screenshot da sales page real do vendor como fundo + popup de segmentação por país/gênero/idade, SEM conteúdo editorial) só é permitido em canais Native/Display/YouTube/social — no Google Ads isso corresponde a YOUTUBE ou DEMAND_GEN. É PROIBIDO em SEARCH e em PMAX (Performance Max inclui inventário de Search). Se o contexto indicar channel "SEARCH" ou "PMAX" junto com pageType "interstitial", marque correcao_necessaria=true, explique que a página reprova revisão de Search por não ter conteúdo original/editorial, e sugira valor_sugerido="advertorial". Para os demais pageTypes, valide pelas regras normais de bridge page (conteúdo original, disclaimers, sem doorway page).`
+  },
   presellUrl: {
     agent: 'Compliance Sentinel',
     prompt: 'Analise a URL da pré-venda (Landing Page). Verifique se o formato da URL parece correto e explique as diretrizes críticas do Google Ads para ponte (Bridge Page): ela deve possuir termos de serviço, política de privacidade, disclaimer no rodapé, não fazer promessas falsas de cura rápida e não clonar diretamente o produtor. Se a URL não for verificável, explique o que falta configurar.'
+  },
+  popupGate: {
+    agent: 'CRO & Conversion Specialist',
+    prompt: 'Analise se ativar o pop-up de retenção "pressione e segure" faz sentido pro contexto da campanha (canal, ângulo, vertical). Não é cloaking (mesma experiência pra todo visitante) — avalie só o efeito esperado em conversão/percepção de valor. Valor "true"/"false".'
+  },
+  videoUrl: {
+    agent: 'Presell Builder',
+    prompt: 'Analise a URL do vídeo informada (YouTube, Vimeo ou .mp4 direto) pro pageType "vsl". Verifique se o formato é reconhecível (youtube.com/watch, youtu.be, vimeo.com, ou link direto .mp4) — sem isso a geração da presell VSL falha.'
   },
   flowpageUrl: {
     agent: 'CRO & Conversion Specialist',
@@ -119,11 +188,27 @@ Responda APENAS JSON válido, sem markdown, no formato:
 {"diagnostico": "2-3 parágrafos curtos explicando a análise", "correcao_necessaria": true|false, "valor_sugerido": "valor pronto para substituir o campo, ou null se o valor atual já está correto ou se a correção não é um valor único aplicável (ex.: campo é só informativo)"}
 "valor_sugerido" só deve vir preenchido quando for um valor literal, seguro e pronto pra aplicar direto no campo (mesmo tipo/formato do campo) — nunca invente sintaxe ou parâmetros que a plataforma real não usa.`;
 
+    // Aprendizado contínuo: campos que se beneficiam de dado histórico real (não só regra
+    // estática) recebem o mesmo contexto já usado na geração de presell — resultado real
+    // (lucro/EPC por pageType) e sinais de mercado (concorrentes via Firecrawl).
+    let learningContext = '';
+    if (['commission', 'channel', 'pageType'].includes(fieldKey) && context?.vertical) {
+      try {
+        const [outcomeRef, marketRef] = await Promise.all([
+          getPresellOutcomeReferencia(userId, context.vertical, context?.channel),
+          getMarketIntelReferencia(userId, context.vertical, undefined),
+        ]);
+        learningContext = [outcomeRef, marketRef].filter(Boolean).join('\n');
+      } catch {
+        // Sem dado histórico suficiente — segue sem esse bloco extra, não bloqueia a validação.
+      }
+    }
+
     const userPrompt = `${config.prompt}
 Campo analisado: "${fieldKey}"
 Valor preenchido pelo usuário: "${fieldValue}"
 Contexto extra da campanha: ${JSON.stringify(context ?? {})}
-
+${learningContext ? `\n${learningContext}\n` : ''}
 JSON puro.`;
 
     try {
@@ -132,11 +217,24 @@ JSON puro.`;
       if (!data?.diagnostico) {
         return NextResponse.json({ success: false, error: 'O agente não retornou uma análise válida.' });
       }
+      const rawSuggestion = typeof data.valor_sugerido === 'string' ? data.valor_sugerido.trim() : '';
+      let valorSugerido: string | null = null;
+      let diagnostico = data.diagnostico;
+      if (rawSuggestion) {
+        const validated = validateSuggestedValue(fieldKey, rawSuggestion);
+        if (validated.value !== null) {
+          valorSugerido = validated.value;
+        } else {
+          // Sugestão incompatível com o tipo/formato real do campo — nunca propaga pro cliente
+          // aplicar cegamente; some do valorSugerido e o motivo entra no texto do diagnóstico.
+          diagnostico = `${diagnostico}\n\n⚠️ O agente sugeriu "${rawSuggestion}", mas isso não é compatível com este campo: ${validated.reason}. Ajuste manualmente.`;
+        }
+      }
       return NextResponse.json({
         success: true,
-        response: data.diagnostico,
+        response: diagnostico,
         correcaoNecessaria: !!data.correcao_necessaria,
-        valorSugerido: typeof data.valor_sugerido === 'string' && data.valor_sugerido.trim() ? data.valor_sugerido.trim() : null,
+        valorSugerido,
       });
     } catch (llmErr: any) {
       console.error('Field check LLM error:', llmErr);

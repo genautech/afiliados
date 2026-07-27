@@ -152,6 +152,24 @@ Sua auditoria deve partir dessa decisão — concorde ou aponte por que divergir
       result = { audit_score: 0, error: 'Falha ao parsear resposta' };
     }
 
+    // Consistência forçada: as métricas/regras determinísticas (código, calculadas acima) sempre
+    // vencem a opinião do LLM — ele pode enriquecer com contexto/recomendações, mas nunca pode dar
+    // "pronto pra lançar" quando há blocker real (checklist crítico pendente ou regra KILL).
+    if (result && typeof result === 'object' && !result.error) {
+      const hasCriticalBlocker = criticalUnchecked.length > 0;
+      const rulesBlocker = rules.decision === 'KILL';
+      if (hasCriticalBlocker || rulesBlocker) {
+        const forcedNote = hasCriticalBlocker
+          ? `Nota do sistema: ${criticalUnchecked.length} item(ns) crítico(s) do checklist ainda pendente(s) (${criticalUnchecked.map((c: any) => c.itemLabel).join(', ')}) — veredito limitado automaticamente, NÃO é seguro lançar.`
+          : `Nota do sistema: as regras determinísticas (economia real da campanha) indicam KILL — veredito limitado automaticamente.`;
+        result.ready_to_launch = false;
+        if (typeof result.audit_score === 'number' && result.audit_score > 40) result.audit_score = 40;
+        if (result.risk_level === 'LOW' || result.risk_level === 'MEDIUM') result.risk_level = hasCriticalBlocker ? 'CRITICAL' : 'HIGH';
+        result.summary = `${result.summary ?? ''} ${forcedNote}`.trim();
+        result.blockers = Array.isArray(result.blockers) ? [...result.blockers, forcedNote] : [forcedNote];
+      }
+    }
+
     return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
   } catch (err: any) {
     console.error('Campaign audit error:', err);

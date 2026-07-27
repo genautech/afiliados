@@ -33,11 +33,18 @@ export async function POST(request: NextRequest) {
     const videoUrl = typeof body?.videoUrl === 'string' ? body.videoUrl.trim() : '';
     const baseAngle = body?.angle || 'review';
     const variantGroupId = randomUUID();
+    const channel = typeof body?.channel === 'string' ? body.channel : undefined;
+    const salesPageUrl = typeof body?.salesPageUrl === 'string' ? body.salesPageUrl.trim() : undefined;
+    // interstitial (screenshot + popup de segmentação) só faz sentido — e só é permitido —
+    // em canais Native/Display/YouTube/social; no Google Ads isso é YOUTUBE ou DEMAND_GEN.
+    // Nunca oferecer como variante automática em SEARCH/PMAX (generatePresell também bloqueia).
+    const allowInterstitial = channel === 'YOUTUBE' || channel === 'DEMAND_GEN';
 
-    // 3 opções: advertorial (ângulo pedido) + pogo (curiosidade) + terceira só é VSL se o
+    // 3 opções-base: advertorial (ângulo pedido) + pogo (curiosidade) + terceira só é VSL se o
     // usuário já tiver um vídeo do vendor; sem vídeo, vira um 2º ângulo de advertorial (comparação),
     // pra não travar a geração pedindo um asset que a maioria dos produtos ainda não tem.
-    const variantSpecs = videoUrl
+    // + interstitial como 4ª opção quando o canal permitir.
+    const variantSpecs: Array<{ pageType: string; angle: string; videoUrl?: string; salesPageUrl?: string }> = videoUrl
       ? [
           { pageType: 'advertorial', angle: baseAngle },
           { pageType: 'pogo', angle: 'curiosidade' },
@@ -48,6 +55,9 @@ export async function POST(request: NextRequest) {
           { pageType: 'pogo', angle: 'curiosidade' },
           { pageType: 'advertorial', angle: 'comparativo' },
         ];
+    if (allowInterstitial) {
+      variantSpecs.push({ pageType: 'interstitial', angle: baseAngle, salesPageUrl });
+    }
 
     const commonArgs = {
       productName,
@@ -61,6 +71,8 @@ export async function POST(request: NextRequest) {
       popupGate: !!body?.popupGate,
       publicar: false as const,
       variantGroupId,
+      channel,
+      campaignId: typeof body?.campaignId === 'string' ? body.campaignId : undefined,
     };
 
     const results = await Promise.allSettled(

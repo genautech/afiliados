@@ -112,19 +112,30 @@
 
 <script>
 /* ===== Captura do gclid + conversão de clique no CTA =====
-   1) Anexa o gclid da URL ao link de afiliado (rastreio ponta a ponta)
-   2) Dispara a conversão secundária CLIQUE-CTA no Google Ads
+   1) Anexa o gclid da URL ao link de afiliado (rastreio ponta a ponta) — SÓ depois de
+      consentimento real (cc_consent === 'granted' no banner de Consent Mode v2 acima).
+      Sem consentimento, o CTA mantém o data-href original (hoplink limpo, sem gclid/sck).
+   2) Dispara a conversão secundária CLIQUE-CTA no Google Ads (o próprio Consent Mode do
+      gtag já modela essa conversão sem cookie quando ad_storage está 'denied' — não precisa
+      de gate manual aqui).
    Substitua CONVERSION_LABEL pelo rótulo da ação de conversão. */
 (function(){
   var params = new URLSearchParams(window.location.search);
   var gclid = params.get('gclid');
-  document.querySelectorAll('.cta').forEach(function(btn){
-    var destino = btn.getAttribute('data-href');
-    if (gclid) {
+  function consentGranted(){ return localStorage.getItem('cc_consent') === 'granted'; }
+  function attachTracking(){
+    if (!gclid || !consentGranted()) return;
+    document.querySelectorAll('.cta').forEach(function(btn){
+      var destino = btn.getAttribute('data-href');
+      if (destino.indexOf('gclid=') > -1) return;
       destino += (destino.indexOf('?') > -1 ? '&' : '?') + 'gclid=' + encodeURIComponent(gclid)
                + '&sck=' + encodeURIComponent(gclid); /* sck: parâmetro de tracking aceito por plataformas BR */
-    }
-    btn.setAttribute('href', destino);
+      btn.setAttribute('href', destino);
+    });
+  }
+  attachTracking();
+  window.__attachTracking = attachTracking; /* reprocessa quando o visitante clicar "Aceitar" no banner */
+  document.querySelectorAll('.cta').forEach(function(btn){
     btn.addEventListener('click', function(){
       if (typeof gtag === 'function') {
         gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});

@@ -80,6 +80,24 @@ const FIELD_HELP: Record<string, {
     why: 'O Google Ads reprova links de afiliado direto na maioria das vezes. Bridge pages (artigo review ou pré-sell) são o padrão recomendado para evitar suspensões.',
     steps: '1. Defina o tipo de destino: BRIDGE, DIRECT, REVIEW ou SMARTLINK.\n2. Use BRIDGE (página ponte) para produtos físicos e verticais sensíveis para evitar reprovações.\n3. O link direto (DIRECT) é aceito em poucas ofertas e pode resultar em suspensão.'
   },
+  pageType: {
+    agent: 'Compliance Sentinel',
+    what: 'A estrutura da presell gerada: advertorial (artigo review), pogo (curta e direta), vsl (com vídeo) ou interstitial (screenshot + popup de segmentação).',
+    why: 'Cada canal aceita estruturas diferentes — interstitial só é seguro em YouTube/Demand Gen, nunca em Search, onde reprova revisão por falta de conteúdo editorial.',
+    steps: '1. Em Search, prefira advertorial ou pogo.\n2. VSL exige um vídeo real do vendor.\n3. Interstitial só em canais fora de Search/PMax — o Compliance Sentinel bloqueia a geração se o canal não permitir.'
+  },
+  popupGate: {
+    agent: 'CRO & Conversion Specialist',
+    what: 'Pop-up de retenção "pressione e segure" opcional antes de revelar o conteúdo da presell.',
+    why: 'Adiciona um passo de interação real (mesma experiência pra todo visitante, não é cloaking) que pode aumentar percepção de valor antes do CTA — mas também pode reduzir conversão se usado sem necessidade.',
+    steps: '1. Ative só se fizer sentido pro ângulo/oferta (ex.: conteúdo "exclusivo").\n2. Teste com e sem pra ver o efeito real na sua vertical.\n3. Nunca combine com dark patterns — é só um delay de interação, não uma barreira enganosa.'
+  },
+  videoUrl: {
+    agent: 'Presell Builder',
+    what: 'Link do vídeo (YouTube, Vimeo ou .mp4 direto) usado como VSL na presell.',
+    why: 'pageType "vsl" exige um vídeo real — sem isso a geração falha.',
+    steps: '1. Cole a URL pública do vídeo (YouTube/Vimeo/.mp4).\n2. Use um vídeo do próprio vendor ou um review em vídeo genuíno.\n3. Confirme que o vídeo carrega antes de publicar a campanha.'
+  },
   commission: {
     agent: 'Affiliate Finance Broker',
     what: 'O valor estimado pago pela rede de afiliados por cada conversão (venda/lead).',
@@ -296,6 +314,51 @@ const AgentHelp = ({
   );
 };
 
+// Linha de item de checklist: itens 'auto' mostram o resultado de uma verificação real (não dá
+// pra clicar/mentir sobre eles) + o motivo quando falham; itens autoatestados continuam um
+// checkbox manual, mas claramente rotulados como tal — nenhum dos dois finge ser o outro.
+const ChecklistItemRow = ({
+  item, checked, onToggle, meta,
+}: {
+  item: { key: string; label: string; critical: boolean };
+  checked: boolean;
+  onToggle: (v: boolean) => void;
+  meta?: { verificationType: string; note?: string | null };
+}) => {
+  const isAuto = meta?.verificationType === 'auto';
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${checked ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
+      {isAuto ? (
+        checked ? <CheckCircle2 className="h-4 w-4 text-green-400 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+      ) : (
+        <Checkbox checked={checked} onCheckedChange={(v: any) => onToggle(!!v)} className="mt-0.5" />
+      )}
+      <div className="flex-1 min-w-0">
+        <span className={`text-sm ${checked ? 'text-green-300' : 'text-white'}`}>{item.label}</span>
+        {isAuto
+          ? <Badge className="ml-2 bg-blue-500/20 text-blue-300 text-[10px]">VERIFICADO</Badge>
+          : <Badge className="ml-2 bg-slate-500/20 text-slate-300 text-[10px]">AUTOATESTADO</Badge>}
+        {item.critical && !checked && <Badge className="ml-2 bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
+        {isAuto && !checked && meta?.note && <p className="text-xs text-red-300 mt-1">{meta.note}</p>}
+      </div>
+    </div>
+  );
+};
+
+// Aplica a sugestão do AgentHelp num campo enum/Select só se o valor bater com uma opção real —
+// o servidor (wizard-field-check) já valida isso antes de devolver, mas a UI nunca deve confiar
+// cegamente (defesa em profundidade): sem isso, um valor fora do enum deixa o Select em branco
+// e o estado interno "corrompido" segue pro salvamento da campanha sem ninguém perceber.
+function applyEnumIfValid(options: readonly string[], setter: (v: any) => void, label: string) {
+  return (v: string) => {
+    if (options.includes(v)) {
+      setter(v);
+    } else {
+      toast.error(`Sugestão do agente ("${v}") não é uma opção válida pra ${label} — ignorada.`);
+    }
+  };
+}
+
 export default function WizardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -346,6 +409,8 @@ export default function WizardPage() {
   const [geo, setGeo] = useState('US');
   const [channel, setChannel] = useState('SEARCH');
   const [funnel, setFunnel] = useState('BRIDGE');
+  const [blockedChannels, setBlockedChannels] = useState<string[]>([]);
+  const [channelBlockReason, setChannelBlockReason] = useState<string | null>(null);
   const [commission, setCommission] = useState('');
   const [refundPct, setRefundPct] = useState('');
   const [aov, setAov] = useState('');
@@ -363,7 +428,7 @@ export default function WizardPage() {
   const [flowpageUrl, setFlowpageUrl] = useState('');
   const [hostingerDomain, setHostingerDomain] = useState('');
   const [presellHtml, setPresellHtml] = useState('');
-  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl'>('advertorial');
+  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl' | 'interstitial'>('advertorial');
   const [popupGate, setPopupGate] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
@@ -388,6 +453,11 @@ export default function WizardPage() {
   // Step 9
   const [goLiveChecks, setGoLiveChecks] = useState<Record<string, boolean>>({});
   const [budgetTest, setBudgetTest] = useState('50');
+
+  // Metadados de verificação real dos checklists (auto vs autoatestado) — populado ao carregar
+  // a campanha e ao rodar a verificação automática (/api/campaigns/[id]/checklists/verify).
+  const [checklistMeta, setChecklistMeta] = useState<Record<string, { verificationType: string; note?: string | null }>>({});
+  const [verifyingChecklist, setVerifyingChecklist] = useState(false);
   const [testDuration, setTestDuration] = useState('72h');
   const [budgetScale, setBudgetScale] = useState('0');
   const [loopEnabled, setLoopEnabled] = useState(false);
@@ -515,7 +585,53 @@ export default function WizardPage() {
         keyword: k.keyword, layer: k.layer, matchType: k.matchType, relevance: k.relevanceScore, selected: k.isSelected,
       })));
     }
+    if (Array.isArray(c?.checklists) && c.checklists.length > 0) {
+      const meta: Record<string, { verificationType: string; note?: string | null }> = {};
+      const byStep: Record<number, Record<string, boolean>> = {};
+      for (const row of c.checklists) {
+        meta[row.itemKey] = { verificationType: row.verificationType ?? 'self_attested', note: row.note };
+        byStep[row.step] = byStep[row.step] ?? {};
+        byStep[row.step][row.itemKey] = row.isChecked;
+      }
+      setChecklistMeta(meta);
+      if (byStep[3]) setAntistrikeChecks(byStep[3]);
+      if (byStep[4]) setBridgeChecks(byStep[4]);
+      if (byStep[7]) setGoogleAdsChecks(byStep[7]);
+      if (byStep[8]) setTrackingChecks(byStep[8]);
+      if (byStep[9]) setGoLiveChecks(byStep[9]);
+    }
     if (typeof c?.wizardStep === 'number' && c.wizardStep >= 1 && c.wizardStep <= 9) setStep(c.wizardStep);
+  };
+
+  // Roda a verificação real (SSL, disclaimer/privacy no HTML, sync do Google Ads, etc.) em vez
+  // de confiar só no que o usuário marcou — substitui o resultado dos itens `auto` pelo checado
+  // de verdade; itens autoatestados continuam intocados (só o toggle manual do usuário).
+  const runChecklistVerify = async () => {
+    if (!campaignId) { toast.error('Salve a campanha (avance um passo) antes de verificar o checklist.'); return; }
+    setVerifyingChecklist(true);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/checklists/verify`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data?.error ?? 'Erro ao verificar checklist'); return; }
+      const meta = { ...checklistMeta };
+      const byStep: Record<number, Record<string, boolean>> = {};
+      for (const row of data.items ?? []) {
+        meta[row.itemKey] = { verificationType: row.verificationType, note: row.note };
+        byStep[row.step] = byStep[row.step] ?? {};
+        byStep[row.step][row.itemKey] = row.isChecked;
+      }
+      setChecklistMeta(meta);
+      if (byStep[3]) setAntistrikeChecks((prev) => ({ ...prev, ...byStep[3] }));
+      if (byStep[4]) setBridgeChecks((prev) => ({ ...prev, ...byStep[4] }));
+      if (byStep[7]) setGoogleAdsChecks((prev) => ({ ...prev, ...byStep[7] }));
+      if (byStep[8]) setTrackingChecks((prev) => ({ ...prev, ...byStep[8] }));
+      if (byStep[9]) setGoLiveChecks((prev) => ({ ...prev, ...byStep[9] }));
+      toast.success(`Checklist verificado de verdade — ${data.verified} item(ns) checado(s) automaticamente.`);
+    } catch {
+      toast.error('Erro de rede ao verificar checklist.');
+    } finally {
+      setVerifyingChecklist(false);
+    }
   };
 
   // `baseline` traz os valores conhecidos ANTES do autofill (ex.: os da campanha recém-hidratada).
@@ -553,6 +669,20 @@ export default function WizardPage() {
     if (Array.isArray(data.negatives) && data.negatives.length > 0) setAiNegatives(data.negatives);
     if (data.rationale) setAutofillRationale((prev) => ({ ...prev, ...data.rationale }));
     if (data.summary) setAutofillSummary(data.summary);
+    if (data.strategy) {
+      setBlockedChannels(Array.isArray(data.strategy.blockedChannels) ? data.strategy.blockedChannels : []);
+      setChannelBlockReason(data.strategy.channelBlockReason ?? null);
+      // O motor determinístico (lib/campaign-strategy.ts) já decide o pageType certo por canal
+      // — inclusive "interstitial" só quando o canal é YOUTUBE/DEMAND_GEN e nunca em SEARCH/PMAX.
+      // Aplica como sugestão (não sobrescreve escolha manual já salva de uma campanha existente).
+      const suggestedPageType = data.strategy.recommendedBridgeType;
+      if (['advertorial', 'pogo', 'vsl', 'interstitial'].includes(suggestedPageType)) {
+        const curPageType = baseline.pageType;
+        if (!onlyIfEmpty || curPageType === undefined || curPageType === null || String(curPageType).trim() === '') {
+          setPageType(suggestedPageType);
+        }
+      }
+    }
   };
 
   const runAutofill = async (params: { productResearchId?: string; campaignId?: string; baseline?: Record<string, any>; existingKeywordsCount?: number }) => {
@@ -601,6 +731,7 @@ export default function WizardPage() {
                 channel: c?.channel, funnel: c?.funnel, commission: c?.commission, refundPct: c?.refundPct,
                 aov: c?.aov, offerUrl: c?.offerUrl, cvrExpected: c?.cvrExpected,
                 budgetTest: c?.budgetTest, testDuration: c?.testDuration, budgetScale: c?.budgetScale,
+                pageType: c?.pageType,
               },
             });
             return;
@@ -662,9 +793,6 @@ export default function WizardPage() {
   };
 
   const next = async () => {
-    if (!canAdvance()) {
-      toast.warning('Avançando com pendências. Lembre-se de preencher todos os itens críticos antes de publicar a campanha.');
-    }
     await saveCampaign();
     if (step === 3) await saveChecklists(3, ANTISTRIKE_ITEMS, antistrikeChecks);
     if (step === 4) await saveChecklists(4, BRIDGE_CHECKLIST, bridgeChecks);
@@ -672,6 +800,13 @@ export default function WizardPage() {
     if (step === 8) {
       const items = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
       await saveChecklists(8, items, trackingChecks);
+    }
+    // Trava real: não avança com item crítico pendente (auto ou autoatestado) — antes disso só
+    // mostrava um aviso e deixava passar mesmo assim. Use "Verificar automaticamente" pra
+    // confirmar os itens verificáveis, ou marque manualmente os autoatestados.
+    if (!canAdvance()) {
+      toast.error('Não é possível avançar: complete os itens críticos deste passo primeiro (use "Verificar automaticamente" ou marque os autoatestados pendentes).');
+      return;
     }
     if (step < 9) setStep(step + 1);
   };
@@ -924,23 +1059,27 @@ export default function WizardPage() {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">Nome da Campanha *</Label><AgentHelp fieldKey="name" fieldValue={name} context={{ platform, vertical, geo }} onApply={setName} /></div><Input value={name} onChange={(e:any) => setName(e?.target?.value ?? '')} placeholder="Ex: WL Supplement Alpha" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} onApply={setPlatform} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} onApply={applyEnumIfValid(PLATFORMS, setPlatform, 'Plataforma')} /></div>
                   <Select value={platform} onValueChange={setPlatform}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{PLATFORMS.map(p => <SelectItem key={p} value={p} className="text-white">{p}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Vertical</Label><AgentHelp fieldKey="vertical" fieldValue={vertical} onApply={setVertical} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Vertical</Label><AgentHelp fieldKey="vertical" fieldValue={vertical} onApply={applyEnumIfValid(VERTICALS, setVertical, 'Vertical')} /></div>
                   <Select value={vertical} onValueChange={(v) => { setVertical(v); setCvrExpected(''); }}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{VERTICALS.map(v => <SelectItem key={v} value={v} className="text-white">{v}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Geo</Label><AgentHelp fieldKey="geo" fieldValue={geo} onApply={setGeo} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Geo</Label><AgentHelp fieldKey="geo" fieldValue={geo} onApply={applyEnumIfValid(GEOS, setGeo, 'Geo')} /></div>
                   <Select value={geo} onValueChange={setGeo}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{GEOS.map(g => <SelectItem key={g} value={g} className="text-white">{g}</SelectItem>)}</SelectContent>
                   </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Canal</Label><AgentHelp fieldKey="channel" fieldValue={channel} onApply={setChannel} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Canal</Label><AgentHelp fieldKey="channel" fieldValue={channel} context={{ vertical }} onApply={applyEnumIfValid(CHANNELS, setChannel, 'Canal')} /></div>
                   <Select value={channel} onValueChange={setChannel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">{CHANNELS.map(c => <SelectItem key={c} value={c} className="text-white">{c}</SelectItem>)}</SelectContent>
-                  </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Funil</Label><AgentHelp fieldKey="funnel" fieldValue={funnel} onApply={setFunnel} /></div>
+                  </Select>
+                  {blockedChannels.includes(channel) && (
+                    <p className="text-xs text-amber-300 mt-1">⚠️ {channelBlockReason ?? 'Este canal pode estar bloqueado pelas regras de tráfego do vendor para este produto.'} Confirme antes de gastar.</p>
+                  )}
+                  </div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Funil</Label><AgentHelp fieldKey="funnel" fieldValue={funnel} onApply={applyEnumIfValid(['BRIDGE', 'DIRECT', 'REVIEW', 'SL'], setFunnel, 'Funil')} /></div>
                   <Select value={funnel} onValueChange={setFunnel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="BRIDGE" className="text-white">Bridge</SelectItem><SelectItem value="DIRECT" className="text-white">Direct</SelectItem><SelectItem value="REVIEW" className="text-white">Review</SelectItem><SelectItem value="SL" className="text-white">Smartlink</SelectItem></SelectContent>
                   </Select></div>
@@ -999,9 +1138,14 @@ export default function WizardPage() {
           {/* STEP 3 - Anti-strike */}
           {step === 3 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-green-400" /> Anti-strike Checklist {platform === 'ClickBank' ? '(ClickBank)' : ''}
-              </h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-green-400" /> Anti-strike Checklist {platform === 'ClickBank' ? '(ClickBank)' : ''}
+                </h2>
+                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
+                </Button>
+              </div>
               {platform !== 'ClickBank' && (
                 <div className="bg-blue-500/10 rounded-lg p-4 text-blue-300 text-sm flex items-start gap-2">
                   <Info className="h-4 w-4 mt-0.5 shrink-0" />
@@ -1026,14 +1170,13 @@ export default function WizardPage() {
               )}
               <div className="space-y-3">
                 {ANTISTRIKE_ITEMS.map(item => (
-                  <div key={item.key} className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${antistrikeChecks[item.key] ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5 hover:bg-red-500/10' : 'bg-[#0f172a] hover:bg-[#0f172a]/80'}`}>
-                    <Checkbox checked={antistrikeChecks[item.key] ?? false} onCheckedChange={(v: any) => setAntistrikeChecks(prev => ({...prev, [item.key]: !!v}))} className="mt-0.5" />
-                    <div className="flex-1">
-                      <span className={`text-sm ${antistrikeChecks[item.key] ? 'text-green-300 line-through' : 'text-white'}`}>{item.label}</span>
-                      {item.critical && !antistrikeChecks[item.key] && <Badge className="ml-2 bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-                      {antistrikeChecks[item.key] && <CheckCircle2 className="inline-block ml-2 h-4 w-4 text-green-400" />}
-                    </div>
-                  </div>
+                  <ChecklistItemRow
+                    key={item.key}
+                    item={item}
+                    checked={antistrikeChecks[item.key] ?? false}
+                    onToggle={(v) => setAntistrikeChecks(prev => ({ ...prev, [item.key]: v }))}
+                    meta={checklistMeta[item.key]}
+                  />
                 ))}
               </div>
             </div>
@@ -1055,34 +1198,42 @@ export default function WizardPage() {
                   </svg>
                   <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">{Object.values(bridgeChecks).filter(Boolean).length}/{BRIDGE_CHECKLIST.length}</span>
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm text-white">Checklist da Bridge</p>
                   <p className="text-xs text-slate-500">{BRIDGE_CHECKLIST.filter(i => i.critical && !bridgeChecks[i.key]).length} itens críticos pendentes</p>
                 </div>
+                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5 shrink-0">
+                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar
+                </Button>
               </div>
 
               <div className="space-y-3">
                 {BRIDGE_CHECKLIST.map(item => (
-                  <div key={item.key} className={`flex items-start gap-3 p-3 rounded-lg ${bridgeChecks[item.key] ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
-                    <Checkbox checked={bridgeChecks[item.key] ?? false} onCheckedChange={(v: any) => setBridgeChecks(prev => ({...prev, [item.key]: !!v}))} className="mt-0.5" />
-                    <span className={`text-sm ${bridgeChecks[item.key] ? 'text-green-300 line-through' : 'text-white'}`}>{item.label}</span>
-                    {item.critical && !bridgeChecks[item.key] && <Badge className="bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-                    {bridgeChecks[item.key] && <CheckCircle2 className="h-4 w-4 text-green-400" />}
-                  </div>
+                  <ChecklistItemRow
+                    key={item.key}
+                    item={item}
+                    checked={bridgeChecks[item.key] ?? false}
+                    onToggle={(v) => setBridgeChecks(prev => ({ ...prev, [item.key]: v }))}
+                    meta={checklistMeta[item.key]}
+                  />
                 ))}
               </div>
 
               {/* URLs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label></div>
-                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl') => setPageType(v)}>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label><AgentHelp fieldKey="pageType" fieldValue={pageType} context={{ channel, vertical }} onApply={applyEnumIfValid(['advertorial', 'pogo', 'vsl', 'interstitial'], setPageType, 'Tipo de Página')} /></div>
+                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl' | 'interstitial') => setPageType(v)}>
                     <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">
                       <SelectItem value="advertorial" className="text-white">Advertorial (Artigo de Review)</SelectItem>
                       <SelectItem value="pogo" className="text-white">Pogo (Curta, direto ao ponto)</SelectItem>
                       <SelectItem value="vsl" className="text-white">VSL (Vídeo Sales Letter)</SelectItem>
+                      <SelectItem value="interstitial" className="text-white">Interstitial (Screenshot + Popup — só YouTube/Demand Gen, nunca Search)</SelectItem>
                     </SelectContent>
                   </Select>
+                  {pageType === 'interstitial' && (channel === 'SEARCH' || channel === 'PMAX') && (
+                    <p className="text-xs text-red-400 mt-1">⚠ Interstitial não é permitido no canal {channel} — reprova revisão do Google Search. Troque o canal ou o tipo de página.</p>
+                  )}
                 </div>
                 <div className="flex items-center space-x-2 mt-2">
                   <Checkbox id="popup-gate" checked={popupGate} onCheckedChange={(v: boolean) => setPopupGate(v)} />
@@ -1360,7 +1511,12 @@ export default function WizardPage() {
           {/* STEP 7 - Google Ads */}
           {step === 7 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Setup Google Ads</h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-lg font-semibold text-white">Setup Google Ads</h2>
+                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
+                </Button>
+              </div>
               <div className="flex items-center gap-4 bg-[#0f172a] rounded-lg p-4">
                 <div className="relative w-12 h-12">
                   <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
@@ -1376,12 +1532,13 @@ export default function WizardPage() {
               </div>
               <div className="space-y-3">
                 {GOOGLE_ADS_CHECKLIST.map(item => (
-                  <div key={item.key} className={`flex items-start gap-3 p-3 rounded-lg ${googleAdsChecks[item.key] ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
-                    <Checkbox checked={googleAdsChecks[item.key] ?? false} onCheckedChange={(v: any) => setGoogleAdsChecks(prev => ({...prev, [item.key]: !!v}))} className="mt-0.5" />
-                    <span className={`text-sm ${googleAdsChecks[item.key] ? 'text-green-300 line-through' : 'text-white'}`}>{item.label}</span>
-                    {item.critical && !googleAdsChecks[item.key] && <Badge className="bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-                    {googleAdsChecks[item.key] && <CheckCircle2 className="h-4 w-4 text-green-400" />}
-                  </div>
+                  <ChecklistItemRow
+                    key={item.key}
+                    item={item}
+                    checked={googleAdsChecks[item.key] ?? false}
+                    onToggle={(v) => setGoogleAdsChecks(prev => ({ ...prev, [item.key]: v }))}
+                    meta={checklistMeta[item.key]}
+                  />
                 ))}
               </div>
             </div>
@@ -1390,7 +1547,12 @@ export default function WizardPage() {
           {/* STEP 8 - Tracking */}
           {step === 8 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Tracking & Tags</h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-lg font-semibold text-white">Tracking & Tags</h2>
+                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
+                </Button>
+              </div>
               {platform === 'MaxWeb' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   <div><div className="flex items-center gap-1"><Label className="text-slate-300">Postback URL</Label><AgentHelp fieldKey="postbackUrl" fieldValue={postbackUrl} onApply={setPostbackUrl} /></div><Input value={postbackUrl} onChange={(e:any) => setPostbackUrl(e?.target?.value ?? '')} placeholder="https://...postback..." className={inputCls} /><p className="text-xs text-slate-500 mt-1">{'Ex: https://track.maxweb.com/postback?clickid={clickid}'}</p></div>
@@ -1405,12 +1567,13 @@ export default function WizardPage() {
               )}
               <div className="space-y-3">
                 {(platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB).map(item => (
-                  <div key={item.key} className={`flex items-start gap-3 p-3 rounded-lg ${trackingChecks[item.key] ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
-                    <Checkbox checked={trackingChecks[item.key] ?? false} onCheckedChange={(v: any) => setTrackingChecks(prev => ({...prev, [item.key]: !!v}))} className="mt-0.5" />
-                    <span className={`text-sm ${trackingChecks[item.key] ? 'text-green-300 line-through' : 'text-white'}`}>{item.label}</span>
-                    {item.critical && !trackingChecks[item.key] && <Badge className="bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-                    {trackingChecks[item.key] && <CheckCircle2 className="h-4 w-4 text-green-400" />}
-                  </div>
+                  <ChecklistItemRow
+                    key={item.key}
+                    item={item}
+                    checked={trackingChecks[item.key] ?? false}
+                    onToggle={(v) => setTrackingChecks(prev => ({ ...prev, [item.key]: v }))}
+                    meta={checklistMeta[item.key]}
+                  />
                 ))}
               </div>
             </div>
@@ -1419,13 +1582,18 @@ export default function WizardPage() {
           {/* STEP 9 - Go-live */}
           {step === 9 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Rocket className="h-5 w-5 text-green-400" /> Go-live</h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Rocket className="h-5 w-5 text-green-400" /> Go-live</h2>
+                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar tudo automaticamente
+                </Button>
+              </div>
 
               <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
                 <h3 className="text-sm font-semibold text-blue-300">Etapa 1 — Teste</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total de Teste (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} onApply={setBudgetTest} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} onApply={setTestDuration} /></div>
+                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} onApply={applyEnumIfValid(['48h', '72h', '5', '7'], setTestDuration, 'Duração do Teste')} /></div>
                     <Select value={testDuration} onValueChange={setTestDuration}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="48h" className="text-white">48h</SelectItem><SelectItem value="72h" className="text-white">72h</SelectItem><SelectItem value="5" className="text-white">5 dias</SelectItem><SelectItem value="7" className="text-white">7 dias</SelectItem></SelectContent>
                     </Select></div>
@@ -1449,12 +1617,13 @@ export default function WizardPage() {
               </div>
               <div className="space-y-3">
                 {GOLIVE_CHECKLIST.map(item => (
-                  <div key={item.key} className={`flex items-start gap-3 p-3 rounded-lg ${goLiveChecks[item.key] ? 'bg-green-500/5 border border-green-500/20' : 'bg-red-500/5'}`}>
-                    <Checkbox checked={goLiveChecks[item.key] ?? false} onCheckedChange={(v: any) => setGoLiveChecks(prev => ({...prev, [item.key]: !!v}))} className="mt-0.5" />
-                    <span className={`text-sm ${goLiveChecks[item.key] ? 'text-green-300 line-through' : 'text-white'}`}>{item.label}</span>
-                    {!goLiveChecks[item.key] && <Badge className="bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-                    {goLiveChecks[item.key] && <CheckCircle2 className="h-4 w-4 text-green-400" />}
-                  </div>
+                  <ChecklistItemRow
+                    key={item.key}
+                    item={item}
+                    checked={goLiveChecks[item.key] ?? false}
+                    onToggle={(v) => setGoLiveChecks(prev => ({ ...prev, [item.key]: v }))}
+                    meta={checklistMeta[item.key]}
+                  />
                 ))}
               </div>
 

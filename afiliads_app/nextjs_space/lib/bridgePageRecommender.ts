@@ -6,8 +6,14 @@ export enum BridgePageType {
   ADVERTORIAL = 'ADVERTORIAL',
   QUIZ_FUNNEL = 'QUIZ_FUNNEL',
   LEAD_GEN_PAGE = 'LEAD_GEN_PAGE',
+  INTERSTITIAL = 'INTERSTITIAL',
   OTHER = 'OTHER',
 }
+
+// Canais do Google Ads (lib/wizard-data.ts CHANNELS) em que INTERSTITIAL é seguro — equivalente
+// do app a Native/Display/YouTube/social. SEARCH e PMAX (Performance Max inclui inventário de
+// Search) NUNCA podem receber essa recomendação — reprova revisão por falta de conteúdo editorial.
+const INTERSTITIAL_SAFE_CHANNELS = new Set(['YOUTUBE', 'DEMAND_GEN']);
 
 export type BridgePageRecommendation = {
   recommendedType: BridgePageType;
@@ -31,8 +37,21 @@ export function recommendBridgePage(
   let reasoning: string = 'Nenhuma recomendação específica encontrada. Usando tipo genérico.';
   let confidenceScore: number = 0.5;
 
+  // Regra 0 (maior prioridade — só dispara com canal informado): screenshot da sales page real
+  // do vendor + popup de segmentação só faz sentido, e só é permitido, em Native/Display/
+  // YouTube/social (no app: YOUTUBE/DEMAND_GEN) e quando existe uma sales page forte o bastante
+  // pra virar fundo (VSL ou DIRECT). Nunca recomendado em SEARCH/PMAX nem sem sales page real.
+  if (
+    campaign?.channel && INTERSTITIAL_SAFE_CHANNELS.has(campaign.channel) &&
+    product.vendorPageUrl &&
+    (salesPageType === SalesPageType.VSL || salesPageType === SalesPageType.DIRECT)
+  ) {
+    recommendedType = BridgePageType.INTERSTITIAL;
+    reasoning = `O canal da campanha (${campaign.channel}) é Native/Display/YouTube/social e o vendor tem uma sales page real e forte (${salesPageType}) — um interstitial com screenshot dessa página + popup de segmentação (país/gênero/idade) pré-qualifica o tráfego antes do clique. Nunca recomendado em SEARCH/PMAX, onde reprova por falta de conteúdo editorial.`;
+    confidenceScore = 0.85;
+  }
   // Regra 1: Pogo Page para VSLs ou Sales Pages com grande "pitch"
-  if (salesPageType === SalesPageType.VSL) {
+  else if (salesPageType === SalesPageType.VSL) {
     recommendedType = BridgePageType.POGO;
     reasoning = 'A página de vendas é um VSL (Video Sales Letter). Uma Pogo Page é ideal para aquecer o tráfego rapidamente e direcioná-lo para a VSL, aproveitando o pitch principal na página final.';
     confidenceScore = 0.9;
