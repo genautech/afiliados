@@ -560,7 +560,14 @@ export default function WizardPage() {
         offerUrl, commission: commVal, refundPct: refVal,
         aov: parseFloat(aov) || 0, cvrExpected: cvr,
         commissionNet, epcBreakeven: epcBE, cpcMax, cpcScale,
-        presellUrl, flowpageUrl, hostingerDomain,
+        // presellUrl NÃO entra aqui de propósito (corrigido 2026-07-27): esse campo já tem
+        // writers dedicados e precisos (generatePresellHtml, publishToOwnDomain, e o onBlur do
+        // Input abaixo) — incluir no snapshot geral do saveCampaign() faz uma aba antiga (com
+        // presellUrl desatualizado no estado local) sobrescrever silenciosamente uma URL mais
+        // recente gravada por outra aba/ação (ex.: publicação em WordPress). Já aconteceu em
+        // produção: presellUrl real (WordPress) foi revertido pro valor antigo do AfiliAds só
+        // porque o usuário clicou "Próximo"/"Verificar" numa aba aberta antes da publicação.
+        flowpageUrl, hostingerDomain,
         budgetTest: parseFloat(budgetTest) || 50,
         budgetDaily, testDuration,
         budgetScale: parseFloat(budgetScale) || 0,
@@ -1544,7 +1551,7 @@ export default function WizardPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} onApply={setPresellUrl} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} placeholder="https://seudominio.com/review" className={inputCls} /></div>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} onApply={setPresellUrl} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} onBlur={(e:any) => { const v = e?.target?.value ?? ''; if (campaignId) fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presellUrl: v }) }).catch(() => {}); }} placeholder="https://seudominio.com/review" className={inputCls} /></div>
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL FlowPage</Label><AgentHelp fieldKey="flowpageUrl" fieldValue={flowpageUrl} onApply={setFlowpageUrl} /></div>
                   <div className="flex gap-2"><Input value={flowpageUrl} onChange={(e:any) => setFlowpageUrl(e?.target?.value ?? '')} placeholder="URL do FlowPage" className={`${inputCls} flex-1`} />
                     <a href="https://flowpages.com" target="_blank" rel="noopener"><Button variant="outline" size="icon" className="border-[#334155] text-slate-300"><ExternalLink className="h-4 w-4" /></Button></a></div></div>
