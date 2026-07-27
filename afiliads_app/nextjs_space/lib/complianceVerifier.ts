@@ -30,7 +30,10 @@ const BANNED_CLAIM_RE = /perca \d+\s?kg|livre-se de|lose \d+\s?(lbs?|kg|pounds)/
 // BOILERPLATE) quebrou na primeira variação de texto gerada pela IA — a checagem de negação
 // genérica cobre qualquer variação de fraseado, não só uma frase fixa.
 const NEGATED_CLAIM_TERMS_RE = /garantido|guaranteed|\bcura\b|\bcure[sd]?\b|\belimina\b|\beliminate[sd]?\b/gi;
-const NEGATION_WORDS_RE = /\b(não|nao|nem|never|sem|no|not)\b[^.!?]{0,40}$/i;
+// Achado em produção 2026-07-27 (2ª ocorrência): "This isn't a cure" não batia — \bnot\b não
+// casa contrações ("isn't"/"n't" não contém "not" como token separado). Cobre contrações
+// comuns (isn't/aren't/doesn't/don't/won't/can't/wasn't/weren't) além das palavras completas.
+const NEGATION_WORDS_RE = /\b(não|nao|nem|never|sem|no|not|isn't|aren't|doesn't|don't|won't|can't|wasn't|weren't)\b[^.!?]{0,40}$/i;
 const FAQ_RE = /perguntas frequentes|frequently asked questions/i;
 const RESULTADOS_VARIAM_RE = /resultados individuais podem variar|individual results may vary/i;
 const GA4_TAG_RE = /gtag\(\s*'config'\s*,\s*'G-/i;

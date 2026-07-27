@@ -30,6 +30,8 @@ export interface PresellContent {
   titulo_pagina: string;
   meta_descricao: string;
   nome_site: string;
+  como_funciona?: { titulo: string; texto: string }[];
+  temas_feedback?: string[];
 }
 
 // Rota de oferta por segmento, usada só pelo pageType 'interstitial'. O popup de
@@ -53,7 +55,11 @@ Regras invioláveis (valem para QUALQUER produto/nicho):
 - Zero claims absolutos ou de diagnóstico/cura/garantia de resultado ("cura", "elimina", "garantido", "perca X kg em Y dias", "livre-se de"). Reescreva SEMPRE para linguagem condicional e focada em benefício/experiência (ex.: "pode apoiar", "ajuda a promover conforto", "contribui para o bem-estar") — nunca prometa o resultado, descreva o suporte que o produto oferece.
 - Para nichos sensíveis (saúde, corpo, finanças, relacionamentos, fases da vida como menopausa/envelhecimento): trate o tema com empatia, dignidade e respeito. Sem linguagem explícita, constrangedora ou de mau gosto. Foque em qualidade de vida, confiança e bem-estar do leitor.
 - Inclua contras reais na seção de pontos fortes/fracos.
-- Prova social apenas verificável (garantia oficial, nº de avaliações públicas).
+- Prova social apenas verificável (garantia oficial, nº de avaliações públicas) — NUNCA invente
+  número específico (ex.: "10.000+ unidades vendidas", "top 3 no ranking") que não veio
+  literalmente do contexto/dossiê fornecido. Sem dado verificável concreto, escreva algo
+  qualitativo e genérico (ex.: "respaldado pela garantia oficial do vendor"), nunca um número
+  inventado — um número específico e falso é pior pra compliance do que nenhum número.
 - CTA visível, direto e persuasivo, mas sem promessa de resultado (ex.: "Descubra Como Funciona", "Veja a Análise Completa").
 - Se o contexto abaixo trouxer riscos de compliance específicos do produto (seção "RISCOS DE COMPLIANCE A EVITAR"), reescreva o conteúdo especificamente para não incorrer em NENHUM deles.
 - Idioma conforme solicitado (en para US/UK/AU, pt-BR para Brasil).
@@ -80,8 +86,17 @@ TÉCNICAS DE BRIDGE PAGE (não são decorativas — aplicar sempre):
   visual pros/contras converte mais que texto corrido porque é honesto E fácil de escanear.
 - Idioma do conteúdo TEM que ser exatamente o idioma pedido em "Idioma" no prompt do usuário —
   nunca misture idiomas dentro da mesma página (ex.: título de seção em português numa página en).
+- "como_funciona": 3 passos simples e concretos de como o leitor usaria/experimentaria o produto
+  (ex.: "1. Tome 1 cápsula ao dia" / "2. Consistência nas primeiras semanas" / "3. Acompanhe o
+  progresso") — só preencha pra tipos de página longform (advertorial/vsl); em pogo/interstitial
+  pode retornar array vazio.
+- "temas_feedback": 3-4 frases CURTAS descrevendo TEMAS recorrentes que leitores/avaliações
+  públicas costumam mencionar sobre esse tipo de produto (ex.: "Facilidade de incluir na rotina
+  diária", "Preferência por fórmulas sem estimulantes") — NUNCA invente uma citação atribuída a
+  uma pessoa fictícia com nome/idade (isso é endosso falso, proibido). São temas gerais, não
+  depoimentos individuais. Só preencha pra advertorial/vsl.
 Responda APENAS JSON válido com exatamente estas chaves:
-{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","pros":["3-4 itens"],"contras":["2-3 itens"],"faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site"}
+{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","pros":["3-4 itens"],"contras":["2-3 itens"],"faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site","como_funciona":[{"titulo","texto"},{"titulo","texto"},{"titulo","texto"}],"temas_feedback":["3-4 itens"]}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;
 
 const HEALTH_NICHE_RE = /health|sa[uú]de|nutra|beauty|beleza|wellness|bem-estar|supplement|suplemento|weight loss|emagrec|menopaus|urin[aá]r|incontin/i;
@@ -122,6 +137,13 @@ interface Locale {
   privacySlug: string;
   termsSlug: string;
   contactSlug: string;
+  trustBadge1: string;
+  trustBadge2: string;
+  trustBadge3: string;
+  howItWorksHeading: string;
+  feedbackHeading: string;
+  feedbackDisclaimer: string;
+  extraCtaText: string;
   rightsReserved: string;
   cookieMsg: string;
   cookieAccept: string;
@@ -156,6 +178,13 @@ const LOCALE_EN: Locale = {
   privacySlug: 'privacy-policy',
   termsSlug: 'terms-of-use',
   contactSlug: 'contact',
+  trustBadge1: 'Editorially Reviewed',
+  trustBadge2: 'Independent, Research-Based',
+  trustBadge3: 'Affiliate Disclosure Below',
+  howItWorksHeading: 'How It Works',
+  feedbackHeading: 'What Readers Commonly Mention',
+  feedbackDisclaimer: 'Recurring themes from public reviews and reader comments — not individual endorsements. Individual results vary.',
+  extraCtaText: 'See the Full Details',
   rightsReserved: 'All rights reserved.',
   cookieMsg: 'We use cookies to analyze traffic and show more relevant ads.',
   cookieAccept: 'Accept',
@@ -190,6 +219,13 @@ const LOCALE_PT: Locale = {
   privacySlug: 'politica-de-privacidade',
   termsSlug: 'termos',
   contactSlug: 'contato',
+  trustBadge1: 'Revisão Editorial',
+  trustBadge2: 'Base em Pesquisa Independente',
+  trustBadge3: 'Divulgação de Afiliado Abaixo',
+  howItWorksHeading: 'Como Funciona',
+  feedbackHeading: 'O Que os Leitores Costumam Comentar',
+  feedbackDisclaimer: 'Temas recorrentes em avaliações públicas e comentários de leitores — não são depoimentos individuais. Resultados individuais variam.',
+  extraCtaText: 'Ver Todos os Detalhes',
   rightsReserved: 'Todos os direitos reservados.',
   cookieMsg: 'Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes.',
   cookieAccept: 'Aceitar',
@@ -444,6 +480,43 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
+// Ícones SVG inline genéricos e reutilizáveis (não dependem de geração de imagem por IA —
+// Vertex Imagen não está habilitado no projeto GCP conectado, confirmado 2026-07-27) — usados
+// pelas seções novas de confiança/benefícios/como-funciona/temas de feedback abaixo. Cor via
+// currentColor, herda do elemento pai.
+const ICON_SHIELD = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>`;
+const ICON_CHECK_CIRCLE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>`;
+const ICON_CHAT = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>`;
+
+function trustBadgesHtml(locale: Locale): string {
+  const badges = [
+    { icon: ICON_SHIELD, label: locale.trustBadge1 },
+    { icon: ICON_CHECK_CIRCLE, label: locale.trustBadge2 },
+    { icon: ICON_SHIELD, label: locale.trustBadge3 },
+  ];
+  return `<div class="trust-badges">${badges.map((b) => `<div class="trust-badge">${b.icon}<span>${esc(b.label)}</span></div>`).join('')}</div>`;
+}
+
+function benefitsStripHtml(beneficios: string[]): string {
+  const items = (beneficios ?? []).filter(Boolean).slice(0, 5);
+  if (!items.length) return '';
+  return `<div class="benefits-strip">${items.map((b) => `<div class="benefit-item">${ICON_CHECK_CIRCLE}<span>${esc(b)}</span></div>`).join('')}</div>`;
+}
+
+function howItWorksHtml(steps: { titulo: string; texto: string }[] | undefined, heading: string): string {
+  const items = (steps ?? []).filter((s) => s?.titulo || s?.texto).slice(0, 4);
+  if (!items.length) return '';
+  return `<h2>${esc(heading)}</h2><div class="how-it-works">${items.map(
+    (s, i) => `<div class="step"><div class="step-num">${i + 1}</div><div><h3>${esc(s.titulo)}</h3><p>${esc(s.texto)}</p></div></div>`
+  ).join('')}</div>`;
+}
+
+function feedbackThemesHtml(themes: string[] | undefined, heading: string, disclaimer: string): string {
+  const items = (themes ?? []).filter(Boolean).slice(0, 4);
+  if (!items.length) return '';
+  return `<h2>${esc(heading)}</h2><div class="feedback-themes">${items.map((t) => `<div class="feedback-item">${ICON_CHAT}<span>${esc(t)}</span></div>`).join('')}</div><p class="feedback-disclaimer">${esc(disclaimer)}</p>`;
+}
+
 export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
@@ -507,10 +580,13 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{SEÇÃO 2 — O que é {{PRODUTO}} e como funciona}}', esc(c.secao2_titulo));
   t = t.replace('{{Descrição honesta: o que entrega, para quem é, para quem NÃO é.}}', esc(c.secao2_texto));
 
-  const [b1, b2, b3, ...rest] = c.beneficios ?? [];
-  t = t.replace('{{Entregável/benefício 1}}', esc(b1 ?? ''));
-  t = t.replace('{{Entregável/benefício 2}}', esc(b2 ?? ''));
-  t = t.replace('{{Entregável/benefício 3}}', esc([b3, ...rest].filter(Boolean).join(' · ') || ''));
+  // Restyle 2026-07-27: a lista de 3 <li> de benefício virou uma tira visual com ícone
+  // (benefitsStripHtml), reaproveitando o MESMO array c.beneficios — sem pedir novo campo à IA.
+  t = t.replace('{{BENEFITS_STRIP}}', benefitsStripHtml(c.beneficios));
+  t = t.replace('{{TRUST_BADGES}}', trustBadgesHtml(locale));
+  t = t.replace('{{COMO_FUNCIONA}}', howItWorksHtml(c.como_funciona, locale.howItWorksHeading));
+  t = t.replace('{{TEMAS_FEEDBACK}}', feedbackThemesHtml(c.temas_feedback, locale.feedbackHeading, locale.feedbackDisclaimer));
+  t = t.replace('{{EXTRA_CTA_TEXT}}', esc(locale.extraCtaText));
 
   t = t.replace('{{PROVA REAL — número de alunos/avaliação/garantia oficial da oferta. Somente dados verificáveis da página do produtor.}}', esc(c.prova));
   t = t.replace('{{TEXTO DO CTA — ex.: Conhecer o {{PRODUTO}} Agora}}', esc(c.cta_texto));
