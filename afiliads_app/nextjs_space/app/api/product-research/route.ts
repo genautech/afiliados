@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
 import { prisma } from '@/lib/prisma';
+import { getChecklistLearningReferencia } from '@/lib/complianceVerifier';
 
 const HUNTER_PROMPT = `Você é o Product Hunter, agente caçador de produtos de afiliados especializado em ClickBank.
 Analise o produto informado com base no seu conhecimento do marketplace ClickBank, verticais nutra/saúde/MMO/sobrevivência e na regra do 3× (comissão média deve cobrir ao menos 3× o CPA estimado de teste).
@@ -175,12 +176,14 @@ export async function POST(request: NextRequest) {
         }
 
         send({ status: 'step', agent: 'compliance', state: 'running' });
+        const checklistLearning = await getChecklistLearningReferencia(uid, hunter?.vertical, undefined, netTitle).catch(() => '');
         const compRes = await callAgent(uid, {
           agent: 'compliance-sentinel',
           systemPrompt: dynamicCompliancePrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}
 ${affiliatePageText ? `TEXTO REAL DA PÁGINA DE AFILIADOS (${affiliatePageUrlUsed}):\n"""${affiliatePageText}"""` : `Não foi possível buscar a página de afiliados real (tentativa: ${urlGuess || 'nenhuma URL sugerida pelo Hunter'}). Responda "canais.google_search_permitido": "nao_verificado" e alerte nível crítico.`}
 ${vendorPageText ? `TEXTO REAL DA PÁGINA DE VENDAS DO VENDOR (${vendorPageUrlUsed}):\n"""${vendorPageText}"""` : `Não foi possível buscar a página de vendas real (tentativa: ${vendorUrlGuess || 'nenhuma URL sugerida pelo Hunter'}). Retorne "elementos_presell_referencia" como array vazio.`}
+${checklistLearning ? `\n${checklistLearning}\n` : ''}
 JSON puro.`,
         });
         const comp = compRes.data;

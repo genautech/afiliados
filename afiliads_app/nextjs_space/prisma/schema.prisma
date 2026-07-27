@@ -38,6 +38,7 @@ model User {
   Presell           Presell[]
   usagePayments     UsagePayment[]
   marketIntelSnapshots MarketIntelSnapshot[]
+  checklistLearnings   ChecklistLearning[]
 }
 
 model Account {
@@ -513,4 +514,23 @@ model Presell {
 
   @@index([userId])
   @@index([campaignId])
+}
+
+model ChecklistLearning {
+  id              String   @id @default(cuid())
+  userId          String
+  itemKey         String
+  scope           String
+  vertical        String?
+  channel         String?
+  platform        String?
+  pageType        String?
+  problem         String   @db.Text
+  correction      String   @db.Text
+  appliesGlobally Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, itemKey])
+  @@index([vertical, channel])
 }

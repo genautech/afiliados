@@ -318,14 +318,30 @@ const AgentHelp = ({
 // pra clicar/mentir sobre eles) + o motivo quando falham; itens autoatestados continuam um
 // checkbox manual, mas claramente rotulados como tal — nenhum dos dois finge ser o outro.
 const ChecklistItemRow = ({
-  item, checked, onToggle, meta,
+  item, checked, onToggle, meta, step, onFix,
 }: {
   item: { key: string; label: string; critical: boolean };
   checked: boolean;
   onToggle: (v: boolean) => void;
   meta?: { verificationType: string; note?: string | null };
+  step?: number;
+  onFix?: (step: number, itemKey: string) => Promise<any>;
 }) => {
   const isAuto = meta?.verificationType === 'auto';
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState<any>(null);
+
+  const handleFix = async () => {
+    if (!onFix || step === undefined) return;
+    setFixing(true);
+    setFixResult(null);
+    try {
+      setFixResult(await onFix(step, item.key));
+    } finally {
+      setFixing(false);
+    }
+  };
+
   return (
     <div className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${checked ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
       {isAuto ? (
@@ -340,6 +356,28 @@ const ChecklistItemRow = ({
           : <Badge className="ml-2 bg-slate-500/20 text-slate-300 text-[10px]">AUTOATESTADO</Badge>}
         {item.critical && !checked && <Badge className="ml-2 bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
         {isAuto && !checked && meta?.note && <p className="text-xs text-red-300 mt-1">{meta.note}</p>}
+        {isAuto && !checked && onFix && step !== undefined && (
+          <div className="mt-2">
+            <Button type="button" size="sm" variant="outline" onClick={handleFix} disabled={fixing} className="h-7 text-[11px] border-[#334155] text-slate-300 gap-1.5">
+              {fixing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Corrigir com agente
+            </Button>
+            {fixResult && (
+              <div className="mt-2 bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 text-[11px] space-y-1">
+                {fixResult.error && <p className="text-red-300">{fixResult.error}</p>}
+                {fixResult.diagnostico && <p className="text-slate-300">{fixResult.diagnostico}</p>}
+                {fixResult.valorAplicado && (
+                  <p className={fixResult.passouAVerificar ? 'text-green-300' : 'text-yellow-300'}>
+                    Campo "{fixResult.campoAlterado}" atualizado para <span className="font-mono">{fixResult.valorAplicado}</span> —
+                    {fixResult.passouAVerificar ? ' passou na verificação ✅' : ' ainda não passou, revise manualmente.'}
+                  </p>
+                )}
+                {fixResult.correcao && <p className="text-white">{fixResult.correcao}</p>}
+                {fixResult.proximaAcao && <p className="text-slate-400">{fixResult.proximaAcao}</p>}
+                {fixResult.alreadyPassing && <p className="text-green-300">Este item já está passando.</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -668,6 +706,29 @@ export default function WizardPage() {
     }
   };
 
+  // "Corrigir com agente" (Fase 3): chama o agente pro item de checklist que falhou. Quando o
+  // item mapeia pra um campo real (ex.: postbackUrl/clickidToken), o servidor já aplica e
+  // re-verifica — só precisamos sincronizar o campo local (senão o Input fica mostrando o
+  // valor velho) e resincronizar o checklist inteiro pra refletir o resultado fresco.
+  const fixChecklistItem = async (step: number, itemKey: string) => {
+    if (!campaignId) { toast.error('Salve a campanha antes de corrigir o checklist.'); return { error: 'Campanha não salva ainda.' }; }
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/checklists/fix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step, itemKey }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.success === false) return { error: data?.error ?? 'Erro ao corrigir item de checklist' };
+      if (data.campoAlterado === 'postbackUrl' && typeof data.valorAplicado === 'string') setPostbackUrl(data.valorAplicado);
+      if (data.campoAlterado === 'clickidToken' && typeof data.valorAplicado === 'string') setClickidToken(data.valorAplicado);
+      if (data.passouAVerificar || data.campoAlterado) await runChecklistVerify();
+      return data;
+    } catch {
+      return { error: 'Erro de rede ao corrigir item de checklist.' };
+    }
+  };
+
   // Cria a campanha de verdade no Google Ads (PAUSED) — corrigido 2026-07-27: antes só existia
   // em app/(app)/campanhas/[id]/page.tsx, fora do wizard, então o Passo 9 (Go-live) travava
   // pedindo googleCampaignId sem nenhuma ação disponível no próprio wizard pra consegui-lo.
@@ -991,7 +1052,7 @@ export default function WizardPage() {
   // Presell real via campaignId — ver getPresellHtml() em lib/complianceVerifier.ts) nunca
   // encontrava nada pra verificar. Precisa de campaignId (salva a campanha antes, se preciso)
   // e de um hopLink real (offerUrl).
-  const generatePresellHtml = async () => {
+  const generatePresellHtml = async (extraContext?: string) => {
     if (!offerUrl || !/^https?:\/\//.test(offerUrl)) {
       toast.error('Preencha a URL da oferta (offerUrl, passo 1) com um link https:// válido antes de gerar a presell.');
       return;
@@ -1018,6 +1079,7 @@ export default function WizardPage() {
           channel,
           geo,
           trackingId: name || undefined,
+          context: extraContext || undefined,
         }),
       });
       const data = await res.json();
@@ -1043,6 +1105,23 @@ export default function WizardPage() {
       toast.error('Erro de rede ao gerar a presell.');
     } finally {
       setGeneratingPresell(false);
+    }
+  };
+
+  // "Regenerar com correções" (Fase 3d): busca as lições da mesma vertical/canal/plataforma
+  // já aprendidas via "Corrigir com agente" (ChecklistLearning) e injeta como contexto extra
+  // na regeneração — pra não ter que descrever de novo manualmente um problema já resolvido
+  // numa campanha anterior.
+  const regenerateWithCorrections = async () => {
+    if (!campaignId) { toast.error('Salve a campanha antes de regenerar com correções.'); return; }
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/checklists/learnings`);
+      const data = await res.json();
+      if (!res.ok) { toast.error(data?.error ?? 'Erro ao buscar lições aprendidas'); return; }
+      if (!data.context) { toast.error('Nenhuma correção registrada ainda pra esta vertical/canal — use "Corrigir com agente" nos itens que falharem primeiro.'); return; }
+      await generatePresellHtml(data.context);
+    } catch {
+      toast.error('Erro de rede ao buscar lições aprendidas.');
     }
   };
 
@@ -1380,6 +1459,8 @@ export default function WizardPage() {
                     checked={bridgeChecks[item.key] ?? false}
                     onToggle={(v) => setBridgeChecks(prev => ({ ...prev, [item.key]: v }))}
                     meta={checklistMeta[item.key]}
+                    step={4}
+                    onFix={fixChecklistItem}
                   />
                 ))}
               </div>
@@ -1430,9 +1511,12 @@ export default function WizardPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-white font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-yellow-400" /> Builder de Pré-sell</h3>
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={generatePresellHtml} disabled={generatingPresell} className="bg-green-600 hover:bg-green-700 text-white gap-1">
+                    <Button size="sm" onClick={() => generatePresellHtml()} disabled={generatingPresell} className="bg-green-600 hover:bg-green-700 text-white gap-1">
                       {generatingPresell ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                       {generatingPresell ? 'Gerando com IA...' : 'Gerar com Presell Builder (IA)'}
+                    </Button>
+                    <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-300 gap-1" onClick={regenerateWithCorrections} disabled={generatingPresell} title="Regenera aplicando as correções já aprendidas (ChecklistLearning) pra esta vertical/canal/plataforma">
+                      {generatingPresell ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />} Regenerar com correções
                     </Button>
                     <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard(presellHtml)} disabled={!presellHtml}>
                       <Copy className="h-3 w-3" /> Copiar HTML
@@ -1704,6 +1788,8 @@ export default function WizardPage() {
                     checked={googleAdsChecks[item.key] ?? false}
                     onToggle={(v) => setGoogleAdsChecks(prev => ({ ...prev, [item.key]: v }))}
                     meta={checklistMeta[item.key]}
+                    step={7}
+                    onFix={fixChecklistItem}
                   />
                 ))}
               </div>
@@ -1754,6 +1840,8 @@ export default function WizardPage() {
                     checked={trackingChecks[item.key] ?? false}
                     onToggle={(v) => setTrackingChecks(prev => ({ ...prev, [item.key]: v }))}
                     meta={checklistMeta[item.key]}
+                    step={8}
+                    onFix={fixChecklistItem}
                   />
                 ))}
               </div>
@@ -1804,6 +1892,8 @@ export default function WizardPage() {
                     checked={goLiveChecks[item.key] ?? false}
                     onToggle={(v) => setGoLiveChecks(prev => ({ ...prev, [item.key]: v }))}
                     meta={checklistMeta[item.key]}
+                    step={9}
+                    onFix={fixChecklistItem}
                   />
                 ))}
               </div>

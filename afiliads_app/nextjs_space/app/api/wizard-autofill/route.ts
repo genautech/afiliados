@@ -9,6 +9,7 @@ import { PLATFORMS, VERTICALS, GEOS, CHANNELS, CVR_DEFAULTS } from '@/lib/wizard
 import { FUNNELS, SYSTEM_PROMPT, buildSchemaHint, pickKeywordsFromResearch } from '@/lib/wizard-autofill';
 import { deriveCampaignStrategy } from '@/lib/campaign-strategy';
 import { getMarketIntelReferencia } from '@/lib/marketIntel';
+import { getChecklistLearningReferencia } from '@/lib/complianceVerifier';
 
 const TEST_DURATIONS = ['48h', '72h', '5', '7'];
 
@@ -48,6 +49,13 @@ export async function POST(request: NextRequest) {
     const marketIntel = productForStrategy
       ? await getMarketIntelReferencia(userId, productForStrategy.vertical ?? '', productForStrategy.id).catch(() => '')
       : '';
+
+    const checklistLearning = await getChecklistLearningReferencia(
+      userId,
+      productForStrategy?.vertical ?? campaign?.vertical,
+      campaign?.channel,
+      campaign?.platform
+    ).catch(() => '');
 
     const dossie = {
       produto_pesquisado: product ? {
@@ -95,6 +103,7 @@ export async function POST(request: NextRequest) {
         guia_de_budget: derivedStrategy.budgetGuidance,
       } : null,
       sinais_de_mercado: marketIntel || null,
+      licoes_aprendidas: checklistLearning || null,
     };
 
     // Números fora do razoável (alucinação do LLM ou parsing ruim) disparam uma retentativa
