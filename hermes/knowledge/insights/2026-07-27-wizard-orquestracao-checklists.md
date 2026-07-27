@@ -354,6 +354,60 @@ Sugestão: construir uma home mínima de verdade (usando a marca "Midlife Wellne
 estabelecida no rodapé/categoria do artigo) que linke o artigo da FemiCore, em vez de deixar o
 WordPress padrão — ainda não implementado, fica pra próxima ação se o usuário confirmar.
 
+## Achado extra 7 — presell/home "pobres" viram robustas com SVG (Vertex Imagen indisponível)
+
+Usuário achou a presell e a home "template tosco" (pouco conteúdo, poucos CTAs, poucas
+imagens) e pediu pra melhorar com "modelos LLM". Testei Vertex AI Imagen no projeto GCP
+conectado (`mkt-4unik`) — 404 em 3 IDs de modelo diferentes, mesmo depois do usuário tentar
+habilitar "Cloud Vision API" e depois "Vision AI" (ambos produtos de ANÁLISE de imagem, não
+geração — engano fácil de repetir, o nome "Vision" confunde). **O que realmente falta**:
+Vertex AI → Model Garden → aceitar os termos de "Generative AI" e habilitar acesso ao modelo
+Imagen especificamente — ação de console, não resolvida nesta sessão.
+
+Decisão (aprovada pelo usuário via plano): ícones/ilustrações SVG desenhados à mão em vez de
+esperar. Pesquisei uma referência real que converte (`official.trendingoods.shop/femicore` →
+`getfemicore.com`, a página real do vendor) só pra extrair PADRÃO ESTRUTURAL (selos de
+confiança, tira de benefícios, múltiplos CTAs, seção "como funciona") — a referência inteira
+é estilo "página oficial da marca", que eu NÃO copiei (risco de compliance/trademark pra uma
+advertorial de terceiro).
+
+**Implementado em `lib/presell.ts` + `lib/presell-template*.html`**: faixa de selos de
+confiança (genéricos, sem inventar certificação tipo GMP/Non-GMO sem evidência no dossiê),
+tira de benefícios com ícone de check (reaproveita `c.beneficios`, campo que já existia), CTA
+extra depois de pros/contras, e 2 campos novos no schema — `como_funciona` (3 passos) e
+`temas_feedback` (temas parafraseados de feedback, com disclaimer explícito de que NÃO são
+depoimentos individuais atribuídos a pessoa fictícia — isso seria endosso falso, proibido
+pela FTC; decisão de compliance tomada sozinho e documentada no plano). Selos + CTA extra em
+todos os 4 templates; seções longform só em advertorial/vsl. Interstitial ficou de fora até
+dos selos — é teaser intencionalmente não-editorial por design, "Editorially Reviewed"
+contradiria isso.
+
+**2 bugs de compliance achados testando com conteúdo real** (mesmo padrão de "só aparece
+gerando de verdade" já visto várias vezes nesta sessão):
+1. Campo "prova" às vezes inventava número específico não verificado ("10.000+ unidades
+   vendidas") — prompt reforçado pra nunca inventar número, só usar dado real do dossiê.
+2. `findBannedClaim()` não pegava contrações — "This isn't a cure" não batia porque
+   `NEGATION_WORDS_RE` só reconhecia "not" como token completo, não "isn't". Corrigido
+   adicionando as contrações comuns (isn't/aren't/doesn't/don't/won't/can't/wasn't/weren't).
+
+**Achado à parte, não corrigido (fora do escopo pedido)**: montando a home nova, achei que a
+OUTRA presell já existente no domínio (`cb-nutra-us-search-bridge-v1-pogo-curiosidade-2`,
+joint health) está quebrada — conteúdo em PORTUGUÊS misturado num domínio inglês, nome de
+site diferente ("WellnessInsightHub.com" em vez de "Orange Peel Morning"), e
+`GOOGLE_ADS_ID`/tag de conversão nunca substituídos (placeholder literal no HTML). Removi
+essa presell da listagem da home nova (não fazia sentido linkar algo quebrado numa home que
+o pedido era justamente "parecer um site de verdade"), mas NÃO fiz a correção do conteúdo em
+si — provavelmente uma campanha antiga/de teste abandonada. Se for retomar essa campanha,
+precisa regenerar a presell (idioma errado + tracking não configurado).
+
+**Bug de processo achado corrigindo a home**: WordPress REST API só retorna `content.raw`
+(o HTML de verdade armazenado) quando a query inclui `?context=edit` — sem isso, `content.raw`
+vem `undefined` e só `content.rendered` existe. Como eu tinha um fallback `content.raw ||
+content.rendered`, editar a página em ciclos sucessivos usando `rendered` como base acabou
+DUPLICANDO conteúdo a cada edição. **Regra pra próximos agentes**: ao editar uma página
+WordPress existente via REST API, sempre buscar com `?context=edit` primeiro (ou fazer uma
+reescrita completa e limpa em vez de editar incrementalmente em cima de `rendered`).
+
 ## Próxima ação (uma só)
 
 - Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-
