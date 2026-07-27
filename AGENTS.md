@@ -13,6 +13,21 @@ propósito (contadores de urgência, exit pop-up com desconto, botões WhatsApp/
 formulário+CRM — não se aplicam ao nosso modelo ClickBank+Google Search) em
 `hermes/knowledge/insights/2026-07-27-flowpages-guia-gerador-presell.md`.
 
+**Estado em 2026-07-27 (~09h) — auditoria de campos "lidos mas nunca escritos":** achado
+sistêmico depois de corrigir `ctaClicks`: mais 2 campos existiam no schema e eram LIDOS por
+lógica de decisão (`recommendBridgePage()`, `/planilhas`) mas NUNCA escritos por nenhum
+código (nem manual, nem automático) — `ProductResearch.avgConversionRate` (Regra 4 do
+recomendador de bridge page nunca disparava, sempre caía em OTHER) e
+`Keyword.clicks`/`cpcReal`/`conversions` (sempre zerados em `/planilhas`, `google-ads/sync`
+só sincronizava nível de campanha). Ambos corrigidos com writer real (Hunter agora estima
+`conversao_esperada_pct`; `google-ads/sync` agora também puxa métricas por keyword via GAQL
+em `keyword_view`). **Regra de processo daqui pra frente:** antes de considerar pronta
+qualquer feature de decisão/aprendizado automático, grep pelo campo que ela lê em
+`create(`/`update(`/`upsert(`/`increment` — se não tiver writer real em lugar nenhum, a
+feature está incompleta mesmo compilando sem erro (TypeScript/`prisma db push` não acusam
+isso). Detalhes e checklist completo em
+`hermes/knowledge/insights/2026-07-27-auditoria-campos-lidos-nunca-escritos.md`.
+
 ## Coordenação entre sessões simultâneas (leia antes de começar)
 
 Mais de um agente/CLI trabalha neste repo às vezes na mesma janela de tempo (Claude Code,

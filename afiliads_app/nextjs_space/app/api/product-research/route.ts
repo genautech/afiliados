@@ -13,6 +13,7 @@ Responda APENAS JSON válido:
   "vertical": "vertical do produto",
   "gravity_estimado": 0,
   "avg_payout_usd": 0,
+  "conversao_esperada_pct": 0.0,
   "commission_pct": "ex: 75%",
   "rebill": true,
   "score": 0,
@@ -23,7 +24,8 @@ Responda APENAS JSON válido:
   "affiliate_page_url_guess": "melhor chute da URL real da página de afiliados/JV do vendor (ex.: https://dominio.com/affiliates ou https://dominio.com/help/affiliates.php) — sem isso o Compliance Sentinel não consegue confirmar restrições de canal",
   "vendor_sales_page_url_guess": "melhor chute da URL da página de vendas principal do vendor (a landing page que o comprador vê, ex.: https://dominio.com/) — usada como referência de headline/prova/ângulo real pro Presell Builder"
 }
-Score 0-100 pondera: payout, conversão esperada, momentum, competição e risco de compliance. Se não conhecer o produto, estime pela vertical e diga isso no summary.`;
+Score 0-100 pondera: payout, conversão esperada, momentum, competição e risco de compliance. Se não conhecer o produto, estime pela vertical e diga isso no summary.
+"conversao_esperada_pct" é a taxa de conversão média esperada da página de vendas, em porcentagem (ex.: 0.78 significa 0.78%) — estime por vertical/ticket/tipo de página se não souber o valor real; nunca deixe em branco/0 sem necessidade, esse número alimenta a recomendação automática de tipo de bridge page.`;
 
 const SEO_PROMPT = `Você é o SEO & Keyword Architect para afiliados ClickBank com Google Ads.
 Dado o produto e seu contexto, gere o mapa de keywords em camadas (Search intent):
@@ -221,6 +223,13 @@ JSON puro.`,
           });
         }
 
+        // conversao_esperada_pct do Hunter alimenta tanto o campo de exibição (conversionRate,
+        // string com "%") quanto o campo numérico usado por regras de decisão automáticas
+        // (avgConversionRate, 0-1) — achado na revisão de 2026-07-27: bridgePageRecommender.ts
+        // já lia avgConversionRate pra decidir entre Advertorial/OTHER, mas nada nunca escrevia
+        // esse campo (o Hunter nem pedia esse dado), então a regra nunca disparava de verdade.
+        const conversaoPct = typeof hunter?.conversao_esperada_pct === 'number' ? hunter.conversao_esperada_pct : null;
+
         const record = await prisma.productResearch.upsert({
           where: { userId_name: { userId: uid, name: productName } },
           update: {
@@ -228,6 +237,8 @@ JSON puro.`,
             vertical: hunter?.vertical ?? '',
             gravity: existing?.gravity ?? (typeof hunter?.gravity_estimado === 'number' ? hunter.gravity_estimado : null),
             avgPayout: existing?.avgPayout ?? (typeof hunter?.avg_payout_usd === 'number' ? hunter.avg_payout_usd : null),
+            conversionRate: conversaoPct !== null ? `${conversaoPct}%` : (existing?.conversionRate ?? ''),
+            avgConversionRate: conversaoPct !== null ? conversaoPct / 100 : existing?.avgConversionRate ?? null,
             commissionPct: hunter?.commission_pct ?? '',
             rebill: !!hunter?.rebill,
             score: typeof hunter?.score === 'number' ? Math.round(hunter.score) : 0,
@@ -250,6 +261,8 @@ JSON puro.`,
             vertical: hunter?.vertical ?? '',
             gravity: typeof hunter?.gravity_estimado === 'number' ? hunter.gravity_estimado : null,
             avgPayout: typeof hunter?.avg_payout_usd === 'number' ? hunter.avg_payout_usd : null,
+            conversionRate: conversaoPct !== null ? `${conversaoPct}%` : '',
+            avgConversionRate: conversaoPct !== null ? conversaoPct / 100 : null,
             commissionPct: hunter?.commission_pct ?? '',
             rebill: !!hunter?.rebill,
             score: typeof hunter?.score === 'number' ? Math.round(hunter.score) : 0,

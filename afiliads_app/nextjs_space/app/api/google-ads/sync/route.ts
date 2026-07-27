@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { fetchGoogleCampaign, mutateGoogleCampaign } from '@/lib/google-ads';
+import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,9 +73,37 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      // Métricas reais por keyword (achado na revisão de 2026-07-27: Keyword.clicks/cpcReal/
+      // conversions eram exibidos em /planilhas mas nunca escritos por nada). Falha aqui não
+      // derruba o sync de campanha — é um extra, não o objetivo principal do pull.
+      let keywordsUpdated = 0;
+      try {
+        const metrics = await fetchGoogleAdsKeywordMetrics(userId, gadsData.name);
+        if (metrics.length) {
+          const localKeywords = await prisma.keyword.findMany({ where: { campaignId, isSelected: true } });
+          const byTextLower = new Map(metrics.map(m => [m.text.toLowerCase(), m]));
+          for (const kw of localKeywords) {
+            const m = byTextLower.get(kw.keyword.toLowerCase());
+            if (!m) continue;
+            await prisma.keyword.update({
+              where: { id: kw.id },
+              data: {
+                clicks: m.clicks,
+                cpcReal: m.clicks > 0 ? m.costMicros / 1_000_000 / m.clicks : 0,
+                conversions: m.conversions,
+              },
+            });
+            keywordsUpdated++;
+          }
+        }
+      } catch (e: any) {
+        console.error('Falha ao sincronizar métricas de keyword (não bloqueia o sync de campanha):', e?.message);
+      }
+
       return NextResponse.json({
         success: true,
         campaign: updatedCampaign,
+        keywordsUpdated,
         message: 'Dados importados do Google Ads com sucesso.',
       });
     } else if (direction === 'push') {

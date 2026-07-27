@@ -44,6 +44,13 @@ export interface SyncedCampaignData {
   bidStrategy: string;
 }
 
+export interface SyncedKeywordMetric {
+  text: string;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+}
+
 // Auxiliar para buscar chaves do Google Ads no banco
 export async function getGoogleAdsConfig(userId: string): Promise<GoogleAdsCredentials | null> {
   const rows = await prisma.integration.findMany({
@@ -186,6 +193,59 @@ export async function fetchGoogleCampaign(
     budgetDaily,
     bidStrategy: gCamp?.biddingStrategyType || 'UNKNOWN',
   };
+}
+
+/** Métricas reais por keyword (últimos 30 dias) — achado na revisão de 2026-07-27:
+ * Keyword.clicks/cpcReal/conversions eram exibidos em /planilhas mas NUNCA escritos por
+ * nenhum código (nem manual, nem automático) — sempre ficavam zerados. `google-ads/sync`
+ * (pull) agora chama isso e faz upsert nas keywords locais que baterem por texto. */
+export async function fetchGoogleAdsKeywordMetrics(
+  userId: string,
+  campaignName: string
+): Promise<SyncedKeywordMetric[]> {
+  const config = await getGoogleAdsConfig(userId);
+  if (!config) return [];
+
+  if (isMockMode(config)) {
+    console.log(`[Google Ads Mock] Buscando métricas de keyword da campanha "${campaignName}"`);
+    return [];
+  }
+
+  const token = await getAccessToken(config);
+  const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
+  const query = `
+    SELECT
+      ad_group_criterion.keyword.text,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions
+    FROM keyword_view
+    WHERE campaign.name = '${campaignName.replace(/'/g, "\\'")}'
+      AND segments.date DURING LAST_30_DAYS
+  `;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: apiHeaders(token, config),
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    console.error('Erro ao buscar métricas de keyword no Google Ads:', await res.text());
+    return [];
+  }
+
+  const data = await res.json();
+  const byText = new Map<string, SyncedKeywordMetric>();
+  for (const row of data?.results ?? []) {
+    const text = row?.adGroupCriterion?.keyword?.text;
+    if (!text) continue;
+    const cur = byText.get(text) ?? { text, clicks: 0, costMicros: 0, conversions: 0 };
+    cur.clicks += Number(row?.metrics?.clicks ?? 0);
+    cur.costMicros += Number(row?.metrics?.costMicros ?? 0);
+    cur.conversions += Number(row?.metrics?.conversions ?? 0);
+    byText.set(text, cur);
+  }
+  return Array.from(byText.values());
 }
 
 // Atualiza configurações da campanha no Google Ads (Mutate)

@@ -40,7 +40,7 @@ Dados que envelhecem — políticas do Google, comissões, CPCs, disponibilidade
 8. **Escala gradual:** +20–30% de orçamento por vez. Dobrar reinicia o aprendizado e o CPA dispara.
 9. **Regra do 3×:** gastou 3× o valor da comissão sem NENHUMA venda, com rastreamento comprovadamente funcionando e página rápida? Troque a OFERTA antes do nicho — o problema costuma ser a página de vendas do produtor.
 10. **Copy jamais promete resultado** ("Nunca mais seja vítima/pobre/gordo" ✖). Saúde e finanças têm regras extras. Recuse gerar copy que viole; ofereça a versão segura.
-11. **Sem rastreamento, sem otimização.** Se a conversão não está configurada, diga isso e resolva o rastreamento ANTES de fingir precisão em qualquer análise.
+11. **Sem rastreamento, sem otimização.** Se a conversão não está configurada, diga isso e resolva o rastreamento ANTES de fingir precisão em qualquer análise. Isso vale pro código também: qualquer campo do banco que uma lógica de decisão/aprendizado LÊ precisa ter um writer real em algum lugar (manual com UI, ou automático via sync) — senão a "otimização" está decidindo com dado sempre zerado/nulo, silenciosamente errado, sem nenhum erro de compilação pra acusar. Casos reais corrigidos em 2026-07-27: `Presell.ctaClicks`, `ProductResearch.avgConversionRate`, `Keyword.clicks/cpcReal/conversions` — todos lidos por lógica de decisão, nenhum jamais escrito. Checklist completo em `hermes/knowledge/insights/2026-07-27-auditoria-campos-lidos-nunca-escritos.md`.
 
 ## Fluxo 1 — Descoberta de nicho e produto
 
