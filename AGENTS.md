@@ -1,5 +1,23 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+**Estado em 2026-07-27 (~14h) — Fase 3 do wizard completa (ChecklistLearning + "Corrigir com
+agente"):** fecha o plano de 3 fases da orquestração do wizard. Novo modelo
+`ChecklistLearning` (problema+correção por item de checklist, escopado por vertical/canal/
+plataforma/pageType). Novo endpoint `app/api/campaigns/[id]/checklists/fix/route.ts`
+("Corrigir com agente", botão nos Passos 4/7/8/9): pra itens que mapeiam num campo real
+(`postbackUrl`/`clickidToken`) o agente sugere e a rota já aplica + re-verifica de verdade
+(reaproveitando `runFullChecklistVerify()`, extraído de `checklists/verify/route.ts` pra
+`lib/complianceVerifier.ts`); pra itens de conteúdo de presell ou sistema externo (a maioria
+— disclaimer, sem_claims, ga4, etc.) gera diagnóstico+correção concretos e só grava a lição,
+sem tentar aplicar cegamente num campo que não existe. `ChecklistLearning` é injetado no
+dossiê do `wizard-autofill` e no prompt do Compliance Sentinel (`product-research`) — a
+próxima campanha da mesma vertical/canal já nasce ciente dos problemas resolvidos antes.
+Botão "Regenerar com correções" no Passo 4 reaplica essas lições como contexto extra na
+regeneração da pré-sell (via `GET .../checklists/learnings`). Testado ao vivo (não só
+typecheck): os dois caminhos do endpoint de fix confirmados end-to-end contra a campanha de
+teste, incluindo o ciclo completo aplicar→re-verificar→passou→gravar lição. Detalhes em
+`hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md` (seção "Fase 3").
+
 **Estado em 2026-07-27 (~13h) — Fases 1+2 revisadas ao vivo no wizard, 2 bugs novos achados
 e corrigidos:** testando as Fases 1+2 no wizard de verdade (browser, não só typecheck),
 achei 2 bugs de persistência que faziam TODO autosave do wizard falhar silenciosamente

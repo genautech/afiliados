@@ -152,9 +152,56 @@ retornando 200 em cada "Próximo", e o botão "Gerar com Presell Builder (IA)" c
 `Presell` real (POST /api/presells 201) com conteúdo gerado de verdade (artigo advertorial
 completo, não mock), confirmando as Fases 1+2 funcionam ponta a ponta depois da correção.
 
+## Fase 3 — base de conhecimento ChecklistLearning + "Corrigir com agente" (mesmo dia)
+
+**3a — modelo `ChecklistLearning`.** Campos: `itemKey`, `scope` (nome da etapa: antistrike/
+bridge/google_ads/tracking/golive), `vertical`/`channel`/`platform`/`pageType` (todos
+opcionais, usados como filtro de escopo), `problem` (o `note` real da falha),
+`correction` (texto concreto do que foi feito/deveria ser feito), `appliesGlobally`.
+
+**3b — endpoint `checklists/fix`, dois caminhos bem diferentes.** A maioria dos itens `auto`
+verifica CONTEÚDO da presell (HTML) ou estado de sistema externo (Google Ads, GTM) — não têm
+um campo único e seguro pra "aplicar" a correção automaticamente. Só 2 itens (`postback_url`→
+`Campaign.postbackUrl`, `clickid_token`→`Campaign.clickidToken`) mapeiam 1:1 num campo real
+editável — só esses passam pelo ciclo completo "agente sugere → aplica no campo → roda
+`runFullChecklistVerify()` de novo → se passou, grava `ChecklistLearning`". Pra todos os
+outros itens (a maioria: `disclaimer`, `sem_claims`, `faq`, `ga4_configurado`, `lance_manual`,
+`budget_diario` etc.), a rota só gera diagnóstico+correção via LLM e grava a lição direto —
+sem fingir que "aplicou" algo que não tem onde ser aplicado. Isso é intencional, não uma
+limitação a corrigir: a correção de conteúdo de verdade acontece via "Regenerar com
+correções" (3d), que passa a lição como contexto pro gerador de presell reescrever o HTML.
+
+**`runFullChecklistVerify()` extraído pra `lib/complianceVerifier.ts`.** Era lógica só de
+`checklists/verify/route.ts`; o endpoint de fix precisa rodar a MESMA verificação completa
+depois de aplicar um campo (GOLIVE depende do agregado dos outros checklists) — extraído em
+vez de duplicado.
+
+**3c — injeção em `wizard-autofill` e `product-research`.** Nova função
+`getChecklistLearningReferencia(userId, vertical, channel, platform)` em
+`lib/complianceVerifier.ts` (mesmo padrão de `getMarketIntelReferencia`) — lookup frouxo por
+OR (vertical+channel, ou só vertical, ou só platform), até 8 lições mais recentes. Injetada
+no dossiê do `wizard-autofill` (`licoes_aprendidas`) e no prompt do Compliance Sentinel em
+`product-research` (antes da chamada, usando `hunter?.vertical` + `netTitle` como plataforma).
+
+**3d — "Regenerar com correções".** Novo `GET .../checklists/learnings` devolve o texto
+formatado de `getChecklistLearningReferencia()` pra vertical/canal/plataforma da campanha.
+Novo botão no Passo 4 busca isso e chama `generatePresellHtml(extraContext)` — precisou
+mudar a assinatura de `generatePresellHtml()` pra aceitar um parâmetro opcional; **cuidado**:
+isso quebra qualquer `onClick={generatePresellHtml}` direto (o evento do click vira o
+argumento `extraContext`) — todos os call sites tiveram que virar `onClick={() =>
+generatePresellHtml()}` explícito.
+
+**Testado ao vivo, não só typecheck.** Via `fetch()` direto no console do browser (sessão
+autenticada): (1) caminho de conteúdo — `fix` em `lance_manual` (Google Ads) gerou
+diagnóstico+correção reais e a lição apareceu certinha no `GET .../learnings` logo depois;
+(2) caminho de campo real — trocando temporariamente `platform` da campanha de teste pra
+MaxWeb, `fix` em `postback_url` sugeriu uma URL válida, aplicou em `Campaign.postbackUrl`,
+re-verificou, e `passouAVerificar: true` voltou — confirmando o ciclo completo
+aplicar→re-verificar→passou. Campanha de teste restaurada pro estado original (`platform:
+'ClickBank'`, `postbackUrl: ''`) depois do teste.
+
 ## Próxima ação (uma só)
 
-- Implementar Fase 3 (base de conhecimento `ChecklistLearning` + botão "Corrigir com
-  agente" nos itens de checklist que falharem + injeção em wizard-autofill/product-research)
-  — plano completo já escrito, só falta executar. Ver
-  `~/.claude/plans/velvet-finding-cherny.md`.
+- Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-
+  cherny.md`) implementado e testado. Próximo trabalho no wizard, se houver, é escopo novo, não
+  continuação deste plano.
