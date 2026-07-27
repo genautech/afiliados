@@ -107,6 +107,51 @@ banner amarelo aparece com atalho "Regenerar agora". Não é o gate real (isso c
 `bridge_ok`/`GOLIVE_CHECKLIST`), é só aviso antecipado pro usuário não descobrir só no
 Passo 9 que mudou o canal depois de gerar a presell.
 
+## Fase 2 — revisão ao vivo no wizard (mesmo dia, achou 2 bugs novos)
+
+Testando as Fases 1+2 no browser de verdade (não só typecheck) contra a campanha de teste
+`TESTE_REVISAO_WIZARD_v1`, andando Passo 1→4: os Passos 1-3 confirmaram visualmente as
+correções da Fase 1 (Anti-strike 7/7 self_attested sem trava; botão "Próximo" mostrando
+"Validando..." — a Fase 2a rodando de verdade). Mas ao chegar no Passo 4 e gerar a presell,
+o log do dev server mostrou que **o autosave do wizard vinha falhando com 500 silencioso
+desde antes desta sessão**, sem nenhum toast de erro pro usuário:
+
+**Bug 1 — `productResearchId` como scalar num update().** `saveCampaign()`
+(`wizard/page.tsx`) manda `productResearchId: sourceProductResearchId` no payload do PATCH.
+A rota `app/api/campaigns/[id]/route.ts` fazia `prisma.campaign.update({data: {...body}})`
+— espalhando o body cru sem tratamento. Erro: `Unknown argument productResearchId. Did you
+mean productResearch?`. Achado curioso: a MESMA coisa funciona sem erro em
+`prisma.campaign.create()` (`app/api/campaigns/route.ts`) — `create()` aceita o FK scalar
+direto, `update()` não (exige a sintaxe de relação `productResearch: {connect: {id}}` ou
+`{disconnect: true}` quando null). Fix na rota: extrai `productResearchId` do body antes do
+update e converte pra relação.
+
+**Bug 2 — 3 campos do wizard sem coluna no banco.** `saveCampaign()` também manda
+`pageType`, `popupGate`, `videoUrl` — mas essas colunas só existem no model `Presell`,
+NUNCA existiram em `Campaign` (confirmado lendo o schema linha por linha). Erro: `Unknown
+argument pageType`. Isso quer dizer que **toda vez que o payload de `saveCampaign()` incluía
+esses 3 campos** (ou seja, desde que o Passo 4 do wizard existe com esses controles), o
+PATCH inteiro falhava com 500 — e como `saveCampaign()` não checa `res.ok` no branch do
+PATCH, o erro nunca virou toast, nunca foi percebido. Confirmado o efeito real: a campanha
+de teste ficou com `wizardStep: 1` no banco mesmo depois de eu ter navegado visualmente até
+o Passo 4 — só o estado React local avançava. Fix: como `hydrateFromCampaign()` já lia
+esses 3 campos de volta do `campaign` (intenção original claramente era persistir), a
+correção certa foi adicionar as 3 colunas em `Campaign` via `prisma db push`, não remover do
+payload do wizard.
+
+**Achado de processo — Prisma Client fica em cache no processo do `next dev`.** Depois de
+rodar `prisma db push` + `prisma generate` com o dev server já rodando, o MESMO erro
+"Unknown argument pageType" continuou aparecendo — o processo Node já tinha carregado o
+`@prisma/client` antigo em memória; regenerar o pacote em disco não afeta um processo já
+rodando. Só resolveu depois de matar e reiniciar o `next dev`. **Regra pra próximos
+agentes:** sempre reiniciar o dev server depois de qualquer `prisma db push`/`generate`,
+não só rodar `tsc`/`build` (que usa um processo novo e não sofre esse problema).
+
+Depois dos 2 fixes + restart, o fluxo completo Passo 1→4 foi re-testado do zero: PATCH
+retornando 200 em cada "Próximo", e o botão "Gerar com Presell Builder (IA)" criou um
+`Presell` real (POST /api/presells 201) com conteúdo gerado de verdade (artigo advertorial
+completo, não mock), confirmando as Fases 1+2 funcionam ponta a ponta depois da correção.
+
 ## Próxima ação (uma só)
 
 - Implementar Fase 3 (base de conhecimento `ChecklistLearning` + botão "Corrigir com

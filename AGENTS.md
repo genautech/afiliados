@@ -1,5 +1,28 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
 
+**Estado em 2026-07-27 (~13h) — Fases 1+2 revisadas ao vivo no wizard, 2 bugs novos achados
+e corrigidos:** testando as Fases 1+2 no wizard de verdade (browser, não só typecheck),
+achei 2 bugs de persistência que faziam TODO autosave do wizard falhar silenciosamente
+depois do Passo 1 — a UI avançava normal (estado local do React), mas nada ia pro banco.
+(1) `PATCH /api/campaigns/[id]` espalhava o body cru direto em
+`prisma.campaign.update({data: {...body}})` — `productResearchId` é FK e o Prisma Client
+rejeita como scalar num update (`update()` só aceita a forma de relação
+`productResearch: {connect/disconnect}`, diferente de `create()`, que aceitava o mesmo body
+sem problema). (2) `saveCampaign()` do wizard sempre mandava `pageType`/`popupGate`/
+`videoUrl`, mas essas 3 colunas nunca existiam no model `Campaign` (só em `Presell`) —
+toda vez que o payload continha esses campos o Prisma dava 500, e como o código não checava
+`res.ok` no fetch do PATCH, o erro nunca aparecia pro usuário. Fix: (1) rota converte
+`productResearchId` pra sintaxe de relação antes do update; (2) 3 colunas novas em
+`Campaign` (`pageType`, `popupGate`, `videoUrl`) via `prisma db push`, já que era o intuito
+original (`hydrateFromCampaign()` já lia esses campos de volta, só nunca persistiam).
+**Regra pra próximos agentes:** depois de QUALQUER `prisma db push` local, reiniciar o
+`next dev` — o processo do dev server mantém o `@prisma/client` antigo em memória mesmo
+depois do client ser regenerado em disco, então erros "Unknown argument" somem do código
+mas continuam aparecendo em runtime até reiniciar. Doc completo em
+`hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md` (seção "Fase 2 —
+revisão ao vivo"). Fase 3 (`ChecklistLearning` + "Corrigir com agente") segue pendente,
+plano em `~/.claude/plans/velvet-finding-cherny.md`.
+
 **Estado em 2026-07-27 (~11h) — Wizard destravado (Fase 1 de 3):** o wizard
 (`app/(app)/wizard/page.tsx`) tinha 3 travas estruturais reais que impediam QUALQUER campanha
 nova de terminar do Passo 1 ao 9 (deadlock Passo 3 vs 4 no checklist Anti-strike/Bridge,
