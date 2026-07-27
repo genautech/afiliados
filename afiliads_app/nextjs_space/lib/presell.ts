@@ -661,6 +661,71 @@ export async function publishToWordPress(html: string, opts: { domain: string; t
   return data.link as string;
 }
 
+// Publicação via FTP — pra domínios com hospedagem estática (não WordPress), como
+// orangepeelmorning.com na Hostinger. A API pública da Hostinger só expõe upload de arquivo
+// pra contas Agency Hosting (confirmado consultando developers.hostinger.com/api-python-sdk
+// em 2026-07-27); hospedagem regular/pessoal só disponibiliza FTP/SFTP mesmo — por isso este
+// caminho usa credenciais de FTP (FTP_SITES_JSON), não uma "API key" da Hostinger.
+function ftpSites(): Record<string, { host: string; port?: number; user: string; password: string; rootDir?: string; secure?: boolean }> {
+  try {
+    return JSON.parse(process.env.FTP_SITES_JSON ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function wrapStaticPage(title: string, bodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+}
+
+async function ftpUploadFile(site: { host: string; port?: number; user: string; password: string; rootDir?: string; secure?: boolean }, remoteDir: string, filename: string, content: string): Promise<void> {
+  const { Client } = await import('basic-ftp');
+  const { Readable } = await import('stream');
+  const client = new Client();
+  client.ftp.verbose = false;
+  try {
+    await client.access({ host: site.host, port: site.port ?? 21, user: site.user, password: site.password, secure: site.secure ?? false });
+    const rootDir = (site.rootDir || 'public_html').replace(/^\/|\/$/g, '');
+    await client.ensureDir(`${rootDir}/${remoteDir}`);
+    await client.uploadFrom(Readable.from(Buffer.from(content, 'utf-8')), filename);
+  } finally {
+    client.close();
+  }
+}
+
+// Idempotente por natureza (upload sempre sobrescreve o mesmo caminho) — diferente da versão
+// WordPress, não precisa checar existência antes.
+export async function ensureFtpCompliancePages(domain: string): Promise<void> {
+  const site = ftpSites()[domain];
+  if (!site) throw new Error(`Domínio FTP "${domain}" não configurado em FTP_SITES_JSON`);
+  for (const page of WP_COMPLIANCE_PAGES) {
+    try {
+      await ftpUploadFile(site, page.slug, 'index.html', wrapStaticPage(page.title, page.content));
+    } catch (e: any) {
+      console.error(`[ftp-compliance-pages] falha ao enviar "${page.slug}" pra ${domain}:`, e?.message);
+    }
+    await sleep(1500);
+  }
+}
+
+export async function publishToFtp(html: string, opts: { domain: string; slug: string }): Promise<string> {
+  const site = ftpSites()[opts.domain];
+  if (!site) throw new Error(`Domínio FTP "${opts.domain}" não configurado em FTP_SITES_JSON`);
+  await ensureFtpCompliancePages(opts.domain);
+  await ftpUploadFile(site, opts.slug, 'index.html', html);
+  return `https://${opts.domain}/${opts.slug}/`;
+}
+
 // Referência de performance real das presells anteriores do usuário: nunca copia texto, só
 // aponta qual pageType converteu melhor (CTA clicks / views) pra usar como referência estrutural.
 // Mínimo de views por agrupamento evita conclusão precipitada com amostra pequena.

@@ -17,38 +17,32 @@ export interface CheckResult {
 // (ver hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md).
 const AFFILIATE_DISCLOSURE_RE = /participa de programas de afiliados|pode receber comiss[ãa]o|affiliate disclosure|participates in affiliate|earn(s)? (a )?commission/i;
 const PRIVACY_LINK_RE = /politica-de-privacidade|privacy-policy/i;
-// 'garantido'/'guaranteed' fica de fora daqui de propósito — ver findBannedClaim() abaixo:
-// esse termo aparece o tempo todo em disclaimers CORRETOS ("resultados não são garantidos" /
-// "not typical or guaranteed"), então precisa de checagem com contexto de negação, não um
-// regex simples que reprovaria o disclaimer certo junto com o claim errado.
-const BANNED_CLAIM_RE = /\bcura\b|\belimina\b|perca \d+\s?kg|livre-se de|\bcure[sd]?\b|\beliminate[sd]?\b|lose \d+\s?(lbs?|kg|pounds)/i;
-const NEGATED_CLAIM_TERMS_RE = /garantido|guaranteed/gi;
-const NEGATION_WORDS_RE = /\b(não|nao|nem|never|sem|no|not)\b[^.!?]{0,30}$/i;
+// Termos SEMPRE problema, sem exceção — não têm uso legítimo dentro de um disclaimer negado
+// ("perca 10kg" ou "livre-se de X" não aparecem em frases de isenção de responsabilidade).
+const BANNED_CLAIM_RE = /perca \d+\s?kg|livre-se de|lose \d+\s?(lbs?|kg|pounds)/i;
+// 'cura'/'cure'/'elimina'/'eliminate'/'garantido'/'guaranteed' ficam de fora do grupo acima de
+// propósito — ver findBannedClaim() abaixo: todos esses termos aparecem o tempo todo dentro do
+// disclaimer de saúde OBRIGATÓRIO e correto (“not intended to diagnose, treat, cure, or
+// prevent any disease” / variações geradas pela IA como “not intended to ... or cure any
+// condition”), então precisam de checagem por contexto de negação, não um regex direto que
+// reprovaria o disclaimer certo junto com o claim errado. Achado em produção 2026-07-27: a
+// tentativa anterior de resolver isso com uma allowlist de frase exata (SAFE_DISCLAIMER_
+// BOILERPLATE) quebrou na primeira variação de texto gerada pela IA — a checagem de negação
+// genérica cobre qualquer variação de fraseado, não só uma frase fixa.
+const NEGATED_CLAIM_TERMS_RE = /garantido|guaranteed|\bcura\b|\bcure[sd]?\b|\belimina\b|\beliminate[sd]?\b/gi;
+const NEGATION_WORDS_RE = /\b(não|nao|nem|never|sem|no|not)\b[^.!?]{0,40}$/i;
 const FAQ_RE = /perguntas frequentes|frequently asked questions/i;
 const RESULTADOS_VARIAM_RE = /resultados individuais podem variar|individual results may vary/i;
 const GA4_TAG_RE = /gtag\(\s*'config'\s*,\s*'G-/i;
 
-// O disclaimer de saúde padrão (injetado por DISCLAIMER_SAUDE em lib/presell.ts pra nicho
-// sensível) cita "cure"/"curar" dentro da frase de isenção de responsabilidade em si ("not
-// intended to diagnose, treat, cure, or prevent any disease") — isso é o disclaimer OBRIGATÓRIO
-// fazendo o trabalho certo, não um claim proibido. Sem tirar essa frase antes de escanear,
-// BANNED_CLAIM_RE reprova toda presell de nicho sensível só por ter o disclaimer correto.
-const SAFE_DISCLAIMER_BOILERPLATE = [
-  /this product is not intended to diagnose, treat, cure,? or prevent any disease\.?/i,
-  /este produto não se destina a diagnosticar, tratar, curar ou prevenir qualquer doença\.?/i,
-];
-function stripSafeBoilerplate(html: string): string {
-  return SAFE_DISCLAIMER_BOILERPLATE.reduce((acc, re) => acc.replace(re, ''), html);
-}
-
 // Termo achado (pra reportar no note) ou null se limpo. Dois grupos de checagem:
-// 1) BANNED_CLAIM_RE — termos que são SEMPRE problema (cura/elimina/perca Xkg), sem exceção.
-// 2) NEGATED_CLAIM_TERMS_RE — termos tipo "garantido"/"guaranteed" que só são claim proibido
-//    quando NÃO estão numa frase de negação ("resultados não são garantidos" é o disclaimer
-//    certo; "resultado garantido" é o claim errado) — olha os ~30 caracteres antes do termo
-//    procurando uma palavra de negação antes de reprovar.
+// 1) BANNED_CLAIM_RE — termos que são SEMPRE problema, sem exceção.
+// 2) NEGATED_CLAIM_TERMS_RE — termos que só são claim proibido quando NÃO estão numa frase de
+//    negação ("resultados não são garantidos"/"not intended to ... cure ..." são o disclaimer
+//    certo; "resultado garantido"/"vai curar" são o claim errado) — olha os ~40 caracteres
+//    antes do termo procurando uma palavra de negação antes de reprovar.
 function findBannedClaim(html: string): string | null {
-  const clean = stripSafeBoilerplate(html);
+  const clean = html;
   const direct = BANNED_CLAIM_RE.exec(clean);
   if (direct) return direct[0];
 

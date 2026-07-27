@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { publishToWordPress } from '@/lib/presell';
+import { publishToWordPress, publishToFtp } from '@/lib/presell';
 
 async function resolveUserId(request: NextRequest): Promise<string | null> {
   const token = request.headers.get('x-afiliads-token');
@@ -29,13 +29,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const body = await request.json().catch(() => ({}));
-    const destino = body?.destino === 'wordpress' ? 'wordpress' : 'railway';
+    const destino = body?.destino === 'wordpress' ? 'wordpress' : body?.destino === 'ftp' ? 'ftp' : 'railway';
     const dominio = typeof body?.dominio === 'string' ? body.dominio.trim() : '';
 
     let publishedUrl = '';
     if (destino === 'wordpress') {
       if (!dominio) return NextResponse.json({ error: 'dominio é obrigatório para destino=wordpress' }, { status: 422 });
       publishedUrl = await publishToWordPress(presell.html, { domain: dominio, title: presell.title, slug: presell.slug });
+    } else if (destino === 'ftp') {
+      if (!dominio) return NextResponse.json({ error: 'dominio é obrigatório para destino=ftp' }, { status: 422 });
+      publishedUrl = await publishToFtp(presell.html, { domain: dominio, slug: presell.slug });
     }
 
     const promoted = await prisma.presell.update({
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       data: {
         status: 'publicada',
         publishTarget: destino,
-        wpDomain: destino === 'wordpress' ? dominio : '',
+        wpDomain: destino === 'wordpress' || destino === 'ftp' ? dominio : '',
         publishedUrl,
       },
     });
@@ -63,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         slug: promoted.slug,
         status: promoted.status,
         publishTarget: promoted.publishTarget,
-        url: promoted.publishTarget === 'wordpress' ? promoted.publishedUrl : `/p/${promoted.slug}`,
+        url: (promoted.publishTarget === 'wordpress' || promoted.publishTarget === 'ftp') ? promoted.publishedUrl : `/p/${promoted.slug}`,
       },
       discardedCount,
     });

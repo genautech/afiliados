@@ -480,6 +480,8 @@ export default function WizardPage() {
   const [presellId, setPresellId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [ftpDomains, setFtpDomains] = useState<string[]>([]);
+  const [publishingOwnDomain, setPublishingOwnDomain] = useState(false);
 
   // Step 5
   const [selectedKeywords, setSelectedKeywords] = useState<Array<{keyword:string;layer:string;matchType:string;relevance:number;selected:boolean}>>([]);
@@ -883,6 +885,13 @@ export default function WizardPage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch('/api/wp-sites')
+      .then(res => res.ok ? res.json() : Promise.resolve({} as { ftpDomains?: string[] }))
+      .then(data => setFtpDomains(Array.isArray(data?.ftpDomains) ? data.ftpDomains! : []))
+      .catch(() => {});
+  }, []);
+
   const requireConfirmedProduct = async (id: string): Promise<{ confirmedAt?: string | null } | null> => {
     const cached = researchProducts.find(p => p.id === id);
     if (cached) return cached;
@@ -1125,6 +1134,41 @@ export default function WizardPage() {
       await generatePresellHtml(data.context);
     } catch {
       toast.error('Erro de rede ao buscar lições aprendidas.');
+    }
+  };
+
+  // Publica a presell gerada no domínio próprio do usuário via FTP (lib/presell.ts →
+  // publishToFtp, configurado em FTP_SITES_JSON) — usado quando o domínio não é WordPress.
+  // Atualiza presellUrl/hostingerDomain da campanha com a URL real publicada.
+  const publishToOwnDomain = async () => {
+    if (!presellId) { toast.error('Gere a presell primeiro antes de publicar no domínio próprio.'); return; }
+    const domain = ftpDomains.includes(hostingerDomain) ? hostingerDomain : ftpDomains[0];
+    if (!domain) { toast.error('Nenhum domínio FTP configurado (FTP_SITES_JSON).'); return; }
+    setPublishingOwnDomain(true);
+    try {
+      const res = await fetch(`/api/presells/${presellId}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destino: 'ftp', dominio: domain }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data?.error ?? 'Erro ao publicar no domínio próprio.'); return; }
+      const publishedUrl = data?.presell?.url;
+      if (publishedUrl) setPresellUrl(publishedUrl);
+      setHostingerDomain(domain);
+      const cid = campaignId || (await saveCampaign());
+      if (cid) {
+        await fetch(`/api/campaigns/${cid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ presellUrl: publishedUrl, hostingerDomain: domain }),
+        }).catch(() => {});
+      }
+      toast.success(`Publicada em ${publishedUrl}`);
+    } catch {
+      toast.error('Erro de rede ao publicar no domínio próprio.');
+    } finally {
+      setPublishingOwnDomain(false);
     }
   };
 
@@ -1524,6 +1568,11 @@ export default function WizardPage() {
                     <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard(presellHtml)} disabled={!presellHtml}>
                       <Copy className="h-3 w-3" /> Copiar HTML
                     </Button>
+                    {ftpDomains.length > 0 && (
+                      <Button size="sm" variant="outline" className="border-purple-500/40 text-purple-300 gap-1" onClick={publishToOwnDomain} disabled={publishingOwnDomain || !presellId} title={`Publica a presell gerada em ${ftpDomains.join(', ')} via FTP`}>
+                        {publishingOwnDomain ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />} Publicar em domínio próprio
+                      </Button>
+                    )}
                   </div>
                 </div>
 

@@ -12,5 +12,11 @@ export async function GET() {
   } catch {
     domains = [];
   }
-  return NextResponse.json({ domains });
+  let ftpDomains: string[] = [];
+  try {
+    ftpDomains = Object.keys(JSON.parse(process.env.FTP_SITES_JSON ?? '{}'));
+  } catch {
+    ftpDomains = [];
+  }
+  return NextResponse.json({ domains, ftpDomains });
 }
