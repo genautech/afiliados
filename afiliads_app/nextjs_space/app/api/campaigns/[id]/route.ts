@@ -35,9 +35,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const body = await request.json();
     const existing = await prisma.campaign.findFirst({ where: { id: params?.id, userId } });
     if (!existing) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+    const { productResearchId, userId: _ignoredUserId, id: _ignoredId, ...rest } = (body ?? {}) as Record<string, any>;
+    const data: Record<string, any> = { ...rest };
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'productResearchId')) {
+      data.productResearch = productResearchId ? { connect: { id: productResearchId } } : { disconnect: true };
+    }
     const updated = await prisma.campaign.update({
       where: { id: params?.id },
-      data: { ...(body ?? {}) },
+      data,
     });
     return NextResponse.json(updated);
   } catch (err: any) {

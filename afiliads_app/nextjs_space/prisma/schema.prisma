@@ -114,6 +114,9 @@ model Campaign {
   postbackUrl           String?             @db.Text
   clickidToken          String?
   presellHtml           String?             @db.Text
+  pageType              String              @default("advertorial")
+  popupGate             Boolean             @default(false)
+  videoUrl              String?             @db.Text
   wizardStep            Int                 @default(1)
   wizardCompleted       Boolean             @default(false)
   loopEnabled           Boolean             @default(false)
