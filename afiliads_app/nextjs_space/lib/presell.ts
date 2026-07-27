@@ -227,7 +227,7 @@ function renderVideoEmbed(videoUrl: string): string {
   return `<video controls playsinline src="${esc(videoUrl)}"></video>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[] }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[] }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
@@ -273,6 +273,7 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
 
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
   if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
+  if (opts.conversionLabel) t = t.replace(/CONVERSION_LABEL/g, esc(opts.conversionLabel));
   t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? DISCLAIMER_SAUDE_HTML : '');
   t = t.replace('{{GA4_TAG}}', opts.ga4Id?.trim() ? ga4TagHtml(opts.ga4Id.trim()) : '');
   t = t.replace('{{META_PIXEL_TAG}}', opts.metaPixelId?.trim() ? metaPixelTagHtml(opts.metaPixelId.trim()) : '');
@@ -299,10 +300,97 @@ function wpSites(): Record<string, { user: string; appPassword: string }> {
   }
 }
 
+async function wpAuthHeader(domain: string): Promise<{ auth: string }> {
+  const site = wpSites()[domain];
+  if (!site) throw new Error(`Domínio WordPress "${domain}" não configurado em WP_SITES_JSON`);
+  return { auth: Buffer.from(`${site.user}:${site.appPassword}`).toString('base64') };
+}
+
+async function wpPageExists(domain: string, auth: string, slug: string): Promise<boolean> {
+  const res = await fetch(`https://${domain}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&status=publish,draft`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!res.ok) return false;
+  const data = await res.json().catch(() => []);
+  return Array.isArray(data) && data.length > 0;
+}
+
+async function wpCreatePage(domain: string, auth: string, opts: { title: string; slug: string; content: string }): Promise<void> {
+  const res = await fetch(`https://${domain}/wp-json/wp/v2/pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    body: JSON.stringify({ title: opts.title, slug: opts.slug, content: opts.content, status: 'publish' }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(`Erro ao criar página "${opts.slug}" no WordPress (${domain}): ${data?.message ?? res.status}`);
+  }
+}
+
+// Mesmo texto real usado nas páginas do próprio AfiliAds (app/politica-de-privacidade,
+// app/termos, app/contato) — não é um stub vazio, é o conteúdo de compliance de verdade.
+const WP_COMPLIANCE_PAGES: Array<{ slug: string; title: string; content: string }> = [
+  {
+    slug: 'politica-de-privacidade',
+    title: 'Política de Privacidade',
+    content: `<h1>Política de Privacidade</h1>
+<p>Este site é uma página de conteúdo e divulgação (advertorial) que participa de programas de marketing de afiliados. Podemos receber comissão por compras feitas através de links presentes nesta página, sem custo adicional para você.</p>
+<h2>Dados coletados</h2>
+<p>Coletamos dados de navegação de forma anônima (como páginas visitadas e origem do tráfego) através de ferramentas de analytics (Google Analytics / Google Ads) para medir o desempenho do conteúdo. Não coletamos dados pessoais sensíveis nesta página. Se você prosseguir para o site do produto anunciado, a política de privacidade daquele site próprio se aplica aos dados que ele coletar.</p>
+<h2>Cookies</h2>
+<p>Usamos cookies de terceiros (Google Ads, Google Analytics 4 e, quando aplicável, Meta Pixel) para mensurar cliques, conversões e comportamento de navegação dos nossos anúncios. Ao visitar esta página, um banner permite que você aceite ou recuse esses cookies — enquanto não aceitos, as ferramentas de anúncio/analytics operam em modo restrito (sem armazenamento individual de cookie, conforme o Google Consent Mode) e o Meta Pixel não é carregado. Você pode alterar sua escolha a qualquer momento limpando os dados do site nas configurações do seu navegador.</p>
+<h2>Contato</h2>
+<p>Dúvidas sobre esta política podem ser enviadas para <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
+  },
+  {
+    slug: 'termos',
+    title: 'Termos de Uso',
+    content: `<h1>Termos de Uso</h1>
+<p>Ao acessar este site, você concorda com os termos abaixo. Este é um conteúdo editorial independente com finalidade informativa e promocional, que pode conter links de afiliado.</p>
+<h2>Divulgação de afiliado</h2>
+<p>Este site participa de programas de marketing de afiliados. Podemos ganhar comissão sobre compras realizadas através dos links aqui presentes, sem custo adicional para o comprador. As opiniões e avaliações expressas são baseadas em pesquisa independente.</p>
+<h2>Isenção de responsabilidade</h2>
+<p>O conteúdo desta página é fornecido apenas para fins informativos e não substitui orientação médica, financeira ou profissional. Resultados individuais podem variar. Consulte um profissional qualificado antes de tomar decisões relacionadas à sua saúde.</p>
+<h2>Propriedade</h2>
+<p>Marcas, produtos e imagens de terceiros mencionados pertencem aos seus respectivos proprietários e são citados apenas para fins informativos/comparativos.</p>
+<h2>Contato</h2>
+<p>Dúvidas sobre estes termos podem ser enviadas para <a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a>.</p>`,
+  },
+  {
+    slug: 'contato',
+    title: 'Contato',
+    content: `<h1>Contato</h1>
+<p>Para dúvidas, solicitações ou questões relacionadas ao conteúdo desta página, entre em contato:</p>
+<p><a href="mailto:genaujunior@gmail.com">genaujunior@gmail.com</a></p>`,
+  },
+];
+
+// Roda antes de publicar a presell em si — sem isso, os links de rodapé (Política de
+// Privacidade/Termos/Contato) que TODA presell gera apontam pra páginas que nunca existiram
+// no domínio WordPress de destino (404), um risco real de compliance pro Google Ads (exige
+// privacy policy funcional numa bridge page). Idempotente: só cria o que ainda não existe.
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function ensureWordPressCompliancePages(domain: string): Promise<void> {
+  const { auth } = await wpAuthHeader(domain);
+  for (const page of WP_COMPLIANCE_PAGES) {
+    try {
+      const exists = await wpPageExists(domain, auth, page.slug);
+      if (!exists) await wpCreatePage(domain, auth, page);
+    } catch (e: any) {
+      // Não bloqueia a publicação da presell por causa de uma página de compliance —
+      // fica logado pra investigar, mas o afiliado não perde a publicação principal.
+      console.error(`[wp-compliance-pages] falha ao garantir "${page.slug}" em ${domain}:`, e?.message);
+    }
+    // Hosts como Hostinger rate-limitam POSTs em sequência muito rápida (confirmado ao vivo:
+    // 2 de 3 chamadas de volta a volta falharam com "fetch failed") — um respiro evita isso.
+    await sleep(1500);
+  }
+}
+
 export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string }) {
-  const site = wpSites()[opts.domain];
-  if (!site) throw new Error(`Domínio WordPress "${opts.domain}" não configurado em WP_SITES_JSON`);
-  const auth = Buffer.from(`${site.user}:${site.appPassword}`).toString('base64');
+  const { auth } = await wpAuthHeader(opts.domain);
+  await ensureWordPressCompliancePages(opts.domain);
   const res = await fetch(`https://${opts.domain}/wp-json/wp/v2/pages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
@@ -547,10 +635,15 @@ export async function generatePresell(userId: string, args: {
   }
 
   const trackingIntegrations = await prisma.integration.findMany({
-    where: { userId, serviceName: 'tracking', fieldName: { in: ['ga4_measurement_id', 'meta_pixel_id'] } },
+    where: { userId, serviceName: 'tracking', fieldName: { in: ['ga4_measurement_id', 'meta_pixel_id', 'google_ads_conversion_id', 'google_ads_conversion_label'] } },
   });
   const ga4Id = trackingIntegrations.find(i => i.fieldName === 'ga4_measurement_id')?.fieldValue;
   const metaPixelId = trackingIntegrations.find(i => i.fieldName === 'meta_pixel_id')?.fieldValue;
+  // googleAdsId explícito (ex.: vindo de uma Campaign específica) vence o cadastro geral do
+  // usuário em Integrations — mas sem nenhum dos dois, o placeholder GOOGLE_ADS_ID/CONVERSION_LABEL
+  // fica literal no HTML (silencioso antes; hoje pelo menos há um lugar pra cadastrar o valor real).
+  const googleAdsId = args.googleAdsId || trackingIntegrations.find(i => i.fieldName === 'google_ads_conversion_id')?.fieldValue;
+  const conversionLabel = trackingIntegrations.find(i => i.fieldName === 'google_ads_conversion_label')?.fieldValue;
 
   const res = await callAgent(userId, {
     agent: 'presell-builder',
@@ -569,7 +662,7 @@ export async function generatePresell(userId: string, args: {
   }
 
   const html = renderPresellHtml(content, {
-    productName, hopLink: finalHop, googleAdsId: args.googleAdsId, ga4Id, metaPixelId, isHealthNiche,
+    productName, hopLink: finalHop, googleAdsId, conversionLabel, ga4Id, metaPixelId, isHealthNiche,
     pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl,
     salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes,
   });

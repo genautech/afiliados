@@ -68,6 +68,8 @@ const SERVICES = [
     fields: [
       { name: 'ga4_measurement_id', label: 'GA4 Measurement ID', placeholder: 'G-XXXXXXXXXX' },
       { name: 'meta_pixel_id', label: 'Meta Pixel ID', placeholder: 'Ex.: 1234567890123456' },
+      { name: 'google_ads_conversion_id', label: 'Google Ads Conversion ID (Tag)', placeholder: 'AW-XXXXXXXXX' },
+      { name: 'google_ads_conversion_label', label: 'Google Ads Conversion Label', placeholder: 'Ex.: AbCdEfGhIj-K1LmNoPqR' },
     ],
   },
   {
