@@ -296,6 +296,64 @@ mais recente/intencional, nunca um snapshot de estado que pode estar velho.
 genérico é o suspeito nº 1 quando esse campo "volta sozinho" pro valor errado — a correção é
 tirar o campo do snapshot genérico, não tentar sincronizar o estado local com mais frequência.
 
+## Achado extra 5 — páginas de compliance sempre em português, mesmo em campanha US/EN
+
+Pedido do usuário: revisar todas as tags da campanha FemiCore publicada e notar que Política
+de Privacidade/Termos não tinham versão em inglês, apesar da campanha ser 100% US/EN.
+
+**Causa raiz:** `WP_COMPLIANCE_PAGES` (`lib/presell.ts`) era uma lista fixa em português,
+usada por `ensureWordPressCompliancePages()`/`ensureFtpCompliancePages()` independente do
+idioma real da campanha. Pior: o SLUG do link (`/politica-de-privacidade`) estava hardcoded
+nos 4 arquivos de template de presell E no `cookieConsentHtml()`, então mesmo quando o label
+visível já estava certo em inglês ("Privacy Policy"), o link apontava pra uma URL em
+português — inconsistente pra um site 100% em inglês.
+
+**Fix:** `WP_COMPLIANCE_PAGES` virou `getCompliancePages(locale)` com conteúdo REAL e
+completo nos dois idiomas (estrutura padrão de privacy policy/terms pra afiliados nos EUA:
+FTC affiliate disclosure, dados coletados, cookies/Consent Mode, direitos CCPA/GDPR,
+privacidade infantil — pesquisado via Firecrawl antes de escrever, não inventado do zero).
+`Locale` ganhou `privacySlug`/`termsSlug`/`contactSlug` (en: `privacy-policy`/`terms-of-use`/
+`contact`; pt: como já era). Publish functions (`publishToWordPress`/`publishToFtp`/
+`ensure*CompliancePages`) aceitam `language` agora.
+
+**Achado no processo de aplicar de verdade:** o slug `privacy-policy` JÁ EXISTIA em
+`orangepeelmorning.com` — não criado por nós, é a página placeholder padrão que o próprio
+WordPress core cria automaticamente na instalação ("Suggested text..."), em `status: draft`.
+Tive que fazer `wpUpdatePage()` (nova função) pra substituir o conteúdo genérico e publicar,
+em vez de tentar criar uma página nova no mesmo slug (que teria dado erro de slug duplicado).
+**Regra pra próximos agentes:** antes de criar uma página de compliance num domínio
+WordPress novo, sempre checar se já existe algo no slug alvo (pode ser o placeholder padrão
+do WP, não necessariamente nosso) — `wpPageExists()` sozinho não distingue "não existe" de
+"existe mas é lixo/rascunho que precisa ser substituído".
+
+Presell da FemiCore já publicada teve o HTML salvo corrigido (substituição direta de string
+nos 3 hrefs) e reenviada via `wpUpdatePage()` pra refletir os slugs certos sem duplicar a
+página. Validado: todos os 6 slugs (3 novos EN + 3 PT órfãos) resolvem 200; conteúdo real
+(não placeholder) confirmado via grep no HTML publicado.
+
+## Achado extra 6 — auditoria de tags + pergunta sobre root vs subpath (mesmo pedido)
+
+**Tags da campanha:** auditoria completa do `<head>`/scripts da página publicada confirmou
+que todas as tags necessárias JÁ estavam presentes e funcionando: Google tag (`gtag.js`,
+AW-18309125333 + G-16JCBRBTHY), Google Consent Mode v2 (default denied, grant on accept),
+cookie de atribuição de 30 dias (`afp_track`, captura gclid/wbraid/gbraid/fbclid/msclkid/
+ttclid/utm_*), e — o mais importante — um evento de CONVERSÃO real disparando no clique do
+CTA (`gtag('event','conversion',{'send_to':'AW-18309125333/yD9oCLHljNccENWpvJpE'})`), não só
+o tag base de pageview. Único ponto fora do código (não dá pra verificar por aqui): confirmar
+que esse `send_to`/conversion label está de fato configurado como uma "conversion action"
+ativa na conta real do Google Ads.
+
+**Root vs subpath:** o domínio raiz (`orangepeelmorning.com/`) hoje é só o WordPress padrão
+vazio (título "Orange Peel Morning", sem conteúdo real). Recomendação dada ao usuário: NÃO
+mover a presell pra raiz — path individual (`/femicore-advertorial-advertorial-3/`) é a
+prática certa pra parecer um site de conteúdo de verdade (múltiplos artigos possíveis no
+mesmo domínio) em vez de uma "landing page disfarçada de site" (justamente o padrão que
+revisores de compliance do Google Ads mais penalizam — "doorway domain"). O problema real é
+a RAIZ estar vazia/default — isso também é um sinal ruim (site sem conteúdo nenhum na home).
+Sugestão: construir uma home mínima de verdade (usando a marca "Midlife Wellness Insights" já
+estabelecida no rodapé/categoria do artigo) que linke o artigo da FemiCore, em vez de deixar o
+WordPress padrão — ainda não implementado, fica pra próxima ação se o usuário confirmar.
+
 ## Próxima ação (uma só)
 
 - Nenhuma pendente das 3 fases planejadas — plano completo (`~/.claude/plans/velvet-finding-
