@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generatePresell } from '@/lib/presell';
+import { runAgentSequence } from '@/lib/agentSequence';
 
 async function resolveUserId(request: NextRequest): Promise<string | null> {
   const token = request.headers.get('x-afiliads-token');
@@ -65,12 +66,49 @@ export async function POST(request: NextRequest) {
       campaignId: body?.campaignId,
       customCode: body?.customCode,
     });
+
+    // Encadeamento real: o compliance-sentinel roda automaticamente logo após o presell-builder
+    // gerar a página, lendo o HTML de verdade que acabou de sair (não uma URL solta) — antes o
+    // usuário só descobria problema de compliance clicando manualmente em "/api/presell-analysis"
+    // depois. Falha aqui não derruba a criação da presell (já foi salva), só fica sem o score.
+    let complianceScore: number | null = null;
+    let complianceAlerts: any[] = [];
+    try {
+      const strippedHtml = presell.html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 10000);
+      const seq = await runAgentSequence(
+        userId,
+        `Presell "${presell.title}" gerada para o produto "${productName}" (ângulo: ${presell.angle}, geo: ${presell.geo}, tipo: ${presell.pageType}).`,
+        [{
+          agent: 'compliance-sentinel',
+          systemPrompt: 'Você é o Compliance Sentinel do AfiliAds, chamado logo após o Presell Builder gerar uma página nova. Audite o texto real gerado contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos, disclaimers obrigatórios ausentes). Responda APENAS JSON válido.',
+          buildUserPrompt: ({ baseContext }) => `${baseContext}\n\nTexto real da página gerada:\n"""${strippedHtml}"""\n\nRetorne JSON: {"score": number (0-100), "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
+        }],
+      );
+      const step = seq.steps[0];
+      if (!step.error && step.data) {
+        complianceScore = typeof step.data.score === 'number' ? step.data.score : null;
+        complianceAlerts = Array.isArray(step.data.alertas) ? step.data.alertas : [];
+        await prisma.presell.update({
+          where: { id: presell.id },
+          data: { complianceScore, complianceIssues: complianceAlerts },
+        });
+      }
+    } catch (e) {
+      console.error('Compliance-sentinel encadeado (presell-builder) falhou, presell mantida sem score:', e);
+    }
+
     return NextResponse.json({
       id: presell.id, slug: presell.slug, title: presell.title,
       url: presell.publishTarget === 'wordpress' ? presell.publishedUrl : `/p/${presell.slug}`,
       publishTarget: presell.publishTarget,
       pageType: presell.pageType, popupGate: presell.popupGate,
       usage, provider, model,
+      complianceScore, complianceAlerts,
     }, { status: 201 });
   } catch (err: any) {
     console.error('POST presells error:', err);

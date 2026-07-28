@@ -3,7 +3,8 @@ import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { callLLM } from '@/lib/llm';
+import { runAgentSequence } from '@/lib/agentSequence';
+import { fetchPageText } from '@/lib/html';
 
 export async function POST(request: NextRequest) {
   try {
@@ -144,12 +145,49 @@ Sua auditoria deve partir dessa decisão — concorde ou aponte por que divergir
 **Naming:** ${campaign.campaignNameGenerated ?? 'não gerado'}
 **UTMs:** ${campaign.utmString ?? 'não configurados'}`;
 
-    const content_text = await callLLM(userId, { agent: 'ads-auditor', systemPrompt, userPrompt });
-    let result;
-    try {
-      result = JSON.parse(content_text);
-    } catch {
-      result = { audit_score: 0, error: 'Falha ao parsear resposta' };
+    // Encadeamento real: o ads-auditor faz a auditoria estrutural/econômica sem ler a presell de
+    // verdade; se a campanha já tem presellUrl, o compliance-sentinel roda em seguida usando o
+    // TEXTO REAL da página pra confirmar (ou refutar) os riscos que o ads-auditor só inferiu pelos
+    // dados estruturados — mesmo padrão de dois agentes que já existe em lib/loop-engine.ts, mas
+    // aqui o segundo agente recebe o diagnóstico do primeiro como contexto, não roda isolado.
+    let presellText = '';
+    if (campaign.presellUrl) {
+      try { presellText = await fetchPageText(campaign.presellUrl, 10000); } catch { /* presell inacessível não derruba a auditoria */ }
+    }
+
+    const seq = await runAgentSequence(userId, userPrompt, [
+      {
+        agent: 'ads-auditor',
+        systemPrompt,
+        buildUserPrompt: ({ baseContext }) => baseContext,
+      },
+      ...(presellText.length > 200 ? [{
+        agent: 'compliance-sentinel',
+        systemPrompt: 'Você é o Compliance Sentinel do AfiliAds, chamado logo após o Ads Auditor auditar uma campanha pré-lançamento. Sua função: ler o TEXTO REAL da presell e confirmar ou refutar os riscos que o Ads Auditor só inferiu sem acesso à página (disclaimers, claims proibidos, links obrigatórios). Responda APENAS JSON válido.',
+        buildUserPrompt: ({ previous }: { previous: any[] }) => {
+          const adsResult = previous[0]?.data;
+          const flagged = [...(adsResult?.blockers ?? []), ...(adsResult?.warnings ?? [])].join(' | ') || 'nenhum risco específico levantado';
+          return `O Ads Auditor levantou estes riscos sem ler a presell de verdade: ${flagged}\n\nTEXTO REAL da presell (${campaign.presellUrl}):\n"""${presellText}"""\n\nRetorne JSON: {"alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`;
+        },
+      }] : []),
+    ]);
+
+    const adsStep = seq.steps[0];
+    let result: any;
+    if (adsStep.error || !adsStep.data) {
+      result = { audit_score: 0, error: adsStep.error ?? 'Falha ao parsear resposta' };
+    } else {
+      result = adsStep.data;
+    }
+
+    const complianceStep = seq.steps[1];
+    if (complianceStep && !complianceStep.error && complianceStep.data) {
+      const criticos = (complianceStep.data.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
+      if (criticos.length > 0) {
+        const nota = `Compliance Sentinel (leu a presell real): ${criticos.map((a: any) => a.texto).join(' | ')}`;
+        result.blockers = Array.isArray(result.blockers) ? [...result.blockers, nota] : [nota];
+        result.ready_to_launch = false;
+      }
     }
 
     // Consistência forçada: as métricas/regras determinísticas (código, calculadas acima) sempre

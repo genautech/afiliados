@@ -75,26 +75,15 @@ function slugify(s: string): string {
 // dinâmico só resolve quando a função roda de verdade (sempre nodejs, nunca edge).
 //
 // Diretório de insights do hermes SÓ existe na máquina local (git do usuário) — no deploy de
-// produção (Railway) esse filesystem não existe, então o sync é best-effort: funciona quando
-// o job roda localmente, e não quebra a coleta (o MarketIntelSnapshot no banco continua sendo
-// a referência viva em qualquer ambiente) quando o caminho não existe.
-async function hermesInsightsDir(): Promise<{ fs: typeof import('fs'); path: typeof import('path'); dir: string } | null> {
-  const fs = await import('fs');
-  const path = await import('path');
-  const candidate = path.join(process.cwd(), '..', '..', 'hermes', 'knowledge', 'insights');
-  return fs.existsSync(candidate) ? { fs, path, dir: candidate } : null;
-}
-
+// produção (Railway) não tem esse filesystem — em vez de tentar escrever direto (que era no-op
+// silencioso lá), sempre enfileira em HermesOutboxEntry (banco compartilhado local/produção).
+// Um processo local (scripts/process_hermes_outbox.js, via cron) consome a fila e decide
+// append-vs-criação de verdade, porque só ele tem acesso ao filesystem real do hermes/.
 // Atualiza recursivamente o insight do hermes pra essa vertical: 1 arquivo persistente por
 // vertical, cada rodada ACRESCENTA uma entrada datada (nunca sobrescreve o histórico). Mesma
 // disciplina anti-cópia do resto do app — só ângulo/estrutura, nunca texto literal.
 async function syncHermesInsight(vertical: string, snapshot: { query: string; pageTypesSeen: Record<string, number>; angles: string[]; sources: CompetitorSource[]; fetchedAt: Date }) {
-  const resolved = await hermesInsightsDir();
-  if (!resolved) return;
-  const { fs, path, dir } = resolved;
-
   const slug = slugify(vertical);
-  const file = path.join(dir, `market-intel-${slug}.md`);
   const dateLabel = snapshot.fetchedAt.toLocaleDateString('pt-BR');
   const typesLine = Object.entries(snapshot.pageTypesSeen).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} (${n}x)`).join(', ') || 'nenhuma classificável';
   const anglesLines = snapshot.angles.slice(0, 8).map((a) => `  - "${a}"`).join('\n') || '  - (nenhum ângulo extraído nesta rodada)';
@@ -102,11 +91,7 @@ async function syncHermesInsight(vertical: string, snapshot: { query: string; pa
 
   const entry = `\n### ${dateLabel} — query: \`${snapshot.query}\`\n- Estruturas de página vistas: ${typesLine}\n- Ângulos/headlines encontrados (referência de tom, NUNCA copiar literal):\n${anglesLines}\n- Fontes: ${sourcesLine}\n`;
 
-  let existing = '';
-  try { existing = fs.readFileSync(file, 'utf8'); } catch { /* arquivo ainda não existe */ }
-
-  if (!existing) {
-    const header = `---
+  const header = `---
 id: insight-market-intel-${slug}
 title: "Inteligência de mercado — vertical ${vertical}"
 source_type: outro
@@ -129,29 +114,17 @@ copiar texto literal dos concorrentes encontrados, só usar como referência est
 
 ## Atualizações
 `;
-    fs.writeFileSync(file, header + entry, 'utf8');
-  } else {
-    fs.appendFileSync(file, entry, 'utf8');
-  }
 
-  await syncHermesIndex(slug, vertical);
-}
+  const indexId = `insight-market-intel-${slug}`;
+  const indexRow = `| ${indexId} | Inteligência de mercado — vertical ${vertical} | Firecrawl (automático) | afiliados | ${new Date().toISOString().slice(0, 10)} |\n`;
 
-// Acrescenta uma linha no índice do hermes se este insight ainda não estiver listado —
-// idempotente (não duplica em rodadas seguintes).
-async function syncHermesIndex(slug: string, vertical: string) {
-  const resolved = await hermesInsightsDir();
-  if (!resolved) return;
-  const { fs, path, dir } = resolved;
-  const indexFile = path.join(dir, '_index.md');
-  const id = `insight-market-intel-${slug}`;
-  let content = '';
-  try { content = fs.readFileSync(indexFile, 'utf8'); } catch { return; }
-  if (content.includes(id)) return;
-  const row = `| ${id} | Inteligência de mercado — vertical ${vertical} | Firecrawl (automático) | afiliados | ${new Date().toISOString().slice(0, 10)} |\n`;
-  const lastRowMarker = '| _(gere via Hermes após ingestão)_ |';
-  content = content.includes(lastRowMarker) ? content.replace(lastRowMarker, row + lastRowMarker) : content + row;
-  fs.writeFileSync(indexFile, content, 'utf8');
+  await prisma.hermesOutboxEntry.create({
+    data: {
+      type: 'market-intel-insight',
+      targetPath: `hermes/knowledge/insights/market-intel-${slug}.md`,
+      payload: { header, entry, indexId, indexRow, indexFile: 'hermes/knowledge/insights/_index.md' },
+    },
+  });
 }
 
 /**

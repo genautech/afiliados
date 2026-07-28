@@ -507,6 +507,8 @@ model Presell {
   publishTarget String @default("railway")
   wpDomain      String @default("")
   publishedUrl  String @default("")
+  complianceScore  Int?
+  complianceIssues Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -533,4 +535,20 @@ model ChecklistLearning {
 
   @@index([userId, itemKey])
   @@index([vertical, channel])
+}
+
+// Fila de sincronização pro Hermes/Obsidian: produção (Railway) não tem o filesystem local
+// onde o Hermes real e o vault Obsidian vivem, então em vez de tentar escrever arquivo (que
+// já era no-op silencioso lá), grava aqui. Um processo rodando na máquina do usuário
+// (scripts_local/process_outbox.js) faz polling e escreve o arquivo de verdade local.
+model HermesOutboxEntry {
+  id          String    @id @default(cuid())
+  type        String
+  payload     Json
+  targetPath  String?
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status])
 }
