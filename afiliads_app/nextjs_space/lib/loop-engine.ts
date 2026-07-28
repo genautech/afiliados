@@ -217,11 +217,97 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
   };
 }
 
+// Campanha PAUSADA não gera gasto de ads pra auditar nem deve ter status flipado
+// automaticamente (SCALE/KILL/PAUSAR), mas a presell pode continuar publicada
+// acumulando risco de compliance sem ninguém olhar. Roda só o compliance-sentinel,
+// nunca ads-auditor, e nunca mexe em status/Google Ads.
+export async function runComplianceOnlyCheck(userId: string, campaignId: string): Promise<LoopRunResult> {
+  const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId } });
+  if (!campaign) throw new Error('Campanha não encontrada');
+
+  const agentsRun: string[] = [];
+  let totalTokens = 0;
+  let error: string | null = null;
+  let finalDecision = 'CONTINUAR';
+  const allTriggers: string[] = [];
+
+  if (campaign.presellUrl) {
+    try {
+      const page = await fetch(campaign.presellUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' });
+      if (page.ok) {
+        const html = (await page.text())
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .slice(0, 10000);
+        const res = await callAgent(userId, {
+          agent: 'compliance-sentinel',
+          systemPrompt: 'Você é o Compliance Sentinel do AfiliAds verificando uma campanha PAUSADA (sem gasto de ads ativo, mas a presell pode continuar publicada e acessível). Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
+          userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}) — campanha está PAUSADA, este é um check de compliance de rotina, não uma auditoria de ads:\n"""${html}"""\nRetorne JSON: {"aprovado": true|false, "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
+        });
+        agentsRun.push('compliance-sentinel');
+        totalTokens += res.usage.totalTokens;
+        const criticos = (res.data?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
+        if (criticos.length > 0) {
+          allTriggers.push(`Compliance (campanha pausada): ${criticos.length} alerta(s) crítico(s) na presell — ${criticos.map((a: any) => a.texto).join(' | ')}`);
+          finalDecision = 'OTIMIZAR';
+        }
+      } else {
+        allTriggers.push(`Presell inacessível (HTTP ${page.status}) em ${campaign.presellUrl} — verificar hospedagem`);
+      }
+    } catch (e: any) {
+      allTriggers.push(`Presell inacessível (${e?.message}) — verificar hospedagem/URL`);
+      error = `compliance-sentinel: ${e?.message}`;
+    }
+  }
+
+  if (finalDecision !== 'CONTINUAR') {
+    await prisma.campaignDecision.create({
+      data: {
+        campaignId: campaign.id,
+        userId,
+        decision: finalDecision,
+        rationale: `[loop:cron-paused] ${allTriggers.join(' | ')}`,
+      },
+    });
+  }
+
+  await prisma.campaign.update({ where: { id: campaign.id }, data: { lastLoopRunAt: new Date() } });
+
+  const loopRun = await prisma.loopRun.create({
+    data: {
+      campaignId: campaign.id,
+      userId,
+      trigger: 'cron',
+      decision: finalDecision,
+      triggers: allTriggers,
+      agentsRun,
+      economics: {} as any,
+      llmSummary: null,
+      totalTokens,
+      error,
+    },
+  });
+
+  return {
+    campaignId: campaign.id,
+    campaignName: campaign.name,
+    decision: finalDecision,
+    triggers: allTriggers,
+    agentsRun,
+    totalTokens,
+    llmSummary: null,
+    error,
+    loopRunId: loopRun.id,
+  };
+}
+
 export async function runDueLoops(trigger: 'cron' | 'manual' = 'cron'): Promise<LoopRunResult[]> {
   const now = Date.now();
   const candidates = await prisma.campaign.findMany({
-    where: { loopEnabled: true, status: { notIn: ['KILL', 'PAUSADA'] } },
-    select: { id: true, userId: true, loopInterval: true, lastLoopRunAt: true },
+    where: { loopEnabled: true, status: { notIn: ['KILL'] } },
+    select: { id: true, userId: true, loopInterval: true, lastLoopRunAt: true, status: true },
   });
   const due = candidates.filter((c) => {
     const interval = INTERVAL_MS[c.loopInterval] ?? INTERVAL_MS['24h'];
@@ -230,7 +316,11 @@ export async function runDueLoops(trigger: 'cron' | 'manual' = 'cron'): Promise<
   const results: LoopRunResult[] = [];
   for (const c of due) {
     try {
-      results.push(await runCampaignLoop(c.userId, c.id, trigger));
+      results.push(
+        c.status === 'PAUSADA'
+          ? await runComplianceOnlyCheck(c.userId, c.id)
+          : await runCampaignLoop(c.userId, c.id, trigger)
+      );
     } catch (e: any) {
       console.error(`Loop error campaign ${c.id}:`, e?.message);
     }
