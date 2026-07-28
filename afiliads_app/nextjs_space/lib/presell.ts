@@ -806,16 +806,34 @@ async function wpUpdatePage(domain: string, auth: string, pageId: number, opts: 
   return data.link as string;
 }
 
+// `presell.html` é um documento completo (DOCTYPE/html/head/body) — correto para servir
+// como página própria ou publicar via FTP (arquivo estático), mas o campo `content` do
+// WordPress já vive dentro do <html><head><body> do tema. Publicar o documento inteiro ali
+// faz o wpautop transformar linhas soltas do <head> (meta/title/comentário+scripts) em
+// parágrafos vazios com <br> — mesmo removendo as tags de envelope, um <p> vazio ainda cria
+// um vão visível (margens de topo/rodapé colapsam mas não somem). Solução definitiva: manter
+// o <head> inteiro (style/script precisam continuar funcionando) mas embrulhado numa div com
+// display:none inline — zero rodapé visual garantido, execução de <script> e aplicação de
+// <style> não dependem de visibilidade do ancestral.
+function extractContentForWordPress(html: string): string {
+  const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const headInner = headMatch ? headMatch[1] : '';
+  const bodyInner = bodyMatch ? bodyMatch[1] : html;
+  return `<div style="display:none">${headInner}</div>${bodyInner}`.trim();
+}
+
 export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string; language?: string; updatePageId?: number }) {
   const { auth } = await wpAuthHeader(opts.domain);
   await ensureWordPressCompliancePages(opts.domain, opts.language);
+  const content = extractContentForWordPress(html);
   if (opts.updatePageId) {
-    return wpUpdatePage(opts.domain, auth, opts.updatePageId, { title: opts.title, content: html });
+    return wpUpdatePage(opts.domain, auth, opts.updatePageId, { title: opts.title, content });
   }
   const res = await fetch(`https://${opts.domain}/wp-json/wp/v2/pages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
-    body: JSON.stringify({ title: opts.title, slug: opts.slug, content: html, status: 'publish' }),
+    body: JSON.stringify({ title: opts.title, slug: opts.slug, content, status: 'publish' }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Erro ao publicar no WordPress (${opts.domain}): ${data?.message ?? res.status}`);
