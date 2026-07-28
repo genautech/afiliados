@@ -23,7 +23,7 @@ const FIELD_KINDS: Record<string, FieldKind> = {
   geo: { kind: 'enum', options: GEOS },
   channel: { kind: 'enum', options: CHANNELS },
   funnel: { kind: 'enum', options: ['BRIDGE', 'DIRECT', 'REVIEW', 'SL'] },
-  pageType: { kind: 'enum', options: ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority'] },
+  pageType: { kind: 'enum', options: ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2'] },
   popupGate: { kind: 'enum', options: ['true', 'false'] },
   testDuration: { kind: 'enum', options: ['48h', '72h', '5', '7'] },
   commission: { kind: 'number', min: 0 },

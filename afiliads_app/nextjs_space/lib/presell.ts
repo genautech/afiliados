@@ -329,6 +329,7 @@ const TEMPLATE_FILE_BY_TYPE: Record<string, string> = {
   vsl: 'presell-template-vsl.html',
   interstitial: 'presell-template-interstitial.html',
   authority: 'presell-template-authority.html',
+  authority_v2: 'presell-template-authority-v2.html',
 };
 
 // Screenshot da sales page real do vendor (usado só pelo pageType 'interstitial'), via
@@ -629,7 +630,7 @@ function navLinksHtml(locale: Locale): string {
   return `<a href="#science">${esc(locale.navScience)}</a><a href="#ingredients">${esc(locale.navIngredients)}</a><a href="#packages">${esc(locale.navPackages)}</a><a href="#reviews">${esc(locale.navReviews)}</a><a href="#faq">${esc(locale.navFaq)}</a>`;
 }
 
-export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
+export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; imagemLifestyleUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
   const pageType = opts.pageType && TEMPLATE_FILE_BY_TYPE[opts.pageType] ? opts.pageType : 'advertorial';
   const templatePath = path.join(process.cwd(), 'lib', TEMPLATE_FILE_BY_TYPE[pageType]);
   let t = fs.readFileSync(templatePath, 'utf8');
@@ -739,7 +740,7 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
     // < escapado pra JSON embutido em <script> não fechar a tag prematuramente (</script> dentro de string).
     t = t.replace('{{SEGMENT_ROUTES_JSON}}', JSON.stringify(opts.segmentRoutes ?? []).replace(/</g, '\\u003c'));
   }
-  if (pageType === 'authority') {
+  if (pageType === 'authority' || pageType === 'authority_v2') {
     // Sem pacotes/ingredientes reais do vendor não dá pra inventar preço/quantidade/composição
     // (risco de compliance), então o heading correspondente some em vez de ficar órfão sem conteúdo.
     if (!(c.pacotes ?? []).some((p) => p?.nome)) {
@@ -764,6 +765,16 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
     t = t.replace('{{AUTHENTICITY_WARNING}}', esc(c.aviso_autenticidade ?? locale.authenticityWarning));
     t = t.replace('{{PRODUCT_HERO_IMAGE}}', opts.imagemProdutoUrl
       ? `<div class="produto-img-glow"><svg class="produto-img-botanical" viewBox="0 0 400 400" aria-hidden="true" focusable="false"><g fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"><path d="M200 60 C 160 100, 140 150, 150 210 C 155 240, 175 260, 200 265" /><path d="M200 60 C 240 100, 260 150, 250 210 C 245 240, 225 260, 200 265" /><ellipse cx="150" cy="130" rx="22" ry="12" transform="rotate(-30 150 130)" /><ellipse cx="250" cy="130" rx="22" ry="12" transform="rotate(30 250 130)" /><ellipse cx="130" cy="190" rx="20" ry="11" transform="rotate(-10 130 190)" /><ellipse cx="270" cy="190" rx="20" ry="11" transform="rotate(10 270 190)" /></g></svg><img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy"></div>`
+      : '');
+  }
+  if (pageType === 'authority_v2') {
+    // Foto lifestyle real (não gerada por IA) — split-layout no hero + seção de contexto
+    // no meio da página, só aparece se o asset foi de fato fornecido (nunca placeholder genérico).
+    t = t.replace('{{HERO_LIFESTYLE_IMAGE}}', opts.imagemLifestyleUrl
+      ? `<div class="hero-photo"><img src="${esc(opts.imagemLifestyleUrl)}" alt="${esc(opts.productName)}" loading="eager"></div>`
+      : '');
+    t = t.replace('{{LIFESTYLE_SECTION}}', opts.imagemLifestyleUrl
+      ? `<section class="lifestyle-section reveal"><div class="wrap"><div class="lifestyle-grid"><div class="img-zoom"><img src="${esc(opts.imagemLifestyleUrl)}" alt="${esc(opts.productName)}" loading="lazy"></div><p class="lifestyle-quote">${esc(c.prova || c.abertura || '')}<span>${esc(locale.feedbackDisclaimer)}</span></p></div></div></section>`
       : '');
   }
   t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
@@ -1224,13 +1235,15 @@ export async function generatePresell(userId: string, args: {
   // de compliance do produto proíbem marca na URL/keyword (brand bidding). Quando informado,
   // substitui productName só na geração do slug — o conteúdo continua usando o nome real do produto.
   slugSeed?: string;
+  // Foto lifestyle real (não gerada por IA, fornecida pelo chamador) — só usada pelo pageType 'authority_v2'.
+  imagemLifestyleUrl?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
   const normalizedPageType = args.pageType === 'authority_review' ? 'authority' : args.pageType;
-  const pageType = normalizedPageType && ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority'].includes(normalizedPageType) ? normalizedPageType : 'advertorial';
+  const pageType = normalizedPageType && ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2'].includes(normalizedPageType) ? normalizedPageType : 'advertorial';
   const popupGate = !!args.popupGate;
   if (pageType === 'vsl' && !args.videoUrl?.trim()) {
     throw new Error('pageType "vsl" exige videoUrl (link do vídeo do VSL — YouTube, Vimeo ou .mp4 direto)');
@@ -1335,6 +1348,7 @@ export async function generatePresell(userId: string, args: {
     productName, hopLink: finalHop, googleAdsId, conversionLabel, ga4Id, metaPixelId, isHealthNiche,
     gtmContainerId, customCode: args.customCode,
     pageType, popupGate, videoUrl: args.videoUrl, imagemProdutoUrl, imagemRotuloUrl,
+    imagemLifestyleUrl: args.imagemLifestyleUrl,
     salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes, language, presellId,
   });
 
