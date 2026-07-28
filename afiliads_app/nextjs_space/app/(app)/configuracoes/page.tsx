@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Settings, Save, ExternalLink, CheckCircle2, XCircle, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 // wired=false: chaves apenas ARMAZENADAS — nenhum código do app as consome ainda
 const SERVICES = [
@@ -93,6 +94,14 @@ const SERVICES = [
       { name: 'api_key_ollama', label: 'API Key (Ollama Cloud — grátis)', placeholder: 'Key de ollama.com (vazio = servidor local)', sensitive: true },
     ],
   },
+  {
+    name: 'Agentes (SkillClaw)',
+    key: 'skillclaw',
+    link: '',
+    fields: [
+      { name: 'auto_refresh_enabled', label: 'Manter SkillClaw sempre pronto (mesmo sem campanha ativa)', type: 'boolean' },
+    ],
+  },
 ];
 
 export default function ConfiguracoesPage() {
@@ -164,22 +173,43 @@ export default function ConfiguracoesPage() {
                   <Badge className="bg-slate-500/20 text-slate-400 gap-1"><XCircle className="h-3 w-3" /> Não configurado</Badge>
                 )}
               </div>
-              <a href={service.link} target="_blank" rel="noopener">
-                <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1">
-                  <ExternalLink className="h-3 w-3" /> Abrir
-                </Button>
-              </a>
+              {service.link && (
+                <a href={service.link} target="_blank" rel="noopener">
+                  <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1">
+                    <ExternalLink className="h-3 w-3" /> Abrir
+                  </Button>
+                </a>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {service.fields.map(field => {
+            {service.fields.map((field: any) => {
               const key = `${service.key}_${field.name}`;
               return (
                 <div key={field.name} className="flex items-end gap-3">
                   <div className="flex-1">
                     <Label className="text-slate-300 text-sm">{field.label}</Label>
                     <div className="relative">
-                      {field.name === 'model_anthropic' ? (
+                      {(field as any).type === 'boolean' ? (
+                        <div className="pt-1">
+                          <Switch
+                            checked={formData[key] === 'true'}
+                            onCheckedChange={async (checked: boolean) => {
+                              setFormData(prev => ({ ...prev, [key]: String(checked) }));
+                              try {
+                                await fetch('/api/integrations', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ serviceName: service.key, fieldName: field.name, fieldValue: String(checked) }),
+                                });
+                                toast.success(checked ? 'Ativado!' : 'Desativado!');
+                              } catch {
+                                toast.error('Erro ao atualizar');
+                              }
+                            }}
+                          />
+                        </div>
+                      ) : field.name === 'model_anthropic' ? (
                         <Select
                           value={formData[key] || 'claude-opus-4-7'}
                           onValueChange={async (val) => {
@@ -224,7 +254,7 @@ export default function ConfiguracoesPage() {
                       )}
                     </div>
                   </div>
-                  {field.name !== 'provider' && field.name !== 'model_anthropic' && (
+                  {field.name !== 'provider' && field.name !== 'model_anthropic' && (field as any).type !== 'boolean' && (
                     <Button onClick={() => saveField(service.key, field.name)} loading={saving[key]} className="bg-green-600 hover:bg-green-700 text-white gap-1" size="sm">
                       <Save className="h-3 w-3" /> Salvar
                     </Button>

@@ -167,7 +167,9 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
       console.error('Google Ads Auto-Pause (KILL) error:', err?.message);
     }
   } else if (finalDecision === 'PAUSAR') {
-    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSADA', lastLoopRunAt: new Date() } });
+    // 'PAUSADO' (não 'PAUSADA') é a forma usada em todo o resto do app — ver
+    // app/api/google-ads/sync/route.ts e os badges de status nas telas de campanha.
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSADO', lastLoopRunAt: new Date() } });
     try {
       const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
       const gadsConfig = await getGoogleAdsConfig(userId);
@@ -317,7 +319,7 @@ export async function runDueLoops(trigger: 'cron' | 'manual' = 'cron'): Promise<
   for (const c of due) {
     try {
       results.push(
-        c.status === 'PAUSADA'
+        c.status === 'PAUSADO' || c.status === 'PAUSADA'
           ? await runComplianceOnlyCheck(c.userId, c.id)
           : await runCampaignLoop(c.userId, c.id, trigger)
       );
