@@ -24,6 +24,7 @@ import {
   TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST, KEYWORDS_BY_VERTICAL,
   NEGATIVES_BY_VERTICAL
 } from '@/lib/wizard-data';
+import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
 
 const STEPS = [
   { num: 1, title: 'Oferta', icon: FileText },
@@ -82,9 +83,9 @@ const FIELD_HELP: Record<string, {
   },
   pageType: {
     agent: 'Compliance Sentinel',
-    what: 'A estrutura da presell gerada: advertorial (artigo review), pogo (curta e direta), vsl (com vídeo) ou interstitial (screenshot + popup de segmentação).',
-    why: 'Cada canal aceita estruturas diferentes — interstitial só é seguro em YouTube/Demand Gen, nunca em Search, onde reprova revisão por falta de conteúdo editorial.',
-    steps: '1. Em Search, prefira advertorial ou pogo.\n2. VSL exige um vídeo real do vendor.\n3. Interstitial só em canais fora de Search/PMax — o Compliance Sentinel bloqueia a geração se o canal não permitir.'
+    what: 'A estrutura da presell gerada: advertorial (artigo review), pogo (curta e direta), vsl (com vídeo), authority (autoridade editorial/científica — nav, ingredientes, pacotes, certificações) ou interstitial (screenshot + popup de segmentação).',
+    why: 'Cada canal aceita estruturas diferentes — interstitial só é seguro em YouTube/Demand Gen, nunca em Search, onde reprova revisão por falta de conteúdo editorial. Authority costuma converter melhor em nutra/saúde/beleza por reforçar credibilidade.',
+    steps: '1. Em Search, prefira advertorial, pogo ou authority.\n2. VSL exige um vídeo real do vendor.\n3. Interstitial só em canais fora de Search/PMax — o Compliance Sentinel bloqueia a geração se o canal não permitir.'
   },
   popupGate: {
     agent: 'CRO & Conversion Specialist',
@@ -466,7 +467,7 @@ export default function WizardPage() {
   const [flowpageUrl, setFlowpageUrl] = useState('');
   const [hostingerDomain, setHostingerDomain] = useState('');
   const [presellHtml, setPresellHtml] = useState('');
-  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl' | 'interstitial'>('advertorial');
+  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl' | 'interstitial' | 'authority'>('advertorial');
   const [popupGate, setPopupGate] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
@@ -1521,13 +1522,14 @@ export default function WizardPage() {
 
               {/* URLs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label><AgentHelp fieldKey="pageType" fieldValue={pageType} context={{ channel, vertical }} onApply={applyEnumIfValid(['advertorial', 'pogo', 'vsl', 'interstitial'], setPageType, 'Tipo de Página')} /></div>
-                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl' | 'interstitial') => setPageType(v)}>
+                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label><AgentHelp fieldKey="pageType" fieldValue={pageType} context={{ channel, vertical }} onApply={applyEnumIfValid(['advertorial', 'pogo', 'vsl', 'interstitial', 'authority'], setPageType, 'Tipo de Página')} /></div>
+                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl' | 'interstitial' | 'authority') => setPageType(v)}>
                     <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-[#1e293b] border-[#334155]">
                       <SelectItem value="advertorial" className="text-white">Advertorial (Artigo de Review)</SelectItem>
                       <SelectItem value="pogo" className="text-white">Pogo (Curta, direto ao ponto)</SelectItem>
                       <SelectItem value="vsl" className="text-white">VSL (Vídeo Sales Letter)</SelectItem>
+                      <SelectItem value="authority" className="text-white">Authority (Autoridade editorial — ingredientes, pacotes, certificações)</SelectItem>
                       <SelectItem value="interstitial" className="text-white">Interstitial (Screenshot + Popup — só YouTube/Demand Gen, nunca Search)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1839,6 +1841,7 @@ export default function WizardPage() {
                   <p className="text-xs text-slate-500">${budgetTest} / {days} dias</p>
                 </div>
               </div>
+              <Step7LeadingStream campaignId={campaignId ?? ''} budgetDaily={budgetDaily} onSuccess={runChecklistVerify} />
               <div className="space-y-3">
                 {GOOGLE_ADS_CHECKLIST.map(item => (
                   <ChecklistItemRow

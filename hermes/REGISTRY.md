@@ -6,7 +6,7 @@ Preencha `path_local` com o caminho real na sua máquina. Status descreve só a
 | id | nome | path_local | stack (resumo) | hermes_profile | prioridade | org_status | notas |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | afiliados | Afiliados / AfiliAds | `/workspace` (este repo) | Next.js, Prisma, MCP, skills Ads | `profiles/afiliados.md` | alta | em_andamento | knowledge + AGENTS.md neste PR |
-| landing | Landing | _preencher_ | Vercel / Next | `profiles/growth.md` | média | pendente | só indexar; não mudar config |
+| landing | Landing | `/Users/genautech/landing` | Vercel / Next (Static Export) | `profiles/growth.md` | alta | organizado | Yoobe / 4unik landing page |
 | mkt | Marketing | _preencher_ | conteúdo, GA4, campanhas | `profiles/growth.md` | média | pendente | compartilha perfil growth |
 | billing | Billing | _preencher_ | Firebase / faturamento | `profiles/billing.md` | alta | pendente | PII: anonimizar |
 | gws | GWS / Google Workspace ops | _preencher_ | scripts, admin | `profiles/ops.md` | média | pendente | |

@@ -9,6 +9,8 @@ import fs from 'fs';
 import path from 'path';
 
 const SKILLCLAW_PROXY_URL = 'http://127.0.0.1:30000/v1/chat/completions';
+// Estimativa grosseira de custo (gpt-4o, tokens de entrada+saída misturados) — só pra exibir "Custo Est." no painel.
+const EST_COST_PER_1K_TOKENS_USD = 0.01;
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const encoder = new TextEncoder();
@@ -28,7 +30,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
           return;
         }
 
-        const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+        const userId = (session.user as any)?.id;
+        const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId } });
         if (!campaign) {
           sendEvent('error', { message: 'Campanha não encontrada' });
           controller.close();
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
         // ETAPA 1: Análise Budget-First
         sendEvent('log', { time: '00:01s', message: `🔍 Analisando Orçamento Diário de $${budgetDaily.toFixed(2)} USD...` });
-        sendEvent('progress', { percent: 15 });
+        sendEvent('progress', { percent: 15, tokensEstimated: 0, costEstimatedUSD: 0 });
 
         const isLowBudget = budgetDaily < 20;
         const targetStrategy = isLowBudget ? 'MANUAL_CPC' : 'MAXIMIZE_CLICKS';
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
         // ETAPA 2: Consulta ATP / Tendências via SkillClaw
         sendEvent('log', { time: '00:03s', message: `📊 Consultando ATP e Google Trends via Proxy SkillClaw (Porta 30000)...` });
-        sendEvent('progress', { percent: 45 });
+        sendEvent('progress', { percent: 45, tokensEstimated: 0, costEstimatedUSD: 0 });
 
         // Chamada Proxy ao SkillClaw — sem fallback silencioso: se falhar, o evento
         // 'log' abaixo reporta o motivo real (ex.: quota da conta upstream esgotada)
@@ -83,7 +86,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
         // ETAPA 3: Executando Correção na API do Google Ads
         sendEvent('log', { time: '00:06s', message: `⚙️ Aplicando estratégia ${targetStrategy} com CPC teto de $${targetCpc} USD...` });
-        sendEvent('progress', { percent: 75, ...(skillclawTokens ? { tokensUsed: skillclawTokens } : {}) });
+        const tokensEstimated = skillclawTokens ?? 0;
+        const costEstimatedUSD = (tokensEstimated / 1000) * EST_COST_PER_1K_TOKENS_USD;
+        sendEvent('progress', { percent: 75, tokensEstimated, costEstimatedUSD });
 
         // Persiste no banco de dados local
         await prisma.campaign.update({
@@ -96,7 +101,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
         // ETAPA 4: Gravando Aprendizado no ChecklistLearning & SkillClaw Local Skills
         sendEvent('log', { time: '00:08s', message: `🛡️ Salvando lição em ChecklistLearning e distribuindo para ~/.skillclaw/skills...` });
-        sendEvent('progress', { percent: 95 });
+        sendEvent('progress', { percent: 95, tokensEstimated, costEstimatedUSD });
 
         const learning = await prisma.checklistLearning.create({
           data: {

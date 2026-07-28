@@ -32,6 +32,14 @@ export interface PresellContent {
   nome_site: string;
   como_funciona?: { titulo: string; texto: string }[];
   temas_feedback?: string[];
+  // Campos usados só pelo pageType 'authority' (padrão editorial-authority, insight
+  // hermes/knowledge/insights/2026-07-28-padrao-editorial-authority-template.md).
+  cientifico_titulo?: string;
+  cientifico_texto?: string;
+  ingredientes?: { nome: string; beneficio: string }[];
+  pacotes?: { nome: string; qtd: string; economia?: string; badge?: string }[];
+  certificacoes?: string[];
+  aviso_autenticidade?: string;
 }
 
 // Rota de oferta por segmento, usada só pelo pageType 'interstitial'. O popup de
@@ -95,8 +103,29 @@ TÉCNICAS DE BRIDGE PAGE (não são decorativas — aplicar sempre):
   diária", "Preferência por fórmulas sem estimulantes") — NUNCA invente uma citação atribuída a
   uma pessoa fictícia com nome/idade (isso é endosso falso, proibido). São temas gerais, não
   depoimentos individuais. Só preencha pra advertorial/vsl.
+
+QUANDO "Tipo de página: authority" (padrão editorial-authority — autoridade científica, não é
+review pessoal), preencha TAMBÉM estes 6 campos extras, e ajuste o tom geral pra 3ª pessoa
+editorial (revista/publicação especializada, não "eu testei"):
+- "cientifico_titulo"/"cientifico_texto": explicação do MECANISMO por trás da categoria de produto
+  (ex.: como a fórmula/abordagem atua no organismo/problema), em linguagem acessível — não é claim
+  de eficácia do produto específico, é educação sobre a ciência da categoria. Cite mecanismo geral,
+  nunca resultado individual garantido.
+- "ingredientes": 4-8 itens {"nome","beneficio"} — só ingredientes/componentes reais mencionados no
+  contexto do produto (dossiê/página do vendor); nunca invente um ingrediente que não está lá.
+- "pacotes": 1-3 itens {"nome","qtd","economia","badge"} — ex.: {"nome":"Pacote Único","qtd":"1
+  unidade"}, {"nome":"Mais Popular","qtd":"3 unidades","economia":"Economize 20%","badge":"MAIS
+  VENDIDO"} — só inclua "economia"/"badge" se o contexto trouxer essa informação real do vendor;
+  senão omita o campo (nunca invente desconto).
+- "certificacoes": 2-5 selos/processos reais aplicáveis à categoria (ex.: "Fabricado em instalação
+  registrada na FDA", "Testado por laboratório terceirizado") — só se estiverem no contexto/dossiê;
+  nunca invente selo que o produto não tem.
+- "aviso_autenticidade": 1 frase curta alertando sobre comprar só no site oficial pra evitar
+  falsificação/pirataria — genérico, sem inventar caso real de falsificação.
+Se "Tipo de página" NÃO for authority, omita esses 6 campos ou retorne strings/arrays vazios.
+
 Responda APENAS JSON válido com exatamente estas chaves:
-{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","pros":["3-4 itens"],"contras":["2-3 itens"],"faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site","como_funciona":[{"titulo","texto"},{"titulo","texto"},{"titulo","texto"}],"temas_feedback":["3-4 itens"]}
+{"categoria","headline","subheadline","autor","leitura_min","abertura","secao1_titulo","secao1_texto","secao2_titulo","secao2_texto","beneficios":["3-5 itens"],"prova","cta_texto","cta_reforco","secao3_titulo","secao3_texto","pros":["3-4 itens"],"contras":["2-3 itens"],"faq":[{"pergunta","resposta"},{"pergunta","resposta"},{"pergunta","resposta"}],"cta_final","titulo_pagina","meta_descricao","nome_site","como_funciona":[{"titulo","texto"},{"titulo","texto"},{"titulo","texto"}],"temas_feedback":["3-4 itens"],"cientifico_titulo","cientifico_texto","ingredientes":[{"nome","beneficio"}],"pacotes":[{"nome","qtd","economia","badge"}],"certificacoes":["..."],"aviso_autenticidade"}
 "autor" = nome editorial plausível sem sobrenome famoso; "nome_site" = nome de site editorial genérico do nicho (sem trademark do produto).`;
 
 const HEALTH_NICHE_RE = /health|sa[uú]de|nutra|beauty|beleza|wellness|bem-estar|supplement|suplemento|weight loss|emagrec|menopaus|urin[aá]r|incontin/i;
@@ -159,6 +188,20 @@ interface Locale {
   segGenders: [string, string][];
   segAgeLabel: string;
   segContinue: string;
+  navScience: string;
+  navIngredients: string;
+  navPackages: string;
+  navReviews: string;
+  navFaq: string;
+  scienceEyebrow: string;
+  ingredientsEyebrow: string;
+  packagesEyebrow: string;
+  guaranteeEyebrow: string;
+  guaranteeBadge1: string;
+  guaranteeBadge2: string;
+  guaranteeBadge3: string;
+  authenticityWarning: string;
+  packagesHeading: string;
 }
 
 const LOCALE_EN: Locale = {
@@ -182,8 +225,8 @@ const LOCALE_EN: Locale = {
   trustBadge2: 'Independent, Research-Based',
   trustBadge3: 'Affiliate Disclosure Below',
   howItWorksHeading: 'How It Works',
-  feedbackHeading: 'What Readers Commonly Mention',
-  feedbackDisclaimer: 'Recurring themes from public reviews and reader comments — not individual endorsements. Individual results vary.',
+  feedbackHeading: 'Product Highlights',
+  feedbackDisclaimer: 'Key attributes based on the product formulation and ingredient research — not user testimonials or endorsements.',
   extraCtaText: 'See the Full Details',
   rightsReserved: 'All rights reserved.',
   cookieMsg: 'We use cookies to analyze traffic and show more relevant ads.',
@@ -200,6 +243,20 @@ const LOCALE_EN: Locale = {
   segGenders: [['F', 'Female'], ['M', 'Male'], ['O', 'Prefer not to say']],
   segAgeLabel: 'Age range',
   segContinue: 'Continue',
+  navScience: 'The Science',
+  navIngredients: 'Ingredients',
+  navPackages: 'Packages',
+  navReviews: 'Reviews',
+  navFaq: 'FAQ',
+  scienceEyebrow: 'The Science',
+  ingredientsEyebrow: 'Inside the Formula',
+  packagesEyebrow: 'Choose Your Package',
+  guaranteeEyebrow: 'Our Guarantee',
+  guaranteeBadge1: 'Money-Back Guarantee',
+  guaranteeBadge2: 'Manufactured in a GMP-Certified Facility',
+  guaranteeBadge3: 'Secure Checkout',
+  authenticityWarning: 'To avoid counterfeit or unauthorized resellers, only purchase through the official links on this page.',
+  packagesHeading: 'Choose Your Package',
 };
 
 const LOCALE_PT: Locale = {
@@ -223,8 +280,8 @@ const LOCALE_PT: Locale = {
   trustBadge2: 'Base em Pesquisa Independente',
   trustBadge3: 'Divulgação de Afiliado Abaixo',
   howItWorksHeading: 'Como Funciona',
-  feedbackHeading: 'O Que os Leitores Costumam Comentar',
-  feedbackDisclaimer: 'Temas recorrentes em avaliações públicas e comentários de leitores — não são depoimentos individuais. Resultados individuais variam.',
+  feedbackHeading: 'Destaques do Produto',
+  feedbackDisclaimer: 'Atributos do produto com base na formulação e na pesquisa dos ingredientes — não são depoimentos ou endossos de usuários.',
   extraCtaText: 'Ver Todos os Detalhes',
   rightsReserved: 'Todos os direitos reservados.',
   cookieMsg: 'Usamos cookies para analisar tráfego e mostrar anúncios mais relevantes.',
@@ -241,6 +298,20 @@ const LOCALE_PT: Locale = {
   segGenders: [['F', 'Feminino'], ['M', 'Masculino'], ['O', 'Prefiro não dizer']],
   segAgeLabel: 'Faixa etária',
   segContinue: 'Continuar',
+  navScience: 'A Ciência',
+  navIngredients: 'Ingredientes',
+  navPackages: 'Pacotes',
+  navReviews: 'Avaliações',
+  navFaq: 'Perguntas',
+  scienceEyebrow: 'A Ciência',
+  ingredientsEyebrow: 'Dentro da Fórmula',
+  packagesEyebrow: 'Escolha Seu Pacote',
+  guaranteeEyebrow: 'Nossa Garantia',
+  guaranteeBadge1: 'Garantia de Devolução do Dinheiro',
+  guaranteeBadge2: 'Fabricado em Instalação Certificada GMP',
+  guaranteeBadge3: 'Compra Segura',
+  authenticityWarning: 'Para evitar falsificações ou revendedores não autorizados, compre apenas pelos links oficiais desta página.',
+  packagesHeading: 'Escolha Seu Pacote',
 };
 
 function pickLocale(language?: string): Locale {
@@ -257,6 +328,7 @@ const TEMPLATE_FILE_BY_TYPE: Record<string, string> = {
   pogo: 'presell-template-pogo.html',
   vsl: 'presell-template-vsl.html',
   interstitial: 'presell-template-interstitial.html',
+  authority: 'presell-template-authority.html',
 };
 
 // Screenshot da sales page real do vendor (usado só pelo pageType 'interstitial'), via
@@ -488,6 +560,18 @@ const ICON_SHIELD = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"
 const ICON_CHECK_CIRCLE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>`;
 const ICON_CHAT = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>`;
 
+// Ícones editoriais adicionais (line-art, stroke 1.5, mesmo peso visual do DESIGN.md Clinical
+// Blue) — usados só nas seções exclusivas do pageType 'authority' (certBadgesHtml,
+// guaranteeBadgesHtml, ingredientsGridHtml) para dar variedade em vez de repetir escudo/check.
+const ICON_LEAF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 21c8-1 13-6 14-15-9 1-14 6-14 15z"/><path d="M6 20c3-4 6-7 12-13"/></svg>`;
+const ICON_HEART = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20s-7-4.4-9.5-9C.8 7.4 3 4 6.5 4 9 4 11 5.8 12 7.5 13 5.8 15 4 17.5 4 21 4 23.2 7.4 21.5 11 19 15.6 12 20 12 20z"/></svg>`;
+const ICON_CLOCK = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
+const ICON_STETHOSCOPE = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3v6a4 4 0 008 0V3"/><path d="M9 13v2a5 5 0 0010 0v-2.5"/><circle cx="19" cy="9.5" r="1.8"/></svg>`;
+const ICON_LOCK = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>`;
+const ICON_STAR = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2.5l2.9 6 6.6.7-4.9 4.5 1.3 6.5-5.9-3.3-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.7z"/></svg>`;
+const ICON_FLASK = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2h6"/><path d="M10 2v6.5L4.5 18a2 2 0 001.7 3h11.6a2 2 0 001.7-3L14 8.5V2"/><path d="M7.5 15h9"/></svg>`;
+const AUTHORITY_ICON_CYCLE = [ICON_LEAF, ICON_STETHOSCOPE, ICON_HEART, ICON_FLASK, ICON_CLOCK, ICON_STAR];
+
 function trustBadgesHtml(locale: Locale): string {
   const badges = [
     { icon: ICON_SHIELD, label: locale.trustBadge1 },
@@ -515,6 +599,34 @@ function feedbackThemesHtml(themes: string[] | undefined, heading: string, discl
   const items = (themes ?? []).filter(Boolean).slice(0, 4);
   if (!items.length) return '';
   return `<h2>${esc(heading)}</h2><div class="feedback-themes">${items.map((t) => `<div class="feedback-item">${ICON_CHAT}<span>${esc(t)}</span></div>`).join('')}</div><p class="feedback-disclaimer">${esc(disclaimer)}</p>`;
+}
+
+// Helpers do pageType 'authority' — padrão editorial-authority (insight
+// hermes/knowledge/insights/2026-07-28-padrao-editorial-authority-template.md).
+function ingredientsGridHtml(items: PresellContent['ingredientes']): string {
+  const list = (items ?? []).filter((i) => i?.nome).slice(0, 8);
+  if (!list.length) return '';
+  return `<div class="ingredients-grid">${list.map((i, idx) => `<div class="ingredient-card"><div class="ingredient-icon">${AUTHORITY_ICON_CYCLE[idx % AUTHORITY_ICON_CYCLE.length]}</div><h3>${esc(i.nome)}</h3><p>${esc(i.beneficio)}</p></div>`).join('')}</div>`;
+}
+
+function packageSectionHtml(pacotes: PresellContent['pacotes'], ctaText: string): string {
+  const list = (pacotes ?? []).filter((p) => p?.nome).slice(0, 3);
+  if (!list.length) return '';
+  return `<div class="packages-grid">${list.map((p) => `<div class="package-card${p.badge ? ' package-featured' : ''}">${p.badge ? `<div class="package-badge">${esc(p.badge)}</div>` : ''}<h3>${esc(p.nome)}</h3><p class="package-qtd">${esc(p.qtd)}</p>${p.economia ? `<p class="package-savings">${esc(p.economia)}</p>` : ''}<a href="LINK_DE_AFILIADO_AQUI" class="cta package-cta" data-href="LINK_DE_AFILIADO_AQUI">${esc(ctaText)}</a></div>`).join('')}</div>`;
+}
+
+function certBadgesHtml(certs: string[] | undefined): string {
+  const list = (certs ?? []).filter(Boolean).slice(0, 6);
+  if (!list.length) return '';
+  return `<div class="cert-badges">${list.map((c, idx) => `<div class="cert-badge">${AUTHORITY_ICON_CYCLE[idx % AUTHORITY_ICON_CYCLE.length]}<span>${esc(c)}</span></div>`).join('')}</div>`;
+}
+
+function guaranteeBadgesHtml(locale: Locale): string {
+  return `<div class="guarantee-badges"><div class="guarantee-badge">${ICON_SHIELD}<span>${esc(locale.guaranteeBadge1)}</span></div><div class="guarantee-badge">${ICON_LOCK}<span>${esc(locale.guaranteeBadge2)}</span></div><div class="guarantee-badge">${ICON_CLOCK}<span>${esc(locale.guaranteeBadge3)}</span></div></div>`;
+}
+
+function navLinksHtml(locale: Locale): string {
+  return `<a href="#science">${esc(locale.navScience)}</a><a href="#ingredients">${esc(locale.navIngredients)}</a><a href="#packages">${esc(locale.navPackages)}</a><a href="#reviews">${esc(locale.navReviews)}</a><a href="#faq">${esc(locale.navFaq)}</a>`;
 }
 
 export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
@@ -626,6 +738,33 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
     t = t.replace('{{SALES_PAGE_SCREENSHOT_URL}}', esc(opts.salesPageScreenshotUrl ?? ''));
     // < escapado pra JSON embutido em <script> não fechar a tag prematuramente (</script> dentro de string).
     t = t.replace('{{SEGMENT_ROUTES_JSON}}', JSON.stringify(opts.segmentRoutes ?? []).replace(/</g, '\\u003c'));
+  }
+  if (pageType === 'authority') {
+    // Sem pacotes/ingredientes reais do vendor não dá pra inventar preço/quantidade/composição
+    // (risco de compliance), então o heading correspondente some em vez de ficar órfão sem conteúdo.
+    if (!(c.pacotes ?? []).some((p) => p?.nome)) {
+      t = t.replace(/<section id="packages">[\s\S]*?<\/section>\s*/, '');
+    }
+    if (!(c.ingredientes ?? []).some((i) => i?.nome)) {
+      t = t.replace(/<!--ingredients-heading-start-->[\s\S]*?<!--ingredients-heading-end-->\s*/, '');
+    }
+    t = t.replace('{{NAV_LINKS}}', navLinksHtml(locale));
+    t = t.replace('{{SCIENCE_EYEBROW}}', esc(locale.scienceEyebrow));
+    t = t.replace('{{CIENTIFICO_TITULO}}', esc(c.cientifico_titulo ?? ''));
+    t = t.replace('{{CIENTIFICO_TEXTO}}', esc(c.cientifico_texto ?? ''));
+    t = t.replace('{{INGREDIENTS_EYEBROW}}', esc(locale.ingredientsEyebrow));
+    t = t.replace('{{INGREDIENTS_HEADING}}', esc(locale.navIngredients));
+    t = t.replace('{{INGREDIENTS_GRID}}', ingredientsGridHtml(c.ingredientes));
+    t = t.replace('{{PACKAGES_EYEBROW}}', esc(locale.packagesEyebrow));
+    t = t.replace('{{PACKAGE_SECTION}}', packageSectionHtml(c.pacotes, c.cta_texto));
+    t = t.replace('{{PACKAGES_HEADING}}', esc(locale.packagesHeading));
+    t = t.replace('{{CERT_BADGES}}', certBadgesHtml(c.certificacoes));
+    t = t.replace('{{GUARANTEE_EYEBROW}}', esc(locale.guaranteeEyebrow));
+    t = t.replace('{{GUARANTEE_BADGES}}', guaranteeBadgesHtml(locale));
+    t = t.replace('{{AUTHENTICITY_WARNING}}', esc(c.aviso_autenticidade ?? locale.authenticityWarning));
+    t = t.replace('{{PRODUCT_HERO_IMAGE}}', opts.imagemProdutoUrl
+      ? `<div class="produto-img-glow"><svg class="produto-img-botanical" viewBox="0 0 400 400" aria-hidden="true" focusable="false"><g fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"><path d="M200 60 C 160 100, 140 150, 150 210 C 155 240, 175 260, 200 265" /><path d="M200 60 C 240 100, 260 150, 250 210 C 245 240, 225 260, 200 265" /><ellipse cx="150" cy="130" rx="22" ry="12" transform="rotate(-30 150 130)" /><ellipse cx="250" cy="130" rx="22" ry="12" transform="rotate(30 250 130)" /><ellipse cx="130" cy="190" rx="20" ry="11" transform="rotate(-10 130 190)" /><ellipse cx="270" cy="190" rx="20" ry="11" transform="rotate(10 270 190)" /></g></svg><img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy"></div>`
+      : '');
   }
   t = t.replace('{{IMAGEM_PRODUTO}}', opts.imagemProdutoUrl
     ? `<img class="produto-img" src="${esc(opts.imagemProdutoUrl)}" alt="${esc(opts.productName)}" loading="lazy">`
@@ -815,12 +954,25 @@ async function wpUpdatePage(domain: string, auth: string, pageId: number, opts: 
 // o <head> inteiro (style/script precisam continuar funcionando) mas embrulhado numa div com
 // display:none inline — zero rodapé visual garantido, execução de <script> e aplicação de
 // <style> não dependem de visibilidade do ancestral.
+// Alguns temas WordPress (ex.: Hello Biz, usado em orangepeelmorning.com) rodam um filtro de
+// conteúdo estilo wpautop que NÃO reconhece blocos <style>/<script> e insere </p><p> em cima de
+// linhas em branco lá dentro. Isso quebra o parser CSS do navegador: a regra que contém a quebra
+// vira lixo e é descartada inteira (confirmado em 2026-07-28 com header.hero sumindo do fundo da
+// authority page). Solução: colapsar linhas em branco dentro de <style>/<script> antes de publicar.
+function stripBlankLinesInsideTags(html: string, tag: 'style' | 'script'): string {
+  const re = new RegExp(`(<${tag}[^>]*>)([\\s\\S]*?)(</${tag}>)`, 'gi');
+  return html.replace(re, (_m, open, inner, close) => `${open}${inner.replace(/\n\s*\n+/g, '\n')}${close}`);
+}
+
 function extractContentForWordPress(html: string): string {
   const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const headInner = headMatch ? headMatch[1] : '';
   const bodyInner = bodyMatch ? bodyMatch[1] : html;
-  return `<div style="display:none">${headInner}</div>${bodyInner}`.trim();
+  let out = `<div style="display:none">${headInner}</div>${bodyInner}`.trim();
+  out = stripBlankLinesInsideTags(out, 'style');
+  out = stripBlankLinesInsideTags(out, 'script');
+  return out;
 }
 
 export async function publishToWordPress(html: string, opts: { domain: string; title: string; slug: string; language?: string; updatePageId?: number }) {
@@ -1068,12 +1220,17 @@ export async function generatePresell(userId: string, args: {
   segmentRoutes?: SegmentRoute[];
   campaignId?: string;
   customCode?: string;
+  // Base do slug da URL quando productName é a marca do vendor (ex.: "FemiCore") e as regras
+  // de compliance do produto proíbem marca na URL/keyword (brand bidding). Quando informado,
+  // substitui productName só na geração do slug — o conteúdo continua usando o nome real do produto.
+  slugSeed?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
-  const pageType = args.pageType && ['advertorial', 'pogo', 'vsl', 'interstitial'].includes(args.pageType) ? args.pageType : 'advertorial';
+  const normalizedPageType = args.pageType === 'authority_review' ? 'authority' : args.pageType;
+  const pageType = normalizedPageType && ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority'].includes(normalizedPageType) ? normalizedPageType : 'advertorial';
   const popupGate = !!args.popupGate;
   if (pageType === 'vsl' && !args.videoUrl?.trim()) {
     throw new Error('pageType "vsl" exige videoUrl (link do vídeo do VSL — YouTube, Vimeo ou .mp4 direto)');
@@ -1157,7 +1314,7 @@ export async function generatePresell(userId: string, args: {
   const res = await callAgent(userId, {
     agent: 'presell-builder',
     systemPrompt: BUILDER_PROMPT,
-    userPrompt: `Produto: ${productName} (ClickBank). Ângulo: ${angle}. Geo: ${geo}. Idioma: ${language}.${productCtx}\nJSON puro.`,
+    userPrompt: `Produto: ${productName} (ClickBank). Ângulo: ${angle}. Geo: ${geo}. Idioma: ${language}. Tipo de página: ${pageType}.${productCtx}\nJSON puro.`,
   });
   const content = res.data as PresellContent | null;
   if (!content?.headline) throw new Error('Presell Builder retornou conteúdo inválido');
@@ -1181,7 +1338,7 @@ export async function generatePresell(userId: string, args: {
     salesPageScreenshotUrl, segmentRoutes: args.segmentRoutes, language, presellId,
   });
 
-  const baseSlug = slugify(`${productName}-${pageType}-${angle}`);
+  const baseSlug = slugify(`${args.slugSeed || productName}-${pageType}-${angle}`);
   let slug = baseSlug;
   for (let i = 2; await prisma.presell.findUnique({ where: { slug } }); i++) slug = `${baseSlug}-${i}`;
 

@@ -1,4 +1,10 @@
-# Afiliados — contexto para agentes (Hermes / Cursor / Claude Code)
+# Afiliados — contexto para agentes (Hermes / Cursor / Claude Code / Anti-Gravity)
+
+**Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
+Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
+Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
+Integrações mapeadas e ativas: (1) **Obsidian Sync** via `lib/obsidianSync.ts` (escrevendo notas de execução em `~/Vaults/notes/Conhecimento/Execucoes/afiliados/`); (2) **Hermes / Airmines Ops** em `hermes/REGISTRY.md` e `hermes/knowledge/insights/`.
+Regras de isolamento ativas para o Anti-Gravity: checar `git status --short` e `git log` antes de editar arquivos de app, realizar commits atômicos, validar se o `.env` local aponta para Postgres local ou Railway (Produção) antes de `prisma db push`, e registrar lições no Obsidian ao final da sessão. Insight registrado em `hermes/knowledge/insights/2026-07-28-antigravity-sessao-e-compatibilidade-agentes.md`.
 
 **Estado em 2026-07-27 (~15h) — presell da FemiCore publicada de verdade em
 orangepeelmorning.com + fix de falso-positivo em compliance:** durante o teste do

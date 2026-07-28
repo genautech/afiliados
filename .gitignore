@@ -45,3 +45,13 @@ yarn-error.log*
 __pycache__/
 **/__pycache__/
 *.py[cod]
+
+# Logs locais
+*.log
+
+# Uploads/scratch pessoais (não fazem parte do app)
+/Uploads/
+/.hermes/
+
+# Clone externo (github.com/AMAP-ML/SkillClaw), não faz parte deste repo
+/SkillClaw/

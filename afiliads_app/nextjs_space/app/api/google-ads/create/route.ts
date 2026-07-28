@@ -24,7 +24,10 @@ export async function POST(request: NextRequest) {
     // Gate real de compliance: mesmo em modo PAUSED, criar a campanha na conta real do Google
     // Ads só é permitido com o checklist crítico do Wizard completo — antes, o "Criar no Google
     // Ads" não olhava pra isso (achado da auditoria de mock/simulação).
-    const checklists = await prisma.campaignChecklist.findMany({ where: { campaignId } });
+    // Exclui o Step 9 (Go-live) do gate: google_ads_ok e tracking_ok daquele checklist
+    // são resultado desta própria chamada, não pré-requisito — incluí-los travava a
+    // criação em loop (item nunca marcado porque a campanha nunca era criada).
+    const checklists = await prisma.campaignChecklist.findMany({ where: { campaignId, step: { not: 9 } } });
     const criticalUnchecked = checklists.filter((c) => c.isCritical && !c.isChecked);
     if (criticalUnchecked.length > 0) {
       return NextResponse.json({

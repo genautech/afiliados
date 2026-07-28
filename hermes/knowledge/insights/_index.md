@@ -4,6 +4,8 @@ Só estes arquivos (e playbooks) devem entrar no contexto padrão do agente.
 
 | id | título | fonte | projetos | criado_em |
 | --- | --- | --- | --- | --- |
+| insight-20260728-antigravity-sessao-e-compatibilidade-agentes | Sessão Anti-Gravity & Protocolo de Compatibilidade Multi-Agente (Cloud + Local) | AGENTS.md | afiliados | 2026-07-28 |
+| insight-20260728-padrao-editorial-authority-template | Padrão 'editorial-authority' — novo pageType derivado da página live do FemiCore | orangepeelmorning.com/elementor-36/ | afiliados | 2026-07-28 |
 | insight-20260726-strategy-engine-funil-budget | Strategy Engine: budget/funil/canal derivados do dossiê do produto | engenharia | afiliados | 2026-07-26 |
 | insight-20260726-google-ads-eu-political-ads-field | Google Ads API v25 exige contains_eu_political_advertising | engenharia | afiliados | 2026-07-26 |
 | insight-20260726-tipos-de-presell-e-popup-gate | Tipos reais de página de ponte + pop-up de retenção | YouTube + meutrabalhodigital.com | afiliados | 2026-07-26 |

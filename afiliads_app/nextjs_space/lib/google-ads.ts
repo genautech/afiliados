@@ -82,6 +82,11 @@ export async function getGoogleAdsConfig(userId: string): Promise<GoogleAdsCrede
 // Cabeçalhos comuns para chamadas REST da Google Ads API. `login-customer-id` é obrigatório
 // quando as credenciais são de uma conta MCC (gerenciadora) operando sobre uma conta filha —
 // sem ele a API responde USER_PERMISSION_DENIED mesmo com token/developer-token válidos.
+// amount_micros precisa ser múltiplo de 10.000 (1 centavo) — a Google Ads API rejeita frações de centavo.
+function toAmountMicros(dollars: number): number {
+  return Math.round(dollars * 100) * 10_000;
+}
+
 function apiHeaders(token: string, config: GoogleAdsCredentials): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -318,7 +323,7 @@ export async function mutateGoogleCampaign(
       
       if (budgetResourceName) {
         const mutateBudgetUrl = `https://googleads.googleapis.com/v25/customers/${config.customerId}/campaignBudgets:mutate`;
-        const amountMicros = Math.round(updates.budgetDaily * 1_000_000);
+        const amountMicros = toAmountMicros(updates.budgetDaily);
         
         const budgetRes = await fetch(mutateBudgetUrl, {
           method: 'POST',
@@ -393,7 +398,7 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
 
   // 1. Orçamento diário
   const budgetRes = await mutate('campaignBudgets', [{
-    create: { name: `${input.name} - Budget`, amountMicros: String(Math.round(input.budgetDaily * 1_000_000)), deliveryMethod: 'STANDARD' },
+    create: { name: `${input.name} - Budget`, amountMicros: String(toAmountMicros(input.budgetDaily)), deliveryMethod: 'STANDARD' },
   }]);
   const budgetResourceName = budgetRes.results[0].resourceName;
   logs.push(`Orçamento diário criado: $${input.budgetDaily.toFixed(2)}`);
@@ -427,27 +432,27 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
   await mutate('campaignCriteria', criteriaOps);
   logs.push(`Segmentação geográfica (${input.geo}) e de idioma configurada — "presença apenas"`);
 
-  // 4. Ad group
+  // 4. Ad group (Criado como PAUSED para revisão de segurança pré-ativação)
   const adGroupRes = await mutate('adGroups', [{
     create: {
       name: `${input.name} - AG1`,
       campaign: campaignResourceName,
-      status: 'ENABLED',
+      status: 'PAUSED',
       type: 'SEARCH_STANDARD',
       cpcBidMicros: String(Math.round(input.cpcBidMicros ?? 1_000_000)),
     },
   }]);
   const adGroupResourceName = adGroupRes.results[0].resourceName;
   const googleAdGroupId = String(adGroupResourceName).split('/').pop();
-  logs.push('Ad group criado');
+  logs.push('Ad group criado como PAUSED');
 
-  // 5. Keywords positivas
+  // 5. Keywords positivas (Criadas como PAUSED)
   if (input.keywords.length > 0) {
     const kwOps = input.keywords.map(k => ({
-      create: { adGroup: adGroupResourceName, status: 'ENABLED', keyword: { text: k.text, matchType: k.matchType } },
+      create: { adGroup: adGroupResourceName, status: 'PAUSED', keyword: { text: k.text, matchType: k.matchType } },
     }));
     await mutate('adGroupCriteria', kwOps);
-    logs.push(`${input.keywords.length} keyword(s) adicionada(s) ao ad group`);
+    logs.push(`${input.keywords.length} keyword(s) adicionada(s) ao ad group como PAUSED`);
   }
 
   // 6. Negativas (nível de campanha)
@@ -459,11 +464,11 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
     logs.push(`${input.negativeKeywords.length} negativa(s) adicionada(s) à campanha`);
   }
 
-  // 7. Anúncio responsivo de pesquisa (RSA)
+  // 7. Anúncio responsivo de pesquisa (RSA criado como PAUSED)
   await mutate('adGroupAds', [{
     create: {
       adGroup: adGroupResourceName,
-      status: 'ENABLED',
+      status: 'PAUSED',
       ad: {
         finalUrls: [input.finalUrl],
         responsiveSearchAd: {
@@ -473,7 +478,7 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
       },
     },
   }]);
-  logs.push(`Anúncio responsivo de pesquisa criado com ${input.headlines.length} títulos e ${input.descriptions.length} descrições`);
+  logs.push(`Anúncio responsivo de pesquisa criado como PAUSED com ${input.headlines.length} títulos e ${input.descriptions.length} descrições`);
 
   return { success: true, mock: false, googleCampaignId, googleAdGroupId, logs };
 }

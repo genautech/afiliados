@@ -158,7 +158,7 @@ export async function verifyTrackingCb(campaign: Campaign): Promise<Record<strin
 // checklists já verificados (auto e self_attested) em vez de ser mais uma autoatestação solta.
 export async function verifyGoLiveChecklist(
   campaign: Campaign,
-  ctx: { selectedKeywordsCount: number; otherChecklistsCriticalUnchecked: number }
+  ctx: { selectedKeywordsCount: number; otherChecklistsCriticalUnchecked: number; trackingCriticalUnchecked: number }
 ): Promise<Record<string, CheckResult>> {
   const linkedPresell = await prisma.presell.findFirst({ where: { campaignId: campaign.id }, orderBy: { createdAt: 'desc' } });
   return {
@@ -178,9 +178,16 @@ export async function verifyGoLiveChecklist(
     google_ads_ok: campaign.googleCampaignId
       ? { passed: true }
       : { passed: false, note: 'Campanha ainda não criada no Google Ads' },
-    tracking_ok: (campaign.postbackUrl && campaign.clickidToken)
-      ? { passed: true }
-      : { passed: false, note: 'postbackUrl/clickidToken não configurados' },
+    // MaxWeb exige postback S2S (postbackUrl + clickidToken); ClickBank rastreia via TID no
+    // hoplink e usa o item self_attested "hop_stats" do Step 8 (TRACKING_CHECKLIST_CB) — por
+    // isso o critério de "tracking ok" depende da plataforma, não pode ser fixo em postback.
+    tracking_ok: campaign.platform === 'MaxWeb'
+      ? ((campaign.postbackUrl && campaign.clickidToken)
+        ? { passed: true }
+        : { passed: false, note: 'postbackUrl/clickidToken não configurados' })
+      : (ctx.trackingCriticalUnchecked === 0
+        ? { passed: true }
+        : { passed: false, note: 'Checklist de tracking do Step 8 (hop stats) tem item crítico pendente' }),
     budget_ok: campaign.budgetTest > 0 && !!campaign.testDuration
       ? { passed: true }
       : { passed: false, note: 'budgetTest ou testDuration não definidos' },
@@ -209,6 +216,12 @@ async function upsertAutoResults(campaignId: string, step: number, defs: Array<{
     });
     rows.push(row);
   }
+  // Limpa itens órfãos: registros de execuções antigas cuja chave saiu da definição atual do
+  // passo (ex.: sem_claims/disclaimer_afiliado/privacy_policy migraram do Passo 3 pro 4 em
+  // 2026-07-27) ficavam presos como críticos+não-marcados pra sempre, travando compliance_ok
+  // sem o usuário conseguir ver ou corrigir — eles nem aparecem mais na UI do passo.
+  const validKeys = defs.map((d) => d.key);
+  await prisma.campaignChecklist.deleteMany({ where: { campaignId, step, itemKey: { notIn: validKeys } } });
   return rows;
 }
 
@@ -233,11 +246,24 @@ export async function runFullChecklistVerify(campaign: Campaign & { keywords: Ke
   allRows.push(...await upsertAutoResults(campaignId, STEP_GOOGLE_ADS, GOOGLE_ADS_CHECKLIST as any, googleAdsResults));
   allRows.push(...await upsertAutoResults(campaignId, STEP_TRACKING, trackingDefs as any, trackingResults));
 
+  // Sincroniza aprovacoes do Passo 4 (Bridge) para itens correspondentes do Passo 3 (Anti-strike)
+  // evitando staleness se o Passo 3 foi avaliado antes do HTML da presell existir.
+  if (bridgeResults.disclaimer?.passed) {
+    await prisma.campaignChecklist.updateMany({ where: { campaignId, step: STEP_ANTISTRIKE, itemKey: 'disclaimer_afiliado' }, data: { isChecked: true, note: null } });
+  }
+  if (bridgeResults.privacy_policy?.passed) {
+    await prisma.campaignChecklist.updateMany({ where: { campaignId, step: STEP_ANTISTRIKE, itemKey: 'privacy_policy' }, data: { isChecked: true, note: null } });
+  }
+  if (bridgeResults.sem_claims?.passed) {
+    await prisma.campaignChecklist.updateMany({ where: { campaignId, step: STEP_ANTISTRIKE, itemKey: 'sem_claims' }, data: { isChecked: true, note: null } });
+  }
+
   const priorChecklists = await prisma.campaignChecklist.findMany({ where: { campaignId, step: { in: [STEP_ANTISTRIKE, STEP_BRIDGE, STEP_GOOGLE_ADS, STEP_TRACKING] } } });
   const otherChecklistsCriticalUnchecked = priorChecklists.filter((c) => c.isCritical && !c.isChecked).length;
+  const trackingCriticalUnchecked = priorChecklists.filter((c) => c.step === STEP_TRACKING && c.isCritical && !c.isChecked).length;
   const selectedKeywordsCount = (campaign.keywords ?? []).filter((k) => k.isSelected).length;
 
-  const goLiveResults = await verifyGoLiveChecklist(campaign, { selectedKeywordsCount, otherChecklistsCriticalUnchecked });
+  const goLiveResults = await verifyGoLiveChecklist(campaign, { selectedKeywordsCount, otherChecklistsCriticalUnchecked, trackingCriticalUnchecked });
   allRows.push(...await upsertAutoResults(campaignId, STEP_GOLIVE, GOLIVE_CHECKLIST as any, goLiveResults));
 
   return allRows;

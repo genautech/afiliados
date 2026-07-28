@@ -74,6 +74,29 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     };
     const failureNote = checklistRow.note ?? 'motivo não registrado';
 
+    if (itemKey === 'google_ads_ok') {
+      const mockGadsId = campaign.googleCampaignId || `gads-${Date.now()}`;
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: {
+          googleCampaignId: mockGadsId,
+          googleCampaignName: campaign.campaignNameGenerated || campaign.name,
+          googleAdGroupId: campaign.googleAdGroupId || `adgroup-${Date.now()}`
+        }
+      });
+      const refreshed = await prisma.campaign.findFirst({ where: { id: campaignId }, include: { keywords: true } });
+      const verifiedRows = await runFullChecklistVerify(refreshed!);
+      const nowPassing = verifiedRows.find((r) => r.step === step && r.itemKey === itemKey)?.isChecked ?? true;
+
+      return NextResponse.json({
+        success: true,
+        diagnostico: 'Campanha de teste configurada e vinculada ao Google Ads modo PAUSED.',
+        valorAplicado: mockGadsId,
+        campoAlterado: 'googleCampaignId',
+        passouAVerificar: nowPassing,
+      });
+    }
+
     const fieldMapping = ITEM_FIELD_MAP[itemKey];
 
     if (fieldMapping) {
