@@ -217,7 +217,7 @@ describe('parseExperimentReportRow', () => {
   });
 
   it('10c. parser rejeita formatos numéricos malformados (hex, bin, oct, whitespace interno) antes do Number() (P2)', () => {
-    const report = parseExperimentReportRow(baseRow({ 
+    const report = parseExperimentReportRow(baseRow({
       conversions: '0x10',
       clicks: '0b10',
       impressions: '0o10',
