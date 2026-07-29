@@ -63,7 +63,7 @@ describe('checkGoogleAdsReadiness', () => {
       getAdsConfig: async () => null,
     });
     expect(res.ready).toBe(false);
-    expect(res.errors[0]).toContain('Credenciais do Google Ads não configuradas');
+    expect(res.errors.join(' ')).toContain('Credenciais do Google Ads não configuradas');
   });
 
   it('fails if no selected keyword', async () => {
@@ -76,7 +76,7 @@ describe('checkGoogleAdsReadiness', () => {
       }),
     });
     expect(res.ready).toBe(false);
-    expect(res.errors[0]).toContain('Selecione ao menos uma keyword');
+    expect(res.errors.join(' ')).toContain('Selecione ao menos uma keyword');
   });
 
   it('fails if brand bidding forbidden term in keywords', async () => {
@@ -91,16 +91,38 @@ describe('checkGoogleAdsReadiness', () => {
       findProduct: async () => ({ id: 'p1', name: 'FemiCore' }),
     });
     expect(res.ready).toBe(false);
-    expect(res.errors[0]).toContain('Brand bidding proibido pelo vendor');
+    expect(res.errors.join(' ')).toContain('Brand bidding proibido pelo vendor');
   });
 
-  it('succeeds and returns structured data', async () => {
+  it('fails if invalid match type', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+      ...defaultDeps,
+      findCampaign: async () => ({
+        name: 'Campanha 1',
+        presellUrl: 'https://example.com',
+        keywords: [{ keyword: 'test', matchType: 'invalid', isSelected: true }],
+      }),
+    });
+    expect(res.ready).toBe(false);
+    expect(res.errors.join(' ')).toContain('Match type desconhecido');
+  });
+
+  it('fails if URL is invalid or HTTP', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+      ...defaultDeps,
+      findCampaign: async () => ({
+        name: 'Campanha 1',
+        presellUrl: 'http://example.com',
+        keywords: [{ keyword: 'test', matchType: 'phrase', isSelected: true }],
+      }),
+    });
+    expect(res.ready).toBe(false);
+    expect(res.errors.join(' ')).toContain('HTTPS');
+  });
+
+  it('fails with warning about unverified URL link (lacuna 10B)', async () => {
     const res = await checkGoogleAdsReadiness('c1', 'u1', defaultDeps);
-    expect(res.ready).toBe(true);
-    expect(res.errors).toHaveLength(0);
-    expect(res.data?.campaignName).toBe('Campanha 1');
-    expect(res.data?.budgetDaily).toBe(100);
-    expect(res.data?.keywords[0].text).toBe('test');
-    expect(res.data?.keywords[0].matchType).toBe('PHRASE');
+    expect(res.ready).toBe(false); // Because of the unconditional check failure!
+    expect(res.errors).toContain('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
   });
 });

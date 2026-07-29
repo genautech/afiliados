@@ -48,7 +48,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const data: Record<string, any> = { ...rest };
 
     if (productResearchId !== undefined) {
-      data.productResearch = productResearchId ? { connect: { id: productResearchId } } : { disconnect: true };
+      if (productResearchId === null) {
+        data.productResearch = { disconnect: true };
+      } else {
+        const product = await prisma.productResearch.findFirst({ where: { id: productResearchId, userId } });
+        if (!product) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
+        data.productResearch = { connect: { id: productResearchId } };
+      }
     }
 
     const updated = await prisma.campaign.update({

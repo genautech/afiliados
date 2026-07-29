@@ -49,6 +49,23 @@ export async function checkGoogleAdsReadiness(
   const finalUrl = campaign.presellUrl || campaign.offerUrl || '';
   if (!finalUrl) {
     errors.push('Configure a URL da pré-sell ou da oferta (Wizard, passo 4) antes de criar a campanha no Google Ads.');
+  } else {
+    try {
+      const parsed = new URL(finalUrl);
+      if (parsed.protocol !== 'https:') {
+        errors.push('A URL final deve utilizar HTTPS (protocolo seguro).');
+      }
+      if (parsed.username || parsed.password) {
+        errors.push('A URL final não pode conter credenciais embutidas.');
+      }
+      if (!parsed.hostname) {
+        errors.push('A URL final deve conter um hostname válido.');
+      }
+    } catch (e) {
+      errors.push('A URL final fornecida é inválida.');
+    }
+
+    errors.push('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
   }
 
   const config = await deps.getAdsConfig(userId);
@@ -61,6 +78,13 @@ export async function checkGoogleAdsReadiness(
   const selectedKeywords = (campaign.keywords ?? []).filter((k: any) => k.isSelected);
   if (selectedKeywords.length === 0) {
     errors.push('Selecione ao menos uma keyword no Wizard (passo 5) antes de criar a campanha no Google Ads.');
+  } else {
+    for (const k of selectedKeywords) {
+      const mt = (k.matchType || 'phrase').toUpperCase();
+      if (!['EXACT', 'PHRASE', 'BROAD'].includes(mt)) {
+        errors.push(`Match type desconhecido na keyword "${k.keyword}": ${k.matchType}. Valores permitidos: EXACT, PHRASE, BROAD.`);
+      }
+    }
   }
 
   let forbiddenTerms: string[] = [];

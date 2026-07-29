@@ -13,18 +13,58 @@ describe('validateCampaignPatch', () => {
     expect(() => validateCampaignPatch({ googleCampaignId: 'g1' }, 'RASCUNHO')).toThrow(/googleCampaignId/);
   });
 
-  it('allows valid wizard fields', () => {
-    const body = {
-      name: 'Test',
-      budgetDaily: 100,
-      presellUrl: 'https://example.com',
-      status: 'EM_TESTE',
+  it('allows valid wizard saveCampaign payload', () => {
+    const payload = {
+      name: "Test Campaign",
+      platform: "ClickBank",
+      vertical: "Health",
+      geo: "US",
+      channel: "Search",
+      funnel: "Direct",
+      offerUrl: "https://offer.example",
+      commission: 100,
+      refundPct: 5,
+      aov: 120,
+      cvrExpected: 2.5,
+      commissionNet: 95,
+      epcBreakeven: 2.3,
+      cpcMax: 1.5,
+      cpcScale: 2.0,
+      flowpageUrl: "https://flow.example",
+      hostingerDomain: "test.com",
+      budgetTest: 50,
+      budgetDaily: 25,
+      testDuration: "72h",
+      budgetScale: 100,
+      campaignNameGenerated: "Search_Health_Test",
+      googleCampaignName: "Search_Health_Test",
+      utmCampaign: "Search_Health_Test",
+      utmString: "utm_source=test",
+      wizardStep: 5,
+      loopEnabled: false,
+      loopInterval: "24h",
+      loopAgents: "ads,compliance",
+      postbackUrl: "https://postback.example",
+      clickidToken: "{clickid}",
+      presellHtml: "<html></html>",
+      pageType: "pre_sell",
+      popupGate: false,
+      videoUrl: ""
     };
-    const data = validateCampaignPatch(body, 'RASCUNHO');
-    expect(data.name).toBe('Test');
-    expect(data.budgetDaily).toBe(100);
-    expect(data.presellUrl).toBe('https://example.com');
-    expect(data.status).toBe('EM_TESTE');
+    const data = validateCampaignPatch(payload, 'RASCUNHO');
+    expect(data.testDuration).toBe("72h");
+    expect(data.loopInterval).toBe("24h");
+    expect(data.platform).toBe("ClickBank");
+  });
+
+  it('allows valid wizard saveLoopConfig payload', () => {
+    const payload = {
+      loopEnabled: true,
+      loopInterval: "12h",
+      loopAgents: "ads"
+    };
+    const data = validateCampaignPatch(payload, 'EM_TESTE');
+    expect(data.loopEnabled).toBe(true);
   });
 
   it('enforces status transitions', () => {

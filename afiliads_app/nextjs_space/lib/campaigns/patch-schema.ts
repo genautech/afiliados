@@ -8,22 +8,23 @@ export const patchCampaignSchema = z.object({
   budgetDaily: z.number().optional(),
   budgetTest: z.number().optional(),
   campaignNameGenerated: z.string().nullable().optional(),
+  platform: z.string().optional(),
   pageType: z.string().optional(),
   popupGate: z.boolean().optional(),
   videoUrl: z.string().optional(),
   hostingerDomain: z.string().optional(),
-  geo: z.array(z.string()).optional(),
+  geo: z.string().optional(),
   languages: z.array(z.string()).optional(),
   presellUrl: z.string().optional(),
   presellGeneratedAt: z.string().optional(),
   productResearchId: z.string().nullable().optional(),
-  status: z.string().optional(),
+  status: z.enum(['RASCUNHO', 'EM_TESTE', 'PAUSADA', 'ATIVA', 'CONCLUIDA', 'ARQUIVADA']).optional(),
   wizardCompleted: z.boolean().optional(),
   launchedAt: z.string().optional(),
   wizardStep: z.number().optional(),
   loopEnabled: z.boolean().optional(),
-  loopInterval: z.number().optional(),
-  loopAgents: z.number().optional(),
+  loopInterval: z.string().optional(),
+  loopAgents: z.string().optional(),
   postbackUrl: z.string().optional(),
   clickidToken: z.string().optional(),
   presellHtml: z.string().optional(),
@@ -41,7 +42,7 @@ export const patchCampaignSchema = z.object({
   googleCampaignName: z.string().optional(),
   utmCampaign: z.string().optional(),
   utmString: z.string().optional(),
-  testDuration: z.number().optional(),
+  testDuration: z.string().optional(),
 }).strict();
 
 export function validateCampaignPatch(body: unknown, currentStatus: string) {
@@ -63,14 +64,9 @@ export function validateCampaignPatch(body: unknown, currentStatus: string) {
       'ARQUIVADA': [],
     };
 
-    const allowedNext = validTransitions[currentStatus] || [];
+    const allowedNext = validTransitions[currentStatus as keyof typeof validTransitions] || [];
     if (!allowedNext.includes(data.status) && currentStatus !== data.status) {
-      // Exceção de idempotência ou transição forçada pelo wizard (ex: recomeçou wizard)
-      if (data.status === 'RASCUNHO' && data.wizardStep !== undefined) {
-         // Wizard reset
-      } else {
-         throw new Error(`Transição de status inválida de ${currentStatus} para ${data.status}`);
-      }
+       throw new Error(`Transição de status inválida de ${currentStatus} para ${data.status}`);
     }
   }
 
