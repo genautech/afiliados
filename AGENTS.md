@@ -65,6 +65,33 @@ antes de qualquer rede. Guard plugado desde a primeira versão nas 4 que mutam (
 aplicada). 148 testes no total. Próxima: Tarefa 9 (reporting oficial — uplift/p-value via
 recurso `experiment`) — se for continuar, ler a seção 1.2 do plano antes.
 
+**Atualização mesma sessão (~14h) — Tarefa 8R concluída (checkpoint de auditoria transversal
+via Kimi/Hermes, `.hermes/handoffs/2026-07-29_task8-cross-flow-quality-gate.md`):** gate
+reprovou o lifecycle da Tarefa 8 apesar dos 148 testes verdes — mocks reproduziam contratos
+Google Ads v25 **incorretos** e havia bypass estrutural do mutation guard. Corrigido antes de
+avançar pra Tarefa 9: **A1** `listExperimentAsyncErrors` agora usa GET no resource name do
+EXPERIMENTO (não da operation) com paginação por query string; **A2** `graduateExperiment` usa
+o payload oficial `campaignBudgetMappings`; **A3** `includeDrafts` removido de todo
+`SearchGoogleAdsRequest` (campo não existe em v25); **A4** status remoto v25
+(`GoogleExperimentRemoteStatus`) separado do workflow local, mapper puro que nunca cai em SETUP
+por default; **A5** fechado o bypass do guard — `googleAdsRequest`/`googleAdsResourceRequest`
+genéricos agora rejeitam `:mutate` em runtime, mutação real exige `MutationCapability` (branded,
+só emitido por `assertMutationAllowed`); **A6** `applyFinalUrlVariation` reescrita pra derivar o
+treatment campaign sempre do `experiment_arm.control=false` (nunca aceita resource name solto),
+distinguir `alreadyApplied`/`changed`/`verified`, e mutar tudo numa única request; **A7**
+resource names dos mocks corrigidos pro shape real (composto com til, nunca aninhado). Também
+corrigidos 2 bugs de segurança achados no mesmo checkpoint, fora do escopo de Experiments:
+**B3** `checklists/fix/route.ts` fabricava `googleCampaignId` com `Date.now()` sem recurso
+remoto — bloco removido; **B5** `checklists/route.ts` e `decisions/route.ts` não checavam
+ownership de `campaignId` (IDOR — `decisions` podia disparar mutate real de budget na conta de
+outro usuário) — `assertCampaignOwnership()` adicionado nos 2. B1/B2/B4/B6/B7 (deadlock de
+keywords no Passo 5, contrato de confirmação, semântica de "campanha lançada", PATCH sem
+schema, gates dos passos 7/8) **registrados como critério de aceite explícito** nas Tarefas
+10/12/13/14 do plano — não implementados agora porque exigiriam editar Wizard/rotas em produção
+sem revisão dedicada nesta sessão. 174/174 testes (26 novos), `tsc`/`build` limpos. Nenhuma
+mutação real, migration, backfill ou smoke test — 100% mock. Campanha FemiCore não tocada.
+Próxima: Tarefa 9 (reporting oficial).
+
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
