@@ -5,7 +5,8 @@ import {
   fetchExperimentReport,
   parseExperimentReportRow,
   upsertMetricSnapshot,
-  validateFallbackArms
+  validateFallbackArms,
+  sanitizeSourcePayload
 } from '@/lib/google-ads/experiment-reporting';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
 
@@ -191,6 +192,29 @@ describe('parseExperimentReportRow', () => {
   it('10. Rejeita ausência de identidade (P2)', () => {
     expect(() => parseExperimentReportRow({ metrics: {} }, 50)).toThrow(/Identidade do experimento ausente/);
   });
+
+  it('10a. Parsing numérico estrito rejeita boolean, object e whitespace (P2)', () => {
+    const report = parseExperimentReportRow(baseRow({ 
+      conversions: true,
+      clicks: [10],
+      impressions: '   ',
+      controlClicks: { a: 1 }
+    }), 50);
+    expect(report.treatment.conversions).toBe(0);
+    expect(report.treatment.clicks).toBe(0);
+    expect(report.treatment.impressions).toBe(0);
+    expect(report.control.clicks).toBe(0);
+  });
+
+  it('10b. targetClicks inválido falha fechado (P1)', () => {
+    const row = baseRow();
+    expect(() => parseExperimentReportRow(row, NaN)).toThrow(/targetClicks/);
+    expect(() => parseExperimentReportRow(row, Infinity)).toThrow(/targetClicks/);
+    expect(() => parseExperimentReportRow(row, 0)).toThrow(/targetClicks/);
+    expect(() => parseExperimentReportRow(row, -5)).toThrow(/targetClicks/);
+    expect(() => parseExperimentReportRow(row, 1.5)).toThrow(/targetClicks/);
+    expect(() => parseExperimentReportRow(row, '10' as any)).toThrow(/targetClicks/);
+  });
 });
 
 describe('validateFallbackArms', () => {
@@ -283,6 +307,45 @@ describe('fetchExperimentReport', () => {
     expect(report.feasibility).toBe('UNDERPOWERED'); // Mesmo com sample >= 50, sem estatística deve ser UNDERPOWERED
     expect(report.summary).toMatch(/Fallback de diagnóstico/);
   });
+
+  it('16a. fallback envia queries de recurso exatas sem backslash na string literal (P1 contract test)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ results: [] }))
+      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 40, conversions: 3 } }] }))
+      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 45, conversions: 5 } }] }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
+      targetClicks: 50,
+      fallbackCampaigns: {
+        controlCampaignResourceName: 'customers/1234567890/campaigns/111',
+        treatmentCampaignResourceName: 'customers/1234567890/campaigns/222',
+        experimentId: '999'
+      },
+    });
+
+    const call1 = JSON.parse(fetchSpy.mock.calls[1][1].body);
+    const call2 = JSON.parse(fetchSpy.mock.calls[2][1].body);
+    expect(call1.query).toContain("WHERE campaign.resource_name = 'customers/1234567890/campaigns/111'");
+    expect(call1.query).not.toContain("$");
+    expect(call2.query).toContain("WHERE campaign.resource_name = 'customers/1234567890/campaigns/222'");
+    expect(call2.query).not.toContain("$");
+  });
+
+  it('16b. fallback falha rápido com resource name inválido (P1)', async () => {
+    const fetchSpy = vi.fn().mockResolvedValueOnce(jsonResponse({ results: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
+      targetClicks: 50,
+      fallbackCampaigns: {
+        controlCampaignResourceName: 'invalido',
+        treatmentCampaignResourceName: 'customers/123/campaigns/222',
+        experimentId: '999'
+      },
+    })).rejects.toThrow(/Invalid campaign resource name format/);
+  });
 });
 
 describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
@@ -335,6 +398,31 @@ describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
     
     // Garante q payloads perigosos/gigantes sao sanitizados
     expect(call1Args.create.sourcePayload).toEqual({});
+  });
+});
+
+describe('sanitizeSourcePayload', () => {
+  it('19. sanitiza corretamente e remove segredos e chaves não autorizadas (P1)', () => {
+    const payload = {
+      experiment: { resourceName: 'res', experimentId: 'exp', status: 'ENABLED', secret: 'abc' },
+      metrics: { clicks: 10, developerToken: 'secret1', refreshToken: 'secret2', email: 'a@b.com' },
+      cookie: 'session=1',
+      authorization: 'Bearer token'
+    };
+    const sanitized = sanitizeSourcePayload(payload);
+    expect(sanitized).toEqual({
+      experiment: { resourceName: 'res', experimentId: 'exp', status: 'ENABLED' },
+      metrics: { clicks: 10 }
+    });
+  });
+
+  it('20. limita tamanho do payload e lida com tipos inesperados', () => {
+    expect(sanitizeSourcePayload(null)).toEqual({});
+    expect(sanitizeSourcePayload(true)).toEqual({});
+    
+    // huge payload
+    const huge = { metrics: { clicks: 10, impressions: 'a'.repeat(6000) } };
+    expect(sanitizeSourcePayload(huge)).toEqual({ error: 'Payload exceeds limit' });
   });
 });
 

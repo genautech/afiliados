@@ -67,17 +67,25 @@ interface RawExperimentReportRow {
   metrics?: Record<string, unknown>;
 }
 
+function parseStrictNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    if (value.trim() === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 function num(value: unknown): number {
-  if (value === '' || value === null || value === undefined) return 0;
-  const n = Number(value);
-  if (Number.isNaN(n) || !Number.isFinite(n) || n < 0) return 0;
+  const n = parseStrictNumber(value);
+  if (n === null || n < 0) return 0;
   return n;
 }
 
 function stat(value: unknown, isPValue = false, isMargin = false): number | null {
-  if (value === '' || value === null || value === undefined) return null;
-  const n = Number(value);
-  if (Number.isNaN(n) || !Number.isFinite(n)) return null;
+  const n = parseStrictNumber(value);
+  if (n === null) return null;
   if (isPValue && (n < 0 || n > 1)) return null;
   if (isMargin && n < 0) return null;
   return n;
@@ -97,8 +105,8 @@ function decideOutcome(
   conversionsPointEstimate: number | null,
   conversionsMarginOfError: number | null
 ): { feasibility: ExperimentReport['feasibility']; hasSignificantResult: boolean; summary: string } {
-  if (!Number.isInteger(targetClicks) || targetClicks < 1) {
-    targetClicks = 1;
+  if (typeof targetClicks !== 'number' || !Number.isInteger(targetClicks) || targetClicks < 1) {
+    throw new Error('targetClicks inválido');
   }
   
   if (conversionsPValue === null || conversionsPointEstimate === null || conversionsMarginOfError === null) {
@@ -288,10 +296,14 @@ async function fetchCampaignMetricPoint(
   config: GoogleAdsCredentials,
   campaignResourceName: string
 ): Promise<ExperimentMetricPoint> {
+  if (!/^customers\/\d+\/campaigns\/\d+$/.test(campaignResourceName)) {
+    throw new Error('Invalid campaign resource name format');
+  }
+
   const query = `
     SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value
     FROM campaign
-    WHERE campaign.resource_name = '\${campaignResourceName.replace(/'/g, "\\\\'")}'
+    WHERE campaign.resource_name = '${campaignResourceName}'
   `;
   const data = await googleAdsRequest(token, config, 'googleAds:search', { body: { query } });
   const m = data?.results?.[0]?.metrics ?? {};
@@ -434,8 +446,7 @@ export interface MetricSnapshotUpsertInput {
 }
 
 // Mapper puro pro shape de `GoogleAdsExperimentMetricSnapshot` (prisma/schema.prisma) — não
-// chama Prisma, não persiste nada. O upsert de verdade fica pra Tarefa 10, com
-// `@@unique([experimentId, snapshotDate])` garantindo idempotência por dia.
+// chama Prisma. A persistência real ocorre via função upsertMetricSnapshot logo abaixo.
 export function buildMetricSnapshotUpsertInput(
   dbExperimentId: string,
   snapshotDate: Date,
@@ -463,23 +474,41 @@ export function buildMetricSnapshotUpsertInput(
 export function sanitizeSourcePayload(raw: unknown): Record<string, unknown> {
   if (typeof raw !== 'object' || raw === null) return {};
   const safe: Record<string, unknown> = {};
-  const data = raw as any;
-  if (data.experiment && typeof data.experiment === 'object') {
+  const data = raw as Record<string, unknown>;
+
+  if (data.experiment && typeof data.experiment === 'object' && !Array.isArray(data.experiment)) {
+    const exp = data.experiment as Record<string, unknown>;
     safe.experiment = {
-      resourceName: data.experiment.resourceName,
-      experimentId: data.experiment.experimentId,
-      status: data.experiment.status,
+      resourceName: typeof exp.resourceName === 'string' ? exp.resourceName : undefined,
+      experimentId: typeof exp.experimentId === 'string' ? exp.experimentId : undefined,
+      status: typeof exp.status === 'string' ? exp.status : undefined,
     };
   }
-  if (data.metrics && typeof data.metrics === 'object') {
+
+  if (data.metrics && typeof data.metrics === 'object' && !Array.isArray(data.metrics)) {
     const safeMetrics: Record<string, unknown> = {};
-    for (const key of Object.keys(data.metrics)) {
-      if (typeof data.metrics[key] === 'number' || typeof data.metrics[key] === 'string') {
-        safeMetrics[key] = data.metrics[key];
+    const rawMetrics = data.metrics as Record<string, unknown>;
+    const allowlist = new Set([
+      'impressions', 'impressions_point_estimate', 'impressionsPointEstimate', 'impressions_margin_of_error', 'impressionsMarginOfError', 'impressions_p_value', 'impressionsPValue',
+      'control_impressions', 'controlImpressions', 'clicks', 'clicks_point_estimate', 'clicksPointEstimate', 'clicks_margin_of_error', 'clicksMarginOfError', 'clicks_p_value', 'clicksPValue',
+      'control_clicks', 'controlClicks', 'cost_micros', 'costMicros', 'cost_micros_change_point_estimate', 'costMicrosChangePointEstimate', 'cost_micros_margin_of_error', 'costMicrosMarginOfError',
+      'cost_micros_p_value', 'costMicrosPValue', 'control_cost_micros', 'controlCostMicros', 'conversions', 'conversions_absolute_change_point_estimate', 'conversionsAbsoluteChangePointEstimate',
+      'conversions_absolute_change_margin_of_error', 'conversionsAbsoluteChangeMarginOfError', 'conversions_absolute_change_p_value', 'conversionsAbsoluteChangePValue', 'control_conversions', 'controlConversions',
+      'conversions_value', 'conversionsValue', 'conversion_value_change_point_estimate', 'conversionValueChangePointEstimate', 'conversion_value_margin_of_error', 'conversionValueMarginOfError',
+      'conversion_value_p_value', 'conversionValuePValue', 'control_conversion_value', 'controlConversionValue'
+    ]);
+
+    for (const key of Object.keys(rawMetrics)) {
+      if (allowlist.has(key)) {
+        const val = rawMetrics[key];
+        if (typeof val === 'number' || typeof val === 'string') {
+          safeMetrics[key] = val;
+        }
       }
     }
     safe.metrics = safeMetrics;
   }
+
   const str = JSON.stringify(safe);
   if (str.length > 5000) return { error: 'Payload exceeds limit' };
   return safe;
