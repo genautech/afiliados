@@ -6,7 +6,8 @@
 // ser conferido contra a documentação atual da API antes do primeiro teste real (Tarefa 16).
 
 import { googleAdsRequest, isMockMode, type GoogleAdsCredentials } from './client';
-import { findAdGroupAdsInCampaign, updateAdFinalUrls } from './ads';
+import { assertMutationAllowed } from './mutation-guard';
+import { findAdGroupAdsInCampaign, updateAdFinalUrls, type AdGroupAdSummary } from './ads';
 import type { ExperimentStatus } from '../google-ads-experiments/types';
 
 export interface CreateExperimentInput {
@@ -26,6 +27,34 @@ export interface CreateExperimentResult {
   status: ExperimentStatus;
 }
 
+// Payload/parsing puros (sem rede/guard) — testáveis direto, separados da orquestração abaixo.
+export function buildCreateExperimentOperation(input: CreateExperimentInput) {
+  return {
+    create: {
+      name: input.name,
+      suffix: input.suffix,
+      type: input.type ?? 'SEARCH_CUSTOM',
+      status: 'SETUP' as const,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      syncEnabled: input.syncEnabled ?? true,
+    },
+  };
+}
+
+export function parseCreateExperimentResponse(data: any): CreateExperimentResult {
+  const resourceName: string | undefined = data?.results?.[0]?.resourceName;
+  if (!resourceName) {
+    throw new Error('Google Ads API não retornou resourceName pro Experiment criado.');
+  }
+  return {
+    mock: false,
+    resourceName,
+    googleExperimentId: resourceName.split('/').pop() ?? '',
+    status: 'SETUP',
+  };
+}
+
 // Cria o Experiment sempre em SETUP — nesse estado não veicula nem gasta (ver plano seção 1,
 // correção conceitual: SETUP != sandbox, só não serve anúncios ainda).
 export async function createExperiment(
@@ -43,35 +72,23 @@ export async function createExperiment(
     };
   }
 
+  const guard = assertMutationAllowed({
+    operation: 'createExperiment',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
   const data = await googleAdsRequest(token, config, 'experiments:mutate', {
     body: {
-      operations: [
-        {
-          create: {
-            name: input.name,
-            suffix: input.suffix,
-            type: input.type ?? 'SEARCH_CUSTOM',
-            status: 'SETUP',
-            startDate: input.startDate,
-            endDate: input.endDate,
-            syncEnabled: input.syncEnabled ?? true,
-          },
-        },
-      ],
+      operations: [buildCreateExperimentOperation(input)],
     },
   });
 
-  const resourceName: string | undefined = data?.results?.[0]?.resourceName;
-  if (!resourceName) {
-    throw new Error('Google Ads API não retornou resourceName pro Experiment criado.');
-  }
-
-  return {
-    mock: false,
-    resourceName,
-    googleExperimentId: resourceName.split('/').pop() ?? '',
-    status: 'SETUP',
-  };
+  return parseCreateExperimentResponse(data);
 }
 
 export interface ExperimentArmInput {
@@ -139,9 +156,35 @@ export async function createExperimentArms(
     }));
   }
 
-  const operations = input.arms.map((arm) => ({
+  const guard = assertMutationAllowed({
+    operation: 'createExperimentArms',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  const data = await googleAdsRequest(token, config, 'experimentArms:mutate', {
+    body: {
+      operations: buildCreateExperimentArmsOperations(input.experimentResourceName, input.arms),
+      partialFailure: false,
+      responseContentType: 'MUTABLE_RESOURCE',
+    },
+  });
+
+  return parseCreateExperimentArmsResponse(data, input.arms);
+}
+
+// Payload puro (sem rede/guard).
+export function buildCreateExperimentArmsOperations(
+  experimentResourceName: string,
+  arms: ExperimentArmInput[]
+) {
+  return arms.map((arm) => ({
     create: {
-      experiment: input.experimentResourceName,
+      experiment: experimentResourceName,
       name: arm.name,
       control: arm.isControl,
       trafficSplit: arm.trafficSplit,
@@ -150,24 +193,22 @@ export async function createExperimentArms(
         : {}),
     },
   }));
+}
 
-  const data = await googleAdsRequest(token, config, 'experimentArms:mutate', {
-    body: {
-      operations,
-      partialFailure: false,
-      responseContentType: 'MUTABLE_RESOURCE',
-    },
-  });
-
+// Parsing puro (sem rede/guard) da resposta MUTABLE_RESOURCE.
+export function parseCreateExperimentArmsResponse(
+  data: any,
+  arms: ExperimentArmInput[]
+): ExperimentArmResult[] {
   const results: any[] = data?.results ?? [];
-  if (results.length !== input.arms.length) {
+  if (results.length !== arms.length) {
     throw new Error(
-      `Google Ads API retornou ${results.length} resultado(s) pra ${input.arms.length} braço(s) enviados.`
+      `Google Ads API retornou ${results.length} resultado(s) pra ${arms.length} braço(s) enviados.`
     );
   }
 
   return results.map((result, i) => {
-    const arm = input.arms[i];
+    const arm = arms[i];
     const mutableResource = result?.experimentArm ?? {};
     const resourceName: string | undefined = mutableResource?.resourceName ?? result?.resourceName;
     if (!resourceName) {
@@ -274,22 +315,10 @@ export async function applyFinalUrlVariation(
   const adsAfter = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName, {
     includeDrafts: true,
   });
-  const afterByResourceName = new Map(adsAfter.map((ad) => [ad.resourceName, ad]));
+
+  const { adsModified, verified } = compareFinalUrlsAfterMutation(adsBefore, adsAfter, newFinalUrl);
 
   const warnings: string[] = [];
-  const adsModified = adsBefore.map((before) => {
-    const after = afterByResourceName.get(before.resourceName);
-    return {
-      resourceName: before.resourceName,
-      finalUrlBefore: before.finalUrls,
-      finalUrlAfter: after?.finalUrls ?? [],
-    };
-  });
-
-  const verified = adsModified.every(
-    (ad) => ad.finalUrlAfter.length === 1 && ad.finalUrlAfter[0] === newFinalUrl
-  );
-
   if (!verified) {
     warnings.push(
       'Releitura pós-mutação não confirmou finalUrls igual à variação esperada em todos os anúncios — não agendar até isso ser resolvido.'
@@ -303,4 +332,33 @@ export async function applyFinalUrlVariation(
     verified,
     warnings,
   };
+}
+
+// Comparação pura (sem rede) entre o estado antes/depois da mutação — é essa lógica que
+// decide `verified`, o núcleo da garantia da Tarefa 7 (Hermes review ponto 7). Separada da
+// orquestração acima pra ser testável direto com fixtures, sem precisar passar pelo guard.
+export function compareFinalUrlsAfterMutation(
+  adsBefore: AdGroupAdSummary[],
+  adsAfter: AdGroupAdSummary[],
+  expectedUrl: string
+): {
+  adsModified: ApplyFinalUrlVariationResult['adsModified'];
+  verified: boolean;
+} {
+  const afterByResourceName = new Map(adsAfter.map((ad) => [ad.resourceName, ad]));
+
+  const adsModified = adsBefore.map((before) => {
+    const after = afterByResourceName.get(before.resourceName);
+    return {
+      resourceName: before.resourceName,
+      finalUrlBefore: before.finalUrls,
+      finalUrlAfter: after?.finalUrls ?? [],
+    };
+  });
+
+  const verified = adsModified.every(
+    (ad) => ad.finalUrlAfter.length === 1 && ad.finalUrlAfter[0] === expectedUrl
+  );
+
+  return { adsModified, verified };
 }

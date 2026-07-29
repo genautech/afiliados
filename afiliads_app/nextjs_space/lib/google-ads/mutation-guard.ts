@@ -6,6 +6,9 @@ const KNOWN_OPERATIONS = [
   'createGoogleCampaign',
   'mutateGoogleCampaign.status',
   'mutateGoogleCampaign.budget',
+  'createExperiment',
+  'createExperimentArms',
+  'updateAdFinalUrls',
 ] as const;
 
 export type MutationGuardOperation = (typeof KNOWN_OPERATIONS)[number];

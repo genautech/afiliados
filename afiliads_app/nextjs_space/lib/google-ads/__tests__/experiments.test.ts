@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyFinalUrlVariation,
+  buildCreateExperimentArmsOperations,
+  buildCreateExperimentOperation,
+  compareFinalUrlsAfterMutation,
   createExperiment,
   createExperimentArms,
   getTreatmentInDesignCampaign,
+  parseCreateExperimentArmsResponse,
+  parseCreateExperimentResponse,
   type ExperimentArmInput,
 } from '@/lib/google-ads/experiments';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
+import type { AdGroupAdSummary } from '@/lib/google-ads/ads';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -54,37 +60,51 @@ describe('createExperiment', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('2. modo real envia o payload com status SETUP e os campos da entrada', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(
-      jsonResponse({
-        results: [{ resourceName: 'customers/1234567890/experiments/999' }],
-      })
-    );
+  it('2. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
+    const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
+    await expect(createExperiment('tok', realCredentials(), input)).rejects.toThrow(
+      /Mutação bloqueada pelo guard/
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
 
-    const result = await createExperiment('tok', realCredentials(), input);
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [, requestInit] = fetchSpy.mock.calls[0];
-    const body = JSON.parse(requestInit.body as string);
-    expect(body.operations).toHaveLength(1);
-    expect(body.operations[0].create).toMatchObject({
-      name: input.name,
-      suffix: input.suffix,
+// buildCreateExperimentOperation/parseCreateExperimentResponse são puros (sem rede/guard) —
+// cobrem o shape do payload/resposta que createExperiment monta internamente, já que o guard
+// (teste 2 acima) impede exercitar esse caminho via fetch real até a Tarefa 10 plugar
+// `confirmed` de verdade.
+describe('buildCreateExperimentOperation', () => {
+  it('3. monta o payload com status SETUP e os campos da entrada', () => {
+    const op = buildCreateExperimentOperation({
+      name: 'Teste presell A/B',
+      suffix: 'exp-1',
+      startDate: '2030-01-10',
+      endDate: '2030-01-20',
+    });
+    expect(op.create).toMatchObject({
+      name: 'Teste presell A/B',
+      suffix: 'exp-1',
       type: 'SEARCH_CUSTOM',
       status: 'SETUP',
-      startDate: input.startDate,
-      endDate: input.endDate,
+      startDate: '2030-01-10',
+      endDate: '2030-01-20',
+    });
+  });
+});
+
+describe('parseCreateExperimentResponse', () => {
+  it('4. extrai resourceName/googleExperimentId da resposta', () => {
+    const result = parseCreateExperimentResponse({
+      results: [{ resourceName: 'customers/1234567890/experiments/999' }],
     });
     expect(result.googleExperimentId).toBe('999');
     expect(result.resourceName).toBe('customers/1234567890/experiments/999');
+    expect(result.status).toBe('SETUP');
   });
 
-  it('3. lança erro se a API não devolver resourceName', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ results: [{}] })));
-    await expect(createExperiment('tok', realCredentials(), input)).rejects.toThrow(
-      /resourceName/
-    );
+  it('5. lança erro se a API não devolver resourceName', () => {
+    expect(() => parseCreateExperimentResponse({ results: [{}] })).toThrow(/resourceName/);
   });
 });
 
@@ -163,9 +183,45 @@ describe('createExperimentArms — modo mock', () => {
 });
 
 describe('createExperimentArms — modo real', () => {
-  it('9. envia os 2 braços NA MESMA request (1 única chamada fetch, 2 operations)', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(
-      jsonResponse({
+  it('9. sem GOOGLE_ADS_MUTATIONS_ENABLED é bloqueado pelo guard — zero fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      createExperimentArms('tok', realCredentials(), {
+        experimentResourceName: 'customers/1234567890/experiments/999',
+        arms: [controlArm(), treatmentArm()],
+      })
+    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// buildCreateExperimentArmsOperations/parseCreateExperimentArmsResponse são puros (sem
+// rede/guard) — cobrem o shape do payload MUTABLE_RESOURCE que createExperimentArms monta e
+// interpreta internamente, já que o guard (teste 9 acima) impede exercitar isso via fetch
+// real até a Tarefa 10 plugar `confirmed` de verdade.
+describe('buildCreateExperimentArmsOperations', () => {
+  it('10. gera 2 operations, controle com campaigns e tratamento sem', () => {
+    const ops = buildCreateExperimentArmsOperations('customers/1234567890/experiments/999', [
+      controlArm(),
+      treatmentArm(),
+    ]);
+    expect(ops).toHaveLength(2);
+    expect(ops[0].create).toMatchObject({
+      control: true,
+      campaigns: ['customers/1234567890/campaigns/111'],
+    });
+    expect(ops[1].create).toMatchObject({ control: false });
+    expect((ops[1].create as any).campaigns).toBeUndefined();
+  });
+});
+
+describe('parseCreateExperimentArmsResponse', () => {
+  const arms: ExperimentArmInput[] = [controlArm(), treatmentArm()];
+
+  it('11. captura inDesignCampaigns do MUTABLE_RESOURCE só pro braço de tratamento', () => {
+    const result = parseCreateExperimentArmsResponse(
+      {
         results: [
           {
             experimentArm: {
@@ -180,68 +236,23 @@ describe('createExperimentArms — modo real', () => {
             },
           },
         ],
-      })
+      },
+      arms
     );
-    vi.stubGlobal('fetch', fetchSpy);
 
-    await createExperimentArms('tok', realCredentials(), {
-      experimentResourceName: 'customers/1234567890/experiments/999',
-      arms: [controlArm(), treatmentArm()],
-    });
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [, requestInit] = fetchSpy.mock.calls[0];
-    const body = JSON.parse(requestInit.body as string);
-    expect(body.operations).toHaveLength(2);
-    expect(body.partialFailure).toBe(false);
-    expect(body.responseContentType).toBe('MUTABLE_RESOURCE');
+    expect(result[0].inDesignCampaignResourceName).toBeNull();
+    expect(result[0].servedCampaignResourceName).toBe('customers/1234567890/campaigns/111');
+    expect(result[1].inDesignCampaignResourceName).toBe('customers/1234567890/campaigns/555');
+    expect(result[1].servedCampaignResourceName).toBeNull();
   });
 
-  it('10. captura inDesignCampaigns do MUTABLE_RESOURCE só pro braço de tratamento', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        jsonResponse({
-          results: [
-            {
-              experimentArm: {
-                resourceName: 'customers/1234567890/experiments/999/experimentArms/1',
-                inDesignCampaigns: [],
-              },
-            },
-            {
-              experimentArm: {
-                resourceName: 'customers/1234567890/experiments/999/experimentArms/2',
-                inDesignCampaigns: ['customers/1234567890/campaigns/555'],
-              },
-            },
-          ],
-        })
+  it('12. lança erro se a API devolver número de resultados diferente do número de braços enviados', () => {
+    expect(() =>
+      parseCreateExperimentArmsResponse(
+        { results: [{ experimentArm: { resourceName: 'x' } }] },
+        arms
       )
-    );
-
-    const arms = await createExperimentArms('tok', realCredentials(), {
-      experimentResourceName: 'customers/1234567890/experiments/999',
-      arms: [controlArm(), treatmentArm()],
-    });
-
-    expect(arms[0].inDesignCampaignResourceName).toBeNull();
-    expect(arms[0].servedCampaignResourceName).toBe('customers/1234567890/campaigns/111');
-    expect(arms[1].inDesignCampaignResourceName).toBe('customers/1234567890/campaigns/555');
-    expect(arms[1].servedCampaignResourceName).toBeNull();
-  });
-
-  it('11. lança erro se a API devolver número de resultados diferente do número de braços enviados', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ results: [{ experimentArm: { resourceName: 'x' } }] }))
-    );
-    await expect(
-      createExperimentArms('tok', realCredentials(), {
-        experimentResourceName: 'customers/1234567890/experiments/999',
-        arms: [controlArm(), treatmentArm()],
-      })
-    ).rejects.toThrow(/resultado/);
+    ).toThrow(/resultado/);
   });
 });
 
@@ -335,59 +346,7 @@ describe('applyFinalUrlVariation', () => {
     expect(result.adsModified[0].finalUrlAfter).toEqual([NEW_URL]);
   });
 
-  it('16. modo real: acha ad -> muta -> relê, e confirma finalUrls igual à variação (verified=true)', async () => {
-    const fetchSpy = vi
-      .fn()
-      // 1ª chamada: find (antes)
-      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
-      // 2ª chamada: mutate
-      .mockResolvedValueOnce(
-        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
-      )
-      // 3ª chamada: find (depois, releitura)
-      .mockResolvedValueOnce(adSearchResponse(NEW_URL));
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const result = await applyFinalUrlVariation(
-      'tok',
-      realCredentials(),
-      TREATMENT_CAMPAIGN,
-      NEW_URL
-    );
-
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(result.verified).toBe(true);
-    expect(result.warnings).toHaveLength(0);
-    expect(result.adsModified[0]).toEqual({
-      resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1`,
-      finalUrlBefore: ['https://example.com/url-antiga'],
-      finalUrlAfter: [NEW_URL],
-    });
-  });
-
-  it('17. releitura NÃO confirma a mudança -> verified=false com warning (não confia só no HTTP 200)', async () => {
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
-      .mockResolvedValueOnce(
-        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
-      )
-      // releitura devolve a URL ANTIGA ainda — mutate "funcionou" (200) mas não vingou de verdade
-      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'));
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const result = await applyFinalUrlVariation(
-      'tok',
-      realCredentials(),
-      TREATMENT_CAMPAIGN,
-      NEW_URL
-    );
-
-    expect(result.verified).toBe(false);
-    expect(result.warnings.length).toBeGreaterThan(0);
-  });
-
-  it('18. nenhum anúncio encontrado no treatment -> lança erro, nunca chega a mutar nada', async () => {
+  it('16. nenhum anúncio encontrado no treatment -> lança erro, nunca chega a mutar nada', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
     vi.stubGlobal('fetch', fetchSpy);
 
@@ -397,21 +356,59 @@ describe('applyFinalUrlVariation', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1); // só a busca, nenhum mutate tentado
   });
 
-  it('19. a busca de anúncios usa includeDrafts=true (campanha em design só aparece assim)', async () => {
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
-      .mockResolvedValueOnce(
-        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
-      )
-      .mockResolvedValueOnce(adSearchResponse(NEW_URL));
+  it('17. achou anúncio mas mutate real é bloqueado pelo guard (sem GOOGLE_ADS_MUTATIONS_ENABLED) — só 1 fetch (a busca), nunca releitura', async () => {
+    const fetchSpy = vi.fn().mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'));
     vi.stubGlobal('fetch', fetchSpy);
 
-    await applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL);
+    await expect(
+      applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL)
+    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
 
     const [, firstCallInit] = fetchSpy.mock.calls[0];
     const firstBody = JSON.parse(firstCallInit.body as string);
     expect(firstBody.includeDrafts).toBe(true);
     expect(firstBody.query).toContain(TREATMENT_CAMPAIGN);
+  });
+});
+
+// compareFinalUrlsAfterMutation é a lógica pura (sem rede/guard) que decide `verified` — o
+// núcleo da garantia da Tarefa 7 (Hermes review ponto 7: "HTTP 200 não é o único critério").
+// Coberta direto com fixtures, já que o guard (teste 17 acima) impede reproduzir o fluxo
+// completo mutate->relê via fetch real até a Tarefa 10.
+describe('compareFinalUrlsAfterMutation', () => {
+  const AD = `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1`;
+
+  function ad(finalUrls: string[]): AdGroupAdSummary {
+    return { resourceName: AD, adGroupResourceName: `${TREATMENT_CAMPAIGN}/adGroups/1`, finalUrls };
+  }
+
+  it('18. releitura confirma a URL esperada -> verified=true', () => {
+    const result = compareFinalUrlsAfterMutation(
+      [ad(['https://example.com/url-antiga'])],
+      [ad([NEW_URL])],
+      NEW_URL
+    );
+    expect(result.verified).toBe(true);
+    expect(result.adsModified[0]).toEqual({
+      resourceName: AD,
+      finalUrlBefore: ['https://example.com/url-antiga'],
+      finalUrlAfter: [NEW_URL],
+    });
+  });
+
+  it('19. releitura NÃO confirma (URL antiga ainda) -> verified=false, mesmo com "sucesso" no mutate', () => {
+    const result = compareFinalUrlsAfterMutation(
+      [ad(['https://example.com/url-antiga'])],
+      [ad(['https://example.com/url-antiga'])],
+      NEW_URL
+    );
+    expect(result.verified).toBe(false);
+  });
+
+  it('20. anúncio sumiu na releitura (não achado no "depois") -> verified=false', () => {
+    const result = compareFinalUrlsAfterMutation([ad(['https://example.com/url-antiga'])], [], NEW_URL);
+    expect(result.verified).toBe(false);
+    expect(result.adsModified[0].finalUrlAfter).toEqual([]);
   });
 });

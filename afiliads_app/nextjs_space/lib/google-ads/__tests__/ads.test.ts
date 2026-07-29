@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findAdGroupAdsInCampaign, updateAdFinalUrls } from '@/lib/google-ads/ads';
+import {
+  buildUpdateAdFinalUrlsOperation,
+  findAdGroupAdsInCampaign,
+  parseUpdateAdFinalUrlsResponse,
+  updateAdFinalUrls,
+} from '@/lib/google-ads/ads';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
@@ -115,24 +120,43 @@ describe('updateAdFinalUrls', () => {
     expect(result.finalUrls).toEqual(['https://example.com/nova']);
   });
 
-  it('7. modo real manda updateMask restrito a ad.final_urls, sem tocar outros campos', async () => {
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ results: [{ resourceName: 'ad/1' }] }));
+  it('7. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
+    const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    await updateAdFinalUrls('tok', realCredentials(), 'ad/1', ['https://example.com/nova']);
-
-    const [, requestInit] = fetchSpy.mock.calls[0];
-    const body = JSON.parse(requestInit.body as string);
-    expect(body.operations[0].updateMask).toBe('ad.final_urls');
-    expect(body.operations[0].update.ad.finalUrls).toEqual(['https://example.com/nova']);
-    expect(body.operations[0].update.resourceName).toBe('ad/1');
-  });
-
-  it('8. lança erro se a API não confirmar resourceName na resposta', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ results: [{}] })));
     await expect(
       updateAdFinalUrls('tok', realCredentials(), 'ad/1', ['https://example.com/nova'])
-    ).rejects.toThrow(/não confirmou/);
+    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// buildUpdateAdFinalUrlsOperation/parseUpdateAdFinalUrlsResponse são puros (sem rede/guard) —
+// cobrem o shape do payload/resposta que updateAdFinalUrls monta internamente, já que o guard
+// (teste 7 acima) impede exercitar esse caminho via fetch real até a Tarefa 10 plugar
+// `confirmed` de verdade.
+describe('buildUpdateAdFinalUrlsOperation', () => {
+  it('8. monta updateMask restrito a ad.final_urls, sem tocar outros campos', () => {
+    const op = buildUpdateAdFinalUrlsOperation('ad/1', ['https://example.com/nova']);
+    expect(op).toEqual({
+      update: { resourceName: 'ad/1', ad: { finalUrls: ['https://example.com/nova'] } },
+      updateMask: 'ad.final_urls',
+    });
+  });
+});
+
+describe('parseUpdateAdFinalUrlsResponse', () => {
+  it('9. devolve resourceName + finalUrls quando a API confirma', () => {
+    const result = parseUpdateAdFinalUrlsResponse(
+      { results: [{ resourceName: 'ad/1' }] },
+      'ad/1',
+      ['https://example.com/nova']
+    );
+    expect(result).toEqual({ resourceName: 'ad/1', finalUrls: ['https://example.com/nova'] });
+  });
+
+  it('10. lança erro se a API não confirmar resourceName na resposta', () => {
+    expect(() =>
+      parseUpdateAdFinalUrlsResponse({ results: [{}] }, 'ad/1', ['https://example.com/nova'])
+    ).toThrow(/não confirmou/);
   });
 });

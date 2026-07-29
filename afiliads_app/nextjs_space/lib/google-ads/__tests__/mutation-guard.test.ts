@@ -75,6 +75,16 @@ describe('assertMutationAllowed', () => {
     expect(result).toEqual({ allowed: true });
   });
 
+  it('7b. operações de experimento (Tarefas 6/7) também estão na allowlist de operações conhecidas', () => {
+    process.env.GOOGLE_ADS_MUTATIONS_ENABLED = 'true';
+    process.env.GOOGLE_ADS_MUTATION_ALLOWLIST = '1112223333';
+    for (const operation of ['createExperiment', 'createExperimentArms', 'updateAdFinalUrls']) {
+      expect(assertMutationAllowed(input({ confirmed: true, operation }))).toEqual({
+        allowed: true,
+      });
+    }
+  });
+
   it('8. parser de allowlist trata espaços, string vazia e duplicatas', () => {
     process.env.GOOGLE_ADS_MUTATIONS_ENABLED = 'true';
     process.env.GOOGLE_ADS_MUTATION_ALLOWLIST = ' 1112223333 , , 1112223333 ,4445556666';

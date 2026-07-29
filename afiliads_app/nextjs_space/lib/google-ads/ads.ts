@@ -5,6 +5,7 @@
 // resposta real da API — só contra mocks que o próprio código define.
 
 import { googleAdsRequest, isMockMode, type GoogleAdsCredentials } from './client';
+import { assertMutationAllowed } from './mutation-guard';
 
 export interface AdGroupAdSummary {
   resourceName: string;
@@ -61,6 +62,31 @@ export interface UpdateAdFinalUrlsResult {
   finalUrls: string[];
 }
 
+// Payload puro (sem rede/guard) — testável direto, separado da orquestração abaixo.
+export function buildUpdateAdFinalUrlsOperation(adResourceName: string, finalUrls: string[]) {
+  return {
+    update: {
+      resourceName: adResourceName,
+      ad: { finalUrls },
+    },
+    updateMask: 'ad.final_urls',
+  };
+}
+
+export function parseUpdateAdFinalUrlsResponse(
+  data: any,
+  adResourceName: string,
+  finalUrls: string[]
+): UpdateAdFinalUrlsResult {
+  const resultResourceName: string | undefined = data?.results?.[0]?.resourceName;
+  if (!resultResourceName) {
+    throw new Error(
+      `Google Ads API não confirmou a atualização de finalUrls em ${adResourceName}.`
+    );
+  }
+  return { resourceName: resultResourceName, finalUrls };
+}
+
 // `final_urls` é um dos poucos campos de Ad mutáveis depois de criado (a maioria dos outros
 // campos de Ad são imutáveis na API) — atualiza via ad_group_ad:mutate com updateMask
 // restrito a ad.final_urls, sem tocar em headlines/descriptions/status.
@@ -74,26 +100,21 @@ export async function updateAdFinalUrls(
     return { resourceName: adResourceName, finalUrls };
   }
 
+  const guard = assertMutationAllowed({
+    operation: 'updateAdFinalUrls',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
   const data = await googleAdsRequest(token, config, 'adGroupAds:mutate', {
     body: {
-      operations: [
-        {
-          update: {
-            resourceName: adResourceName,
-            ad: { finalUrls },
-          },
-          updateMask: 'ad.final_urls',
-        },
-      ],
+      operations: [buildUpdateAdFinalUrlsOperation(adResourceName, finalUrls)],
     },
   });
 
-  const resultResourceName: string | undefined = data?.results?.[0]?.resourceName;
-  if (!resultResourceName) {
-    throw new Error(
-      `Google Ads API não confirmou a atualização de finalUrls em ${adResourceName}.`
-    );
-  }
-
-  return { resourceName: resultResourceName, finalUrls };
+  return parseUpdateAdFinalUrlsResponse(data, adResourceName, finalUrls);
 }
