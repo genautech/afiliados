@@ -22,8 +22,15 @@ por padrão, **nunca executado**). 28 testes novos, todos offline. Campos-protó
 limpo. Os 4 `fetch()` diretos dentro de `mutateGoogleCampaign`/`createGoogleCampaign`/
 `fetchGoogleCampaign`/`fetchGoogleAdsKeywordMetrics` continuam como estavam (não migrados pro
 `googleAdsRequest()` novo — decisão deliberada, ver seção 1.2 do plano). 50 testes no total.
-Próxima: Tarefa 5 (domínio/budget determinístico, Zod schemas) — se for continuar, ler a
-seção 1.2 do plano antes (decisões de nomenclatura/schema já tomadas, não redecidir).
+
+**Atualização mesma sessão (~10h) — Tarefa 5 concluída (`6ffa292`):**
+`lib/google-ads-experiments/types.ts` (status/variação/feasibility/ação canônicos, `as const`)
++ `schemas.ts` (7 contratos Zod — draft, arms com split derivado 100-treatment, aplicar
+variação, schedule exigindo `treatmentModified: true`, ações END/PROMOTE/GRADUATE, sync
+result, report) + `lib/experiment-budget.ts` (`calculateExperimentBudget()` determinístico,
+LLM nunca decide o valor). 86 testes no total. Próxima: Tarefa 6 (criar Experiment + arms na
+API real, mock primeiro) — se for continuar, ler a seção 1.2 do plano antes (decisões de
+nomenclatura/schema já tomadas, não redecidir).
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
