@@ -37,7 +37,7 @@ export type ReadinessDependencies = {
   findCampaign: (id: string, userId: string) => Promise<ReadinessCampaign | null>;
   findChecklists: (campaignId: string) => Promise<ReadinessChecklist[]>;
   getAdsConfig: (userId: string) => Promise<ReadinessAdsConfig | null>;
-  findProduct: (productId: string) => Promise<any | null>;
+  findProduct: (productId: string) => Promise<Parameters<typeof getForbiddenAdTerms>[0] | null>;
 };
 
 export type ReadinessResult = {
@@ -51,7 +51,7 @@ export type ReadinessResult = {
     finalUrl: string;
     keywords: Array<{ text: string; matchType: 'EXACT' | 'PHRASE' | 'BROAD' }>;
     forbiddenTerms: string[];
-    selectedKeywords: any[];
+    selectedKeywords: ReadinessKeyword[];
   };
 };
 

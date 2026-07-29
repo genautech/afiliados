@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       googleCampaignId: result.googleCampaignId,
       googleAdGroupId: result.googleAdGroupId,
       logs: result.logs,
+      warnings: readiness.warnings,
     });
   } catch (err: any) {
     console.error('Google Ads create error:', err);

@@ -48,7 +48,7 @@ describe('POST /api/google-ads/create', () => {
 
   it('passes PREPARE readiness and creates campaign if valid', async () => {
     (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', keywords: [] });
-    
+
     // Readiness succeeds in PREPARE mode
     (checkGoogleAdsReadiness as any).mockResolvedValue({
       ready: true,
@@ -78,6 +78,7 @@ describe('POST /api/google-ads/create', () => {
 
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
+    expect(json.warnings).toEqual(['warning URL']);
     expect(checkGoogleAdsReadiness).toHaveBeenCalledWith('c1', 'u1', 'PREPARE', expect.any(Object));
     expect(createGoogleCampaign).toHaveBeenCalled();
     expect(generateRsaCopy).not.toHaveBeenCalled();
@@ -85,7 +86,7 @@ describe('POST /api/google-ads/create', () => {
 
   it('blocks before createGoogleCampaign if readiness fails', async () => {
     (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', keywords: [] });
-    
+
     // Readiness fails
     (checkGoogleAdsReadiness as any).mockResolvedValue({
       ready: false,

@@ -105,7 +105,7 @@ describe('checkGoogleAdsReadiness', () => {
         keywords: [{ keyword: 'femicore scam', isSelected: true }],
         productResearchId: 'p1',
       }),
-      findProduct: async () => ({ id: 'p1', name: 'FemiCore' }),
+      findProduct: async () => ({ id: 'p1', name: 'FemiCore' } as any),
     });
     expect(res.ready).toBe(false);
     expect(res.errors.join(' ')).toContain('Brand bidding proibido pelo vendor');
