@@ -13,8 +13,16 @@ fica bloqueada até alguma rota passar `confirmed: true`, o que ainda não acont
 `MetricSnapshot` — + `migration.sql` escrito à mão em `prisma/migrations/` **não aplicado a
 nenhum banco** + backfill idempotente em `scripts/backfill-google-ads-experiments.ts`, dry-run
 por padrão, **nunca executado**). 28 testes novos, todos offline. Campos-protótipo legado em
-`Campaign` (`isExperiment`/`experimentId`/...) preservados intocados. Próxima: Tarefa 4
-(cliente Google Ads compartilhado, `lib/google-ads/client.ts`) — se for continuar, ler a
+`Campaign` (`isExperiment`/`experimentId`/...) preservados intocados.
+
+**Atualização mesma sessão (~09h) — Tarefa 4 concluída (`258a5f9`):** `lib/google-ads/client.ts`
+(versão da API centralizada via env, headers/MCC, OAuth2, `isMockMode`, `toAmountMicros`) +
+`lib/google-ads/errors.ts` (erro tipado com redação de segredo) extraídos de
+`lib/google-ads.ts`, que agora só importa — mesmo comportamento público, `npm run build`
+limpo. Os 4 `fetch()` diretos dentro de `mutateGoogleCampaign`/`createGoogleCampaign`/
+`fetchGoogleCampaign`/`fetchGoogleAdsKeywordMetrics` continuam como estavam (não migrados pro
+`googleAdsRequest()` novo — decisão deliberada, ver seção 1.2 do plano). 50 testes no total.
+Próxima: Tarefa 5 (domínio/budget determinístico, Zod schemas) — se for continuar, ler a
 seção 1.2 do plano antes (decisões de nomenclatura/schema já tomadas, não redecidir).
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
