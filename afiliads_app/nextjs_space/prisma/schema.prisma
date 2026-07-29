@@ -9,36 +9,37 @@ datasource db {
 }
 
 model User {
-  id                String                @id @default(cuid())
-  name              String?
-  email             String                @unique
-  emailVerified     DateTime?
-  image             String?
-  password          String?
-  role              String                @default("USER") // USER | ADMIN
-  isActive          Boolean               @default(true)
-  metaReceitaMensal Float                 @default(0)
-  metaRoi           Float                 @default(0)
-  budgetMensalAds   Float                 @default(0)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  accounts          Account[]
-  sessions          Session[]
-  campaigns         Campaign[]
-  dailyLogs         DailyLog[]
-  keywords          Keyword[]
-  decisions         CampaignDecision[]
-  integrations      Integration[]
-  kbSearches        KnowledgeBaseSearch[]
-  offers            Offer[]
-  testResults       TestResult[]
-  atpSearches       AtpSearch[]
-  productResearch   ProductResearch[]
-  agentRuns         AgentRun[]
-  Presell           Presell[]
-  usagePayments     UsagePayment[]
+  id                   String                @id @default(cuid())
+  name                 String?
+  email                String                @unique
+  emailVerified        DateTime?
+  image                String?
+  password             String?
+  role                 String                @default("USER") // USER | ADMIN
+  isActive             Boolean               @default(true)
+  metaReceitaMensal    Float                 @default(0)
+  metaRoi              Float                 @default(0)
+  budgetMensalAds      Float                 @default(0)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  accounts             Account[]
+  sessions             Session[]
+  campaigns            Campaign[]
+  dailyLogs            DailyLog[]
+  keywords             Keyword[]
+  decisions            CampaignDecision[]
+  integrations         Integration[]
+  kbSearches           KnowledgeBaseSearch[]
+  offers               Offer[]
+  testResults          TestResult[]
+  atpSearches          AtpSearch[]
+  productResearch      ProductResearch[]
+  agentRuns            AgentRun[]
+  Presell              Presell[]
+  usagePayments        UsagePayment[]
   marketIntelSnapshots MarketIntelSnapshot[]
   checklistLearnings   ChecklistLearning[]
+  googleAdsExperiments GoogleAdsExperiment[]
 }
 
 model Account {
@@ -76,7 +77,7 @@ model VerificationToken {
 }
 
 model Campaign {
-  id                    String              @id @default(cuid())
+  id                    String    @id @default(cuid())
   userId                String
   productResearchId     String?
   name                  String
@@ -84,27 +85,27 @@ model Campaign {
   vertical              String
   geo                   String
   channel               String
-  funnel                String              @default("BRIDGE")
-  status                String              @default("EM_TESTE")
-  offerUrl              String?             @db.Text
-  commission            Float               @default(0)
-  refundPct             Float               @default(0)
-  aov                   Float               @default(0)
-  cvrExpected           Float               @default(1.0)
-  commissionNet         Float               @default(0)
-  epcBreakeven          Float               @default(0)
-  cpcMax                Float               @default(0)
-  cpcScale              Float               @default(0)
-  presellUrl            String?             @db.Text
+  funnel                String    @default("BRIDGE")
+  status                String    @default("EM_TESTE")
+  offerUrl              String?   @db.Text
+  commission            Float     @default(0)
+  refundPct             Float     @default(0)
+  aov                   Float     @default(0)
+  cvrExpected           Float     @default(1.0)
+  commissionNet         Float     @default(0)
+  epcBreakeven          Float     @default(0)
+  cpcMax                Float     @default(0)
+  cpcScale              Float     @default(0)
+  presellUrl            String?   @db.Text
   presellGeneratedAt    DateTime?
-  flowpageUrl           String?             @db.Text
+  flowpageUrl           String?   @db.Text
   hostingerDomain       String?
-  budgetTest            Float               @default(50)
-  budgetDaily           Float               @default(0)
-  testDuration          String              @default("72h")
-  budgetScale           Float               @default(0)
+  budgetTest            Float     @default(50)
+  budgetDaily           Float     @default(0)
+  testDuration          String    @default("72h")
+  budgetScale           Float     @default(0)
   campaignNameGenerated String?
-  utmString             String?             @db.Text
+  utmString             String?   @db.Text
   googleCampaignName    String?
   googleCampaignId      String?
   googleAdGroupId       String?
@@ -112,31 +113,43 @@ model Campaign {
   bidStrategy           String?
   utmCampaign           String?
   qualityScoreNotes     String?
-  postbackUrl           String?             @db.Text
+  postbackUrl           String?   @db.Text
   clickidToken          String?
-  presellHtml           String?             @db.Text
-  pageType              String              @default("advertorial")
-  popupGate             Boolean             @default(false)
-  videoUrl              String?             @db.Text
-  wizardStep            Int                 @default(1)
-  wizardCompleted       Boolean             @default(false)
-  loopEnabled           Boolean             @default(false)
-  loopInterval          String              @default("24h")
-  loopAgents            String              @default("ads,compliance")
+  presellHtml           String?   @db.Text
+  pageType              String    @default("advertorial")
+  popupGate             Boolean   @default(false)
+  videoUrl              String?   @db.Text
+  wizardStep            Int       @default(1)
+  wizardCompleted       Boolean   @default(false)
+  loopEnabled           Boolean   @default(false)
+  loopInterval          String    @default("24h")
+  loopAgents            String    @default("ads,compliance")
   lastLoopRunAt         DateTime?
   launchedAt            DateTime?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productResearch       ProductResearch?    @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
-  checklists            CampaignChecklist[]
-  keywords              Keyword[]
-  dailyLogs             DailyLog[]
-  decisions             CampaignDecision[]
-  atpSearches           AtpSearch[]
-  loopRuns              LoopRun[]
+
+  // Metadados de Experimentos A/B (Google Ads Experiments)
+  isExperiment             Boolean @default(false)
+  experimentId             String?
+  experimentStatus         String? // SETUP | SCHEDULED | RUNNING | PROMOTED | GRADUATED | ENDED
+  experimentTrafficSplit   Int     @default(50)
+  baseCampaignId           String?
+  googleTrialCampaignId    String?
+  experimentVariationType  String? // PRESELL | ADS_COPY | BID_STRATEGY
+  experimentVariationValue String? @db.Text
+
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
+  user                      User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productResearch           ProductResearch?                   @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+  checklists                CampaignChecklist[]
+  keywords                  Keyword[]
+  dailyLogs                 DailyLog[]
+  decisions                 CampaignDecision[]
+  atpSearches               AtpSearch[]
+  loopRuns                  LoopRun[]
   bridgePageRecommendations BridgePageStrategyRecommendation[]
-  presells              Presell[]
+  presells                  Presell[]
+  googleAdsExperiments      GoogleAdsExperiment[]
 
   @@index([userId, status])
   @@index([userId, platform])
@@ -403,57 +416,57 @@ enum BridgePageType {
 }
 
 model ProductResearch {
-  id                      String                    @id @default(cuid())
-  userId                  String
-  name                    String
-  network                 String                    @default("clickbank")
-  vertical                String                    @default("")
-  gravity                 Float?
-  avgPayout               Float?
-  commissionPct           String                    @default("")
-  conversionRate          String                    @default("")
-  rebill                  Boolean                   @default(false)
-  score                   Int                       @default(0)
-  riskLevel               String                    @default("medio")
-  source                  String                    @default("ia")
-  summary                 String?                   @db.Text
-  tags                    Json?
-  keywords                Json?
-  strategy                Json?
-  compliance              Json?
-  hopLink                 String?                   @db.Text
-  affiliatePageUrl        String?                   @db.Text
-  assetsUrl               String?                   @db.Text
-  vendorPageUrl           String?                   @db.Text
-  affiliateInsights       Json?
-  status                  String                    @default("novo")
-  chosenKeyword           String                    @default("")
-  salesPageType           SalesPageType?
-  avgConversionRate       Float?
-  avgEpc                  Float?
-  confirmedAt             DateTime?
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime                  @updatedAt
-  user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns               Campaign[]
+  id                        String                             @id @default(cuid())
+  userId                    String
+  name                      String
+  network                   String                             @default("clickbank")
+  vertical                  String                             @default("")
+  gravity                   Float?
+  avgPayout                 Float?
+  commissionPct             String                             @default("")
+  conversionRate            String                             @default("")
+  rebill                    Boolean                            @default(false)
+  score                     Int                                @default(0)
+  riskLevel                 String                             @default("medio")
+  source                    String                             @default("ia")
+  summary                   String?                            @db.Text
+  tags                      Json?
+  keywords                  Json?
+  strategy                  Json?
+  compliance                Json?
+  hopLink                   String?                            @db.Text
+  affiliatePageUrl          String?                            @db.Text
+  assetsUrl                 String?                            @db.Text
+  vendorPageUrl             String?                            @db.Text
+  affiliateInsights         Json?
+  status                    String                             @default("novo")
+  chosenKeyword             String                             @default("")
+  salesPageType             SalesPageType?
+  avgConversionRate         Float?
+  avgEpc                    Float?
+  confirmedAt               DateTime?
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
+  user                      User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns                 Campaign[]
   bridgePageRecommendations BridgePageStrategyRecommendation[]
-  marketIntelSnapshots    MarketIntelSnapshot[]
+  marketIntelSnapshots      MarketIntelSnapshot[]
 
   @@unique([userId, name])
   @@index([userId])
 }
 
 model BridgePageStrategyRecommendation {
-  id                String         @id @default(cuid())
-  productId         String
-  campaignId        String?
-  recommendedType   BridgePageType
-  reasoning         String         @db.Text
-  confidenceScore   Float
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  productResearch   ProductResearch @relation(fields: [productId], references: [id], onDelete: Cascade)
-  campaign          Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  id              String          @id @default(cuid())
+  productId       String
+  campaignId      String?
+  recommendedType BridgePageType
+  reasoning       String          @db.Text
+  confidenceScore Float
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  productResearch ProductResearch @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaign        Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   @@index([productId])
   @@index([campaignId])
@@ -463,56 +476,56 @@ model BridgePageStrategyRecommendation {
 // nunca guarda texto pra copiar literal, só padrões estruturais de referência (mesma disciplina
 // de elementosPresellReferencia em lib/presell.ts).
 model MarketIntelSnapshot {
-  id            String   @id @default(cuid())
-  userId        String
-  productId     String?
-  vertical      String
-  query         String   @db.Text
-  angles        Json?
-  pageTypesSeen Json?
-  sources       Json?
-  fetchedAt     DateTime @default(now())
-  createdAt     DateTime @default(now())
+  id              String           @id @default(cuid())
+  userId          String
+  productId       String?
+  vertical        String
+  query           String           @db.Text
+  angles          Json?
+  pageTypesSeen   Json?
+  sources         Json?
+  fetchedAt       DateTime         @default(now())
+  createdAt       DateTime         @default(now())
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productResearch  ProductResearch? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productResearch ProductResearch? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([productId])
 }
 
 model Presell {
-  id          String   @id @default(cuid())
-  userId      String
-  productId   String?
-  campaignId  String?
-  slug        String   @unique
-  title       String
-  productName String
-  hopLink     String   @db.Text
-  trackingId  String   @default("")
-  angle       String   @default("review")
-  pageType    String   @default("advertorial")
-  popupGate   Boolean  @default(false)
-  videoUrl    String   @default("")
-  customCode  String   @default("") @db.Text
-  variantGroupId String? @db.Text
-  geo         String   @default("US")
-  language    String   @default("en")
-  html        String   @db.Text
-  content     Json?
-  status      String   @default("rascunho")
-  views       Int      @default(0)
-  ctaClicks   Int      @default(0)
-  googleAdsId String   @default("")
-  publishTarget String @default("railway")
-  wpDomain      String @default("")
-  publishedUrl  String @default("")
+  id               String    @id @default(cuid())
+  userId           String
+  productId        String?
+  campaignId       String?
+  slug             String    @unique
+  title            String
+  productName      String
+  hopLink          String    @db.Text
+  trackingId       String    @default("")
+  angle            String    @default("review")
+  pageType         String    @default("advertorial")
+  popupGate        Boolean   @default(false)
+  videoUrl         String    @default("")
+  customCode       String    @default("") @db.Text
+  variantGroupId   String?   @db.Text
+  geo              String    @default("US")
+  language         String    @default("en")
+  html             String    @db.Text
+  content          Json?
+  status           String    @default("rascunho")
+  views            Int       @default(0)
+  ctaClicks        Int       @default(0)
+  googleAdsId      String    @default("")
+  publishTarget    String    @default("railway")
+  wpDomain         String    @default("")
+  publishedUrl     String    @default("")
   complianceScore  Int?
   complianceIssues Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign         Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([campaignId])
@@ -535,6 +548,122 @@ model ChecklistLearning {
 
   @@index([userId, itemKey])
   @@index([vertical, channel])
+}
+
+// Experimentos A/B nativos do Google Ads (system-managed SEARCH_CUSTOM), modelagem dedicada.
+// Substitui os campos-protótipo isExperiment/experimentId/... em Campaign (mantidos por ora
+// como legado — ver plano .hermes/plans/2026-07-29_023051-google-ads-experiments-wizard.md
+// seção 4 "Compatibilidade com os campos já adicionados a Campaign": backfill idempotente,
+// dual-read temporário, remoção do legado só em migração posterior após auditoria de produção.
+// Nomenclatura canônica da variação nesta modelagem nova: "PRESELL_URL" (o campo legado
+// Campaign.experimentVariationType usa "PRESELL" no comentário — drift documentado, não
+// corrigido no legado propositalmente; o backfill normaliza PRESELL -> PRESELL_URL).
+model GoogleAdsExperiment {
+  id                    String    @id @default(cuid())
+  userId                String
+  campaignId            String
+  googleExperimentId    String?
+  resourceName          String?
+  name                  String
+  type                  String    @default("SEARCH_CUSTOM")
+  status                String    @default("SETUP") // SETUP | SCHEDULED | RUNNING | PROMOTED | GRADUATED | ENDED | ERROR (string tolerante a novos estados da API)
+  syncEnabled           Boolean   @default(true)
+  trafficAllocationType String    @default("SEARCH_CUSTOM")
+  startDate             DateTime?
+  endDate               DateTime?
+  variationType         String    @default("PRESELL_URL") // PRESELL_URL no MVP; ADS_COPY/BID_STRATEGY fora de escopo
+  variationConfig       Json?
+  budgetRecommendation  Json?
+  decisionPolicy        Json?
+  lastSyncedAt          DateTime?
+  lastMetricsAt         DateTime?
+  lastError             String?   @db.Text
+  idempotencyKey        String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user            User                                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign                            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  arms            GoogleAdsExperimentArm[]
+  operations      GoogleAdsExperimentOperation[]
+  metricSnapshots GoogleAdsExperimentMetricSnapshot[]
+
+  @@unique([userId, idempotencyKey])
+  @@unique([userId, googleExperimentId])
+  @@index([userId, status])
+  @@index([campaignId])
+}
+
+// Braço de controle ou tratamento de um GoogleAdsExperiment. Restrição lógica (aplicada em
+// app, não em constraint de banco — ver plano seção 4/5): exatamente um controle por
+// experimento e soma dos trafficSplit = 100; MVP sempre 2 braços.
+model GoogleAdsExperimentArm {
+  id                           String   @id @default(cuid())
+  experimentId                 String
+  name                         String
+  isControl                    Boolean  @default(false)
+  trafficSplit                 Int
+  googleArmId                  String?
+  resourceName                 String?
+  inDesignCampaignResourceName String?
+  servedCampaignResourceName   String?
+  googleCampaignId             String?
+  localPresellId               String?
+  finalUrl                     String?  @db.Text
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  experiment GoogleAdsExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, name])
+  @@index([experimentId])
+}
+
+// Operações assíncronas do Google Ads (ScheduleExperiment/PromoteExperiment são long-running
+// operations). operationName é o identificador retornado pela API para poll de status.
+model GoogleAdsExperimentOperation {
+  id            String    @id @default(cuid())
+  experimentId  String
+  operationType String // SCHEDULE | PROMOTE
+  operationName String    @unique
+  status        String    @default("PENDING") // PENDING | DONE | FAILED
+  errorCode     String?
+  errorMessage  String?   @db.Text
+  errors        Json?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  experiment GoogleAdsExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId])
+  @@index([status])
+}
+
+// Snapshot diário de métricas de controle/tratamento + estatística (uplift/p-value/margin of
+// error) vinda do recurso `experiment` da Google Ads API. costMicros armazenado como Float
+// (não Int) porque valores em micros ultrapassam facilmente o range de Int32 do Postgres.
+model GoogleAdsExperimentMetricSnapshot {
+  id                       String   @id @default(cuid())
+  experimentId             String
+  snapshotDate             DateTime
+  controlImpressions       Int      @default(0)
+  controlClicks            Int      @default(0)
+  controlCostMicros        Float    @default(0)
+  controlConversions       Float    @default(0)
+  controlConversionValue   Float    @default(0)
+  treatmentImpressions     Int      @default(0)
+  treatmentClicks          Int      @default(0)
+  treatmentCostMicros      Float    @default(0)
+  treatmentConversions     Float    @default(0)
+  treatmentConversionValue Float    @default(0)
+  statistics               Json? // { metrica: { pointEstimate, marginOfError, pValue } }
+  sourcePayload            Json?
+  createdAt                DateTime @default(now())
+
+  experiment GoogleAdsExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, snapshotDate])
+  @@index([experimentId])
 }
 
 // Fila de sincronização pro Hermes/Obsidian: produção (Railway) não tem o filesystem local
