@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { validateCampaignPatch } from '@/lib/campaigns/patch-schema';
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -35,11 +36,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const body = await request.json();
     const existing = await prisma.campaign.findFirst({ where: { id: params?.id, userId } });
     if (!existing) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-    const { productResearchId, userId: _ignoredUserId, id: _ignoredId, ...rest } = (body ?? {}) as Record<string, any>;
+
+    let validatedData;
+    try {
+      validatedData = validateCampaignPatch(body, existing.status || 'RASCUNHO');
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+
+    const { productResearchId, ...rest } = validatedData;
     const data: Record<string, any> = { ...rest };
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'productResearchId')) {
+
+    if (productResearchId !== undefined) {
       data.productResearch = productResearchId ? { connect: { id: productResearchId } } : { disconnect: true };
     }
+
     const updated = await prisma.campaign.update({
       where: { id: params?.id },
       data,

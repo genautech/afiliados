@@ -6,7 +6,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createGoogleCampaign, getGoogleAdsConfig } from '@/lib/google-ads';
 import { generateRsaCopy } from '@/lib/rsa';
-import { getForbiddenAdTerms } from '@/lib/campaign-strategy';
+import { checkGoogleAdsReadiness } from '@/lib/google-ads/readiness';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,53 +21,22 @@ export async function POST(request: NextRequest) {
     const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, include: { keywords: true } });
     if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
 
-    // Gate real de compliance: mesmo em modo PAUSED, criar a campanha na conta real do Google
-    // Ads só é permitido com o checklist crítico do Wizard completo — antes, o "Criar no Google
-    // Ads" não olhava pra isso (achado da auditoria de mock/simulação).
-    // Exclui o Step 9 (Go-live) do gate: google_ads_ok e tracking_ok daquele checklist
-    // são resultado desta própria chamada, não pré-requisito — incluí-los travava a
-    // criação em loop (item nunca marcado porque a campanha nunca era criada).
-    const checklists = await prisma.campaignChecklist.findMany({ where: { campaignId, step: { not: 9 } } });
-    const criticalUnchecked = checklists.filter((c) => c.isCritical && !c.isChecked);
-    if (criticalUnchecked.length > 0) {
-      return NextResponse.json({
-        error: `Complete os itens críticos do checklist antes de criar a campanha no Google Ads (${criticalUnchecked.length} pendente(s)): ${criticalUnchecked.map((c) => c.itemLabel).join(', ')}.`,
-      }, { status: 422 });
+    const deps = {
+      findCampaign: async (id: string, uid: string) => prisma.campaign.findFirst({ where: { id, userId: uid }, include: { keywords: true } }),
+      findChecklists: async (cid: string) => prisma.campaignChecklist.findMany({ where: { campaignId: cid, step: { not: 9 } } }),
+      getAdsConfig: async (uid: string) => getGoogleAdsConfig(uid),
+      findProduct: async (pid: string) => prisma.productResearch.findUnique({ where: { id: pid } })
+    };
+
+    const readiness = await checkGoogleAdsReadiness(campaignId, userId, deps);
+    if (!readiness.ready) {
+      return NextResponse.json({ error: readiness.errors[0] }, { status: 422 });
     }
 
-    const finalUrl = campaign.presellUrl || campaign.offerUrl || '';
-    if (!finalUrl) {
-      return NextResponse.json({ error: 'Configure a URL da pré-sell ou da oferta (Wizard, passo 4) antes de criar a campanha no Google Ads.' }, { status: 422 });
-    }
-
-    const config = await getGoogleAdsConfig(userId);
-    if (!config) {
-      return NextResponse.json({ error: 'Credenciais do Google Ads não configuradas. Vá em Configurações → Google Ads e cadastre customer_id, developer_token, client_id, client_secret e refresh_token.' }, { status: 422 });
-    }
-
-    const selectedKeywords = (campaign.keywords ?? []).filter(k => k.isSelected);
-    if (selectedKeywords.length === 0) {
-      return NextResponse.json({ error: 'Selecione ao menos uma keyword no Wizard (passo 5) antes de criar a campanha no Google Ads.' }, { status: 422 });
-    }
-
-    // Gate de brand bidding: garantido em código, não depende do LLM (RSA/keyword) lembrar
-    // (caso FemiCore, corrigido 2026-07-27 — ver lib/campaign-strategy.ts). Vendor pode proibir
-    // usar o nome do produto em keyword/copy sem proibir o canal Search inteiro; aqui é a última
-    // trava antes da mutate call real na conta do Google Ads.
-    let forbiddenTerms: string[] = [];
-    if (campaign.productResearchId) {
-      const product = await prisma.productResearch.findUnique({ where: { id: campaign.productResearchId } });
-      if (product) forbiddenTerms = getForbiddenAdTerms(product);
-    }
+    const { data } = readiness;
+    if (!data) return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    const { finalUrl, forbiddenTerms, selectedKeywords, campaignName, budgetDaily } = data;
     const containsForbiddenTerm = (s: string) => forbiddenTerms.some((t) => s.toLowerCase().includes(t.toLowerCase()));
-    if (forbiddenTerms.length) {
-      const badKeywords = selectedKeywords.filter((k) => containsForbiddenTerm(k.keyword)).map((k) => k.keyword);
-      if (badKeywords.length) {
-        return NextResponse.json({
-          error: `Brand bidding proibido pelo vendor: remova/deselecione essas keywords antes de criar a campanha (contêm ${forbiddenTerms.join('/')}) — ${badKeywords.join(', ')}.`,
-        }, { status: 422 });
-      }
-    }
 
     let headlines: string[] | undefined = body?.headlines;
     let descriptions: string[] | undefined = body?.descriptions;
@@ -88,9 +57,6 @@ export async function POST(request: NextRequest) {
         }, { status: 422 });
       }
     }
-
-    const campaignName = campaign.campaignNameGenerated || campaign.name;
-    const budgetDaily = campaign.budgetDaily > 0 ? campaign.budgetDaily : Math.max(10, (campaign.budgetTest || 50) / 3);
 
     const result = await createGoogleCampaign(userId, {
       name: campaignName,
