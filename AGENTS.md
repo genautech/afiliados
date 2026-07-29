@@ -116,12 +116,13 @@ iniciada, aguardando autorização explícita do usuário** (Tarefa 10 introduz 
 confirmação de mutação (`B2`) e schema/allowlist do PATCH genérico (`B6`), escopo maior que
 merece revisão antes de começar).
 
-**Atualização mesma sessão (~15h) — Tarefa 9R concluída (`2ac9c32`):** Auditoria e hardening do módulo de relatórios (`lib/google-ads/experiment-reporting.ts`). 
-(1) Parse numérico rigoroso implementado: strings vazias, `NaN` e `Infinity` agora são descartados ou convertidos para `0`/`null`, protegendo as agregações. Valores negativos em métricas puras (como clicks) são limitados ao piso `0`.
-(2) Intervalos de confiança reavaliados: p-value < 0.05 é invalidado se o intervalo de confiança (`pointEstimate` ± `marginOfError`) cruzar zero, mitigando falsos positivos.
-(3) Fallback fixo: agora o modo fallback requer e valida estritamente a identidade de controle vs tratamento antes de montar o relatório (`validateFallbackArms`), e **jamais retorna `VIABLE`** sem dados estatísticos puros (sempre `UNDERPOWERED` mesmo com amostra suficiente).
-(4) Idempotência e sanitização em `upsertMetricSnapshot`: data padronizada para UTC-midnight (`Date.UTC`), permitindo upserts reais e idempotentes. O objeto `sourcePayload` agora é completamente sanitizado via `sanitizeSourcePayload` e tipado corretamente para interagir com o campo JSON do Prisma.
-6 testes novos adversariais adicionados, totalizando 192/192 testes. Build e `tsc --noEmit` limpos (sem TS errors no Prisma Client após o fix JSON). Nenhuma migração ou conexão a banco real foi feita. Processo pronto para a Tarefa 10.
+**Atualização mesma sessão (~15h) — Tarefas 9R, 9R2 e 9F concluídas (hashes 897264a e docs):** Auditoria final documental e hardening extremo do módulo de relatórios (`lib/google-ads/experiment-reporting.ts`).
+(1) Injection em Fallback GAQL: a query de fallback agora valida estritamente a sintaxe do `resourceName` contra uma regex de campanha para falhar rápido e evitar inputs com aspas maliciosas.
+(2) Sanitização OOM e limites (9F): `sanitizeSourcePayload` agora limita ativamente o comprimento das strings campo-a-campo *antes* de injetá-las no objeto seguro, barrando o consumo de memória antes do `JSON.stringify`.
+(3) Numéricos Estritos (9F): `parseStrictNumber` usa regex rigorosa para rejeitar lixo numérico invisível (`0x10`, `0b10`, ou strings com espaços internos) que o `Number()` nativo aceitaria incorretamente.
+(4) Alvos Inválidos: `targetClicks` agora lança erro (falha fechada) para strings, `NaN`, e números negativos/fracionados, sem mutar o alvo original.
+O módulo não é "100% leitura": `fetchExperimentReport` cuida da extração GAQL, mas a função `upsertMetricSnapshot` é um **writer** pro Prisma, responsável por normalizar timestamps pra meia-noite UTC e realizar upserts idempotentes.
+Tarefas 9/9R/9R2/9F totalmente encerradas com 200/200 testes, `tsc` e `build` limpos (zero any implícito). A persistência real com rotas de API, ownership validado e queries de transação iniciam na Tarefa 10. Nenhuma migração ou backfill foi executada contra o banco real do Railway, e a conta Google Ads permanece intocada neste passo.
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
