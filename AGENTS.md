@@ -55,8 +55,15 @@ antigas, `TODO(Tarefa 10)`). Request-building/response-parsing extraídos como f
 (`buildXxxOperation`/`parseXxxResponse`/`compareFinalUrlsAfterMutation`) pra manter a
 cobertura de teste sem precisar passar pelo guard. 120 testes no total. **Regra pra Tarefa 8
 em diante: plugar o guard já na primeira versão de qualquer função que mute, não depois.**
-Próxima: Tarefa 8 (lifecycle assíncrono — schedule/promote, polling,
-`ListExperimentAsyncErrors`) — se for continuar, ler a seção 1.2 do plano antes.
+
+**Atualização mesma sessão (~13h) — Tarefa 8 concluída (`ea4394a`):**
+`scheduleExperiment`/`promoteExperiment` (assíncronos, LRO via novo `googleAdsResourceRequest()`),
+`pollExperimentOperation` (GET via novo `googleAdsGetResource()`, leitura, sem guard),
+`listExperimentAsyncErrors` (paginado, limite de 20 páginas), `endExperiment`/
+`graduateExperiment` (síncronos). `assertActionAllowedFromStatus` valida a máquina de estados
+antes de qualquer rede. Guard plugado desde a primeira versão nas 4 que mutam (lição
+aplicada). 148 testes no total. Próxima: Tarefa 9 (reporting oficial — uplift/p-value via
+recurso `experiment`) — se for continuar, ler a seção 1.2 do plano antes.
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
