@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  applyFinalUrlVariation,
   createExperiment,
   createExperimentArms,
   getTreatmentInDesignCampaign,
@@ -298,5 +299,119 @@ describe('getTreatmentInDesignCampaign', () => {
       'customers/1234567890/experiments/999'
     );
     expect(result).toBeNull();
+  });
+});
+
+const TREATMENT_CAMPAIGN = 'customers/1234567890/campaigns/MOCK-IN-DESIGN-treatment';
+const NEW_URL = 'https://example.com/presell-variante-b';
+
+function adSearchResponse(finalUrl: string) {
+  return jsonResponse({
+    results: [
+      {
+        adGroupAd: {
+          resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1`,
+          ad: { finalUrls: [finalUrl] },
+        },
+        adGroup: { resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1` },
+      },
+    ],
+  });
+}
+
+describe('applyFinalUrlVariation', () => {
+  it('15. modo mock não chama fetch, verified=true, 1 ad modificado', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const result = await applyFinalUrlVariation(
+      'tok',
+      mockCredentials(),
+      TREATMENT_CAMPAIGN,
+      NEW_URL
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.verified).toBe(true);
+    expect(result.adsModified).toHaveLength(1);
+    expect(result.adsModified[0].finalUrlAfter).toEqual([NEW_URL]);
+  });
+
+  it('16. modo real: acha ad -> muta -> relê, e confirma finalUrls igual à variação (verified=true)', async () => {
+    const fetchSpy = vi
+      .fn()
+      // 1ª chamada: find (antes)
+      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
+      // 2ª chamada: mutate
+      .mockResolvedValueOnce(
+        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
+      )
+      // 3ª chamada: find (depois, releitura)
+      .mockResolvedValueOnce(adSearchResponse(NEW_URL));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await applyFinalUrlVariation(
+      'tok',
+      realCredentials(),
+      TREATMENT_CAMPAIGN,
+      NEW_URL
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(result.verified).toBe(true);
+    expect(result.warnings).toHaveLength(0);
+    expect(result.adsModified[0]).toEqual({
+      resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1`,
+      finalUrlBefore: ['https://example.com/url-antiga'],
+      finalUrlAfter: [NEW_URL],
+    });
+  });
+
+  it('17. releitura NÃO confirma a mudança -> verified=false com warning (não confia só no HTTP 200)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
+      .mockResolvedValueOnce(
+        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
+      )
+      // releitura devolve a URL ANTIGA ainda — mutate "funcionou" (200) mas não vingou de verdade
+      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await applyFinalUrlVariation(
+      'tok',
+      realCredentials(),
+      TREATMENT_CAMPAIGN,
+      NEW_URL
+    );
+
+    expect(result.verified).toBe(false);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it('18. nenhum anúncio encontrado no treatment -> lança erro, nunca chega a mutar nada', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(
+      applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL)
+    ).rejects.toThrow(/Nenhum anúncio encontrado/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // só a busca, nenhum mutate tentado
+  });
+
+  it('19. a busca de anúncios usa includeDrafts=true (campanha em design só aparece assim)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'))
+      .mockResolvedValueOnce(
+        jsonResponse({ results: [{ resourceName: `${TREATMENT_CAMPAIGN}/adGroups/1/adGroupAds/1` }] })
+      )
+      .mockResolvedValueOnce(adSearchResponse(NEW_URL));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL);
+
+    const [, firstCallInit] = fetchSpy.mock.calls[0];
+    const firstBody = JSON.parse(firstCallInit.body as string);
+    expect(firstBody.includeDrafts).toBe(true);
+    expect(firstBody.query).toContain(TREATMENT_CAMPAIGN);
   });
 });

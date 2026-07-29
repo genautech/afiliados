@@ -6,6 +6,7 @@
 // ser conferido contra a documentação atual da API antes do primeiro teste real (Tarefa 16).
 
 import { googleAdsRequest, isMockMode, type GoogleAdsCredentials } from './client';
+import { findAdGroupAdsInCampaign, updateAdFinalUrls } from './ads';
 import type { ExperimentStatus } from '../google-ads-experiments/types';
 
 export interface CreateExperimentInput {
@@ -211,4 +212,95 @@ export async function getTreatmentInDesignCampaign(
   const treatmentRow = rows.find((row) => row?.experimentArm?.control === false);
   const inDesignCampaigns: string[] = treatmentRow?.experimentArm?.inDesignCampaigns ?? [];
   return inDesignCampaigns[0] ?? null;
+}
+
+export interface ApplyFinalUrlVariationResult {
+  applied: boolean;
+  treatmentCampaignResourceName: string;
+  adsModified: Array<{
+    resourceName: string;
+    finalUrlBefore: string[];
+    finalUrlAfter: string[];
+  }>;
+  // true só quando a releitura pós-mutação confirma finalUrls == [newFinalUrl] em TODOS os
+  // anúncios encontrados. É essa flag (não o HTTP 200 do mutate) que Tarefa 8 deve checar
+  // antes de permitir schedule — Hermes review ponto 7: "uma simples resposta 200 não deve
+  // ser o único critério".
+  verified: boolean;
+  warnings: string[];
+}
+
+// Localiza o(s) anúncio(s) do in-design treatment campaign (Tarefa 6) e troca finalUrls pra
+// newFinalUrl — depois RELÊ pra confirmar que a mudança vingou de verdade. Nunca toca no
+// braço de controle (só recebe o resourceName do treatment).
+export async function applyFinalUrlVariation(
+  token: string,
+  config: GoogleAdsCredentials,
+  treatmentCampaignResourceName: string,
+  newFinalUrl: string
+): Promise<ApplyFinalUrlVariationResult> {
+  if (isMockMode(config)) {
+    const mockAdResourceName = `${treatmentCampaignResourceName}/adGroups/MOCK-AG/adGroupAds/MOCK-AD`;
+    return {
+      applied: true,
+      treatmentCampaignResourceName,
+      adsModified: [
+        {
+          resourceName: mockAdResourceName,
+          finalUrlBefore: ['https://example.com/mock-current-url'],
+          finalUrlAfter: [newFinalUrl],
+        },
+      ],
+      verified: true,
+      warnings: [],
+    };
+  }
+
+  const adsBefore = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName, {
+    includeDrafts: true,
+  });
+
+  if (adsBefore.length === 0) {
+    throw new Error(
+      `Nenhum anúncio encontrado no in-design treatment campaign ${treatmentCampaignResourceName} — não é possível aplicar a variação.`
+    );
+  }
+
+  for (const ad of adsBefore) {
+    await updateAdFinalUrls(token, config, ad.resourceName, [newFinalUrl]);
+  }
+
+  // Relê depois de mutar tudo — nunca confia só na resposta HTTP 200 do mutate.
+  const adsAfter = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName, {
+    includeDrafts: true,
+  });
+  const afterByResourceName = new Map(adsAfter.map((ad) => [ad.resourceName, ad]));
+
+  const warnings: string[] = [];
+  const adsModified = adsBefore.map((before) => {
+    const after = afterByResourceName.get(before.resourceName);
+    return {
+      resourceName: before.resourceName,
+      finalUrlBefore: before.finalUrls,
+      finalUrlAfter: after?.finalUrls ?? [],
+    };
+  });
+
+  const verified = adsModified.every(
+    (ad) => ad.finalUrlAfter.length === 1 && ad.finalUrlAfter[0] === newFinalUrl
+  );
+
+  if (!verified) {
+    warnings.push(
+      'Releitura pós-mutação não confirmou finalUrls igual à variação esperada em todos os anúncios — não agendar até isso ser resolvido.'
+    );
+  }
+
+  return {
+    applied: true,
+    treatmentCampaignResourceName,
+    adsModified,
+    verified,
+    warnings,
+  };
 }
