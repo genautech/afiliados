@@ -64,6 +64,47 @@ export function buildResourceMethodUrl(resourceName: string, method: string): st
   return `${GOOGLE_ADS_BASE_URL}/${GOOGLE_ADS_API_VERSION}/${resourceName}:${method}`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Capability de mutação (A5, checkpoint pós-Tarefa 8 / .hermes/handoffs/2026-07-29_task8-
+// cross-flow-quality-gate.md): antes desta correção, `googleAdsRequest`/`googleAdsResourceRequest`
+// aceitavam QUALQUER resourcePath/method e faziam rede sem passar pelo mutation guard — nada
+// impedia importar `googleAdsRequest(token, config, 'campaigns:mutate', {...})` direto,
+// ignorando `assertMutationAllowed`. Agora, qualquer mutação real só é possível de posse de um
+// `MutationCapability`, que só `assertMutationAllowed` (lib/google-ads/mutation-guard.ts) pode
+// emitir — e só quando `allowed: true`. Branding runtime (não só tipo TS) porque o guard
+// verdadeiro é o `isMutationCapability()` abaixo, checado em runtime pelas funções de mutate.
+// ---------------------------------------------------------------------------------------------
+
+const MUTATION_CAPABILITY_BRAND = 'GoogleAdsMutationCapability' as const;
+
+export interface MutationCapability {
+  readonly brand: typeof MUTATION_CAPABILITY_BRAND;
+  readonly operation: string;
+}
+
+// Só mutation-guard.ts deve chamar isto (é o único lugar com acesso a `assertMutationAllowed`
+// retornando allowed:true) — exportado pra permitir o teste unitário do guard sem duplicar a
+// string da marca aqui e lá.
+export function createMutationCapability(operation: string): MutationCapability {
+  return { brand: MUTATION_CAPABILITY_BRAND, operation };
+}
+
+export function isMutationCapability(value: unknown): value is MutationCapability {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { brand?: unknown }).brand === MUTATION_CAPABILITY_BRAND
+  );
+}
+
+function assertCapability(capability: MutationCapability, resourcePath: string): void {
+  if (!isMutationCapability(capability)) {
+    throw new Error(
+      `Mutação em "${resourcePath}" bloqueada: nenhum MutationCapability válido foi fornecido (deve vir de assertMutationAllowed com allowed:true).`
+    );
+  }
+}
+
 export async function getAccessToken(config: GoogleAdsCredentials): Promise<string> {
   if (isMockMode(config)) {
     return 'mock_access_token_123';
@@ -147,13 +188,20 @@ async function executeRequest(
   throw lastError instanceof Error ? lastError : new Error('Falha desconhecida na Google Ads API');
 }
 
-// Chamada no padrão `customers/{id}/{recurso}:ação` (search, mutate de recurso coleção).
+// Chamada de LEITURA no padrão `customers/{id}/{recurso}:ação` — search e qualquer custom
+// method só-consulta. Bloqueia em runtime qualquer resourcePath `:mutate` (A5): mutação real
+// só passa por `googleAdsMutateRequest`, que exige um MutationCapability emitido pelo guard.
 export async function googleAdsRequest(
   token: string,
   config: GoogleAdsCredentials,
   resourcePath: string,
   options: GoogleAdsRequestOptions = {}
 ): Promise<any> {
+  if (resourcePath.includes(':mutate')) {
+    throw new Error(
+      `googleAdsRequest() não permite paths de mutate ("${resourcePath}") — use googleAdsMutateRequest() com um MutationCapability.`
+    );
+  }
   const { method = 'POST', body, retry } = options;
   return executeRequest(
     buildApiUrl(config, resourcePath),
@@ -165,22 +213,71 @@ export async function googleAdsRequest(
   );
 }
 
-// Custom method na instância de um resource já existente (`customers/X/experiments/999:schedule
-// Experiment`) — usado pelo lifecycle assíncrono/síncrono de Experiment (Tarefa 8). Nunca tem
-// retry: são todas mutações ou consultas de operação em andamento, não idempotentes por padrão.
-export async function googleAdsResourceRequest(
+// Chamada de MUTAÇÃO no padrão `customers/{id}/{recurso}:mutate` (coleção) — createExperiment,
+// createExperimentArms, updateAdFinalUrls/batch. Exige `capability` vindo de
+// `assertMutationAllowed({...}).capability` (só existe quando allowed:true); sem ela, lança
+// antes de qualquer fetch. Nunca aceita retry — reenviar um create/mutate por timeout pode
+// duplicar recurso real na conta do Google Ads.
+export async function googleAdsMutateRequest(
+  token: string,
+  config: GoogleAdsCredentials,
+  resourcePath: string,
+  capability: MutationCapability,
+  options: Omit<GoogleAdsRequestOptions, 'retry'> = {}
+): Promise<any> {
+  assertCapability(capability, resourcePath);
+  const { method = 'POST', body } = options;
+  return executeRequest(
+    buildApiUrl(config, resourcePath),
+    buildApiHeaders(token, config),
+    method,
+    body,
+    undefined,
+    resourcePath
+  );
+}
+
+// Custom method MUTANTE na instância de um resource já existente (`customers/X/experiments/999:
+// scheduleExperiment`) — usado pelo lifecycle assíncrono/síncrono de Experiment (Tarefa 8).
+// Exige capability (mesmo contrato de `googleAdsMutateRequest`). Nunca tem retry.
+export async function googleAdsResourceMutateRequest(
   token: string,
   config: GoogleAdsCredentials,
   resourceName: string,
   method: string,
+  capability: MutationCapability,
   body: unknown = {}
 ): Promise<any> {
+  const label = `${resourceName}:${method}`;
+  assertCapability(capability, label);
   return executeRequest(
     buildResourceMethodUrl(resourceName, method),
     buildApiHeaders(token, config),
     'POST',
     body,
     undefined,
+    label
+  );
+}
+
+// Custom method SÓ-LEITURA na instância de um resource já existente, com query string opcional
+// (ex.: `experiments/999:listAsyncErrors?pageToken=...`, A1) — GET, sem guard (mesmo critério de
+// `googleAdsGetResource`), com retry porque é idempotente por natureza.
+export async function googleAdsResourceGetRequest(
+  token: string,
+  config: GoogleAdsCredentials,
+  resourceName: string,
+  method: string,
+  query: Record<string, string> = {}
+): Promise<any> {
+  const qs = new URLSearchParams(query).toString();
+  const url = `${buildResourceMethodUrl(resourceName, method)}${qs ? `?${qs}` : ''}`;
+  return executeRequest(
+    url,
+    buildApiHeaders(token, config),
+    'GET',
+    undefined,
+    { attempts: 3, delayMs: 500 },
     `${resourceName}:${method}`
   );
 }

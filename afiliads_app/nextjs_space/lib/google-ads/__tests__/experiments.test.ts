@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyFinalUrlVariation,
+  assertVariationReadyForSchedule,
   buildCreateExperimentArmsOperations,
   buildCreateExperimentOperation,
   compareFinalUrlsAfterMutation,
@@ -9,6 +10,8 @@ import {
   getTreatmentInDesignCampaign,
   parseCreateExperimentArmsResponse,
   parseCreateExperimentResponse,
+  parseExperimentArmRow,
+  type ApplyFinalUrlVariationResult,
   type ExperimentArmInput,
 } from '@/lib/google-ads/experiments';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
@@ -269,13 +272,17 @@ describe('getTreatmentInDesignCampaign', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('13. modo real pede includeDrafts=true e acha a in-design campaign do braço não-controle', async () => {
+  const ARM_EXPERIMENT = 'customers/1234567890/experiments/999';
+
+  it('13. modo real NÃO envia includeDrafts (A3) e acha a in-design campaign do braço não-controle', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(
       jsonResponse({
         results: [
-          { experimentArm: { control: true, inDesignCampaigns: [] } },
+          { experimentArm: { resourceName: 'a1', experiment: ARM_EXPERIMENT, control: true, inDesignCampaigns: [] } },
           {
             experimentArm: {
+              resourceName: 'a2',
+              experiment: ARM_EXPERIMENT,
               control: false,
               inDesignCampaigns: ['customers/1234567890/campaigns/777'],
             },
@@ -285,36 +292,74 @@ describe('getTreatmentInDesignCampaign', () => {
     );
     vi.stubGlobal('fetch', fetchSpy);
 
-    const result = await getTreatmentInDesignCampaign(
-      'tok',
-      realCredentials(),
-      'customers/1234567890/experiments/999'
-    );
+    const result = await getTreatmentInDesignCampaign('tok', realCredentials(), ARM_EXPERIMENT);
 
     expect(result).toBe('customers/1234567890/campaigns/777');
     const [, requestInit] = fetchSpy.mock.calls[0];
     const body = JSON.parse(requestInit.body as string);
-    expect(body.includeDrafts).toBe(true);
+    expect(body).not.toHaveProperty('includeDrafts');
   });
 
   it('14. devolve null quando não encontra braço de tratamento na resposta', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        jsonResponse({ results: [{ experimentArm: { control: true, inDesignCampaigns: [] } }] })
+        jsonResponse({
+          results: [
+            { experimentArm: { resourceName: 'a1', experiment: ARM_EXPERIMENT, control: true, inDesignCampaigns: [] } },
+          ],
+        })
       )
     );
-    const result = await getTreatmentInDesignCampaign(
-      'tok',
-      realCredentials(),
-      'customers/1234567890/experiments/999'
-    );
+    const result = await getTreatmentInDesignCampaign('tok', realCredentials(), ARM_EXPERIMENT);
     expect(result).toBeNull();
   });
 });
 
-const TREATMENT_CAMPAIGN = 'customers/1234567890/campaigns/MOCK-IN-DESIGN-treatment';
+describe('parseExperimentArmRow', () => {
+  it('14b. extrai campos de uma linha de experiment_arm válida', () => {
+    const row = parseExperimentArmRow({
+      experimentArm: {
+        resourceName: 'customers/1234567890/experimentArms/999~2',
+        experiment: 'customers/1234567890/experiments/999',
+        control: false,
+        inDesignCampaigns: ['customers/1234567890/campaigns/777'],
+      },
+    });
+    expect(row).toEqual({
+      resourceName: 'customers/1234567890/experimentArms/999~2',
+      experimentResourceName: 'customers/1234567890/experiments/999',
+      control: false,
+      inDesignCampaignResourceName: 'customers/1234567890/campaigns/777',
+    });
+  });
+
+  it('14c. devolve null se faltar resourceName ou experiment', () => {
+    expect(parseExperimentArmRow({ experimentArm: { control: true } })).toBeNull();
+  });
+});
+
+const TREATMENT_CAMPAIGN = 'customers/1234567890/campaigns/777';
 const NEW_URL = 'https://example.com/presell-variante-b';
+const VARIATION_EXPERIMENT = 'customers/1234567890/experiments/999';
+
+function armSearchResponse(options: { includeTreatment?: boolean; treatmentExperiment?: string } = {}) {
+  const { includeTreatment = true, treatmentExperiment = VARIATION_EXPERIMENT } = options;
+  const rows: any[] = [
+    { experimentArm: { resourceName: 'arm-control', experiment: VARIATION_EXPERIMENT, control: true, inDesignCampaigns: [] } },
+  ];
+  if (includeTreatment) {
+    rows.push({
+      experimentArm: {
+        resourceName: 'arm-treatment',
+        experiment: treatmentExperiment,
+        control: false,
+        inDesignCampaigns: [TREATMENT_CAMPAIGN],
+      },
+    });
+  }
+  return jsonResponse({ results: rows });
+}
 
 function adSearchResponse(finalUrl: string) {
   return jsonResponse({
@@ -331,44 +376,133 @@ function adSearchResponse(finalUrl: string) {
 }
 
 describe('applyFinalUrlVariation', () => {
-  it('15. modo mock não chama fetch, verified=true, 1 ad modificado', async () => {
+  it('15. modo mock não chama fetch, verified=true, changed=true, 1 ad modificado', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const result = await applyFinalUrlVariation(
       'tok',
       mockCredentials(),
-      TREATMENT_CAMPAIGN,
+      VARIATION_EXPERIMENT,
       NEW_URL
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.verified).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.alreadyApplied).toBe(false);
     expect(result.adsModified).toHaveLength(1);
     expect(result.adsModified[0].finalUrlAfter).toEqual([NEW_URL]);
+    expect(result.adsModified[0].resourceName).toBe('customers/1234567890/adGroupAds/MOCK-AG~MOCK-AD');
   });
 
-  it('16. nenhum anúncio encontrado no treatment -> lança erro, nunca chega a mutar nada', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
+  // A6, ponto 1-2: o treatment campaign é SEMPRE derivado do experimento via experiment_arm
+  // (control=false), nunca aceito como parâmetro solto.
+  it('16. deriva o treatment campaign do experimento (1ª chamada é a busca de experiment_arm, sem includeDrafts)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(armSearchResponse())
+      .mockResolvedValueOnce(jsonResponse({ results: [] }));
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL)
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
     ).rejects.toThrow(/Nenhum anúncio encontrado/);
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // só a busca, nenhum mutate tentado
-  });
-
-  it('17. achou anúncio mas mutate real é bloqueado pelo guard (sem GOOGLE_ADS_MUTATIONS_ENABLED) — só 1 fetch (a busca), nunca releitura', async () => {
-    const fetchSpy = vi.fn().mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'));
-    vi.stubGlobal('fetch', fetchSpy);
-
-    await expect(
-      applyFinalUrlVariation('tok', realCredentials(), TREATMENT_CAMPAIGN, NEW_URL)
-    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // busca de arms + busca de ads, nenhum mutate tentado
 
     const [, firstCallInit] = fetchSpy.mock.calls[0];
     const firstBody = JSON.parse(firstCallInit.body as string);
-    expect(firstBody.includeDrafts).toBe(true);
-    expect(firstBody.query).toContain(TREATMENT_CAMPAIGN);
+    expect(firstBody).not.toHaveProperty('includeDrafts');
+    expect(firstBody.query).toContain(VARIATION_EXPERIMENT);
+
+    const [, secondCallInit] = fetchSpy.mock.calls[1];
+    const secondBody = JSON.parse(secondCallInit.body as string);
+    expect(secondBody).not.toHaveProperty('includeDrafts');
+    expect(secondBody.query).toContain(TREATMENT_CAMPAIGN);
+  });
+
+  it('17. sem braço de tratamento (control=false) -> lança antes de buscar anúncios', async () => {
+    const fetchSpy = vi.fn().mockResolvedValueOnce(armSearchResponse({ includeTreatment: false }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+    ).rejects.toThrow(/Esperado exatamente 1 braço de tratamento/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('18. braço de tratamento pertence a outro experimento -> lança por segurança (defesa contra resposta cruzada)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(armSearchResponse({ treatmentExperiment: 'customers/1234567890/experiments/OUTRO' }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+    ).rejects.toThrow(/pertence a/);
+  });
+
+  it('19. achou anúncio precisando de mudança, mas mutate real é bloqueado pelo guard — 2 fetches (arms+ads), nunca mutate/releitura', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(armSearchResponse())
+      .mockResolvedValueOnce(adSearchResponse('https://example.com/url-antiga'));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // A6, ponto 3: se a URL já bate, nenhuma mutate é disparada — nem passa pelo guard.
+  it('20. URL já aplicada -> alreadyApplied=true, changed=false, verified=true, SEM mutate (guard nem é chamado)', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(armSearchResponse())
+      .mockResolvedValueOnce(adSearchResponse(NEW_URL));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // só as 2 buscas, nenhuma mutate
+    expect(result.alreadyApplied).toBe(true);
+    expect(result.changed).toBe(false);
+    expect(result.applied).toBe(false);
+    expect(result.verified).toBe(true);
+  });
+});
+
+describe('assertVariationReadyForSchedule', () => {
+  function result(overrides: Partial<ApplyFinalUrlVariationResult> = {}): ApplyFinalUrlVariationResult {
+    return {
+      applied: true,
+      changed: true,
+      alreadyApplied: false,
+      treatmentCampaignResourceName: TREATMENT_CAMPAIGN,
+      adsModified: [],
+      verified: true,
+      warnings: [],
+      ...overrides,
+    };
+  }
+
+  it('21. passa quando verified=true e changed=true', () => {
+    expect(() => assertVariationReadyForSchedule(result())).not.toThrow();
+  });
+
+  it('22. passa quando verified=true e alreadyApplied=true (mesmo com changed=false)', () => {
+    expect(() =>
+      assertVariationReadyForSchedule(result({ changed: false, alreadyApplied: true, applied: false }))
+    ).not.toThrow();
+  });
+
+  it('23. lança quando verified=false', () => {
+    expect(() => assertVariationReadyForSchedule(result({ verified: false }))).toThrow(/não é seguro agendar/);
+  });
+
+  it('24. lança quando nem changed nem alreadyApplied são true', () => {
+    expect(() =>
+      assertVariationReadyForSchedule(result({ changed: false, alreadyApplied: false }))
+    ).toThrow(/não é seguro agendar/);
   });
 });
 

@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildApiHeaders,
   buildApiUrl,
+  createMutationCapability,
   getAccessToken,
+  googleAdsMutateRequest,
   googleAdsRequest,
+  googleAdsResourceGetRequest,
+  googleAdsResourceMutateRequest,
   isMockMode,
+  isMutationCapability,
   toAmountMicros,
   GOOGLE_ADS_API_VERSION,
   type GoogleAdsCredentials,
@@ -128,7 +133,7 @@ describe('googleAdsRequest', () => {
     const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ error: 'boom' }, { status: 500 }));
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      googleAdsRequest('tok', credentials(), 'campaigns:mutate', { body: {} })
+      googleAdsRequest('tok', credentials(), 'googleAds:search', { body: {} })
     ).rejects.toThrow(GoogleAdsApiError);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -153,7 +158,7 @@ describe('googleAdsRequest', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      googleAdsRequest('tok', credentials(), 'campaigns:mutate', {
+      googleAdsRequest('tok', credentials(), 'googleAds:search', {
         body: {},
         retry: { attempts: 5, delayMs: 1 },
       })
@@ -192,12 +197,134 @@ describe('googleAdsRequest', () => {
       )
     );
     try {
-      await googleAdsRequest('meu-access-token-secreto', credentials(), 'campaigns:mutate', {
+      await googleAdsRequest('meu-access-token-secreto', credentials(), 'googleAds:search', {
         body: {},
       });
       throw new Error('deveria ter lançado');
     } catch (err) {
       expect((err as Error).message).not.toContain('meu-dev-token-secreto');
     }
+  });
+});
+
+describe('googleAdsRequest — bloqueio de :mutate (A5)', () => {
+  it('17. rejeita QUALQUER path :mutate antes de qualquer fetch, mesmo sem guard', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      googleAdsRequest('tok', credentials(), 'campaigns:mutate', { body: {} })
+    ).rejects.toThrow(/não permite paths de mutate/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('googleAdsMutateRequest (A5)', () => {
+  it('18. sem capability válida, lança antes de qualquer fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      googleAdsMutateRequest('tok', credentials(), 'campaigns:mutate', undefined as any, { body: {} })
+    ).rejects.toThrow(/MutationCapability/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('19. com capability válida (emitida por createMutationCapability), chama fetch normalmente', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ results: [] })));
+    const data = await googleAdsMutateRequest(
+      'tok',
+      credentials(),
+      'campaigns:mutate',
+      createMutationCapability('createGoogleCampaign'),
+      { body: { operations: [] } }
+    );
+    expect(data).toEqual({ results: [] });
+  });
+
+  it('20. nunca aceita retry — 500 falha na primeira tentativa mesmo com muitas tentativas possíveis', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ error: 'boom' }, { status: 500 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      googleAdsMutateRequest(
+        'tok',
+        credentials(),
+        'campaigns:mutate',
+        createMutationCapability('createGoogleCampaign'),
+        { body: {} }
+      )
+    ).rejects.toThrow(GoogleAdsApiError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('googleAdsResourceMutateRequest (A5)', () => {
+  it('21. sem capability válida, lança antes de qualquer fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      googleAdsResourceMutateRequest(
+        'tok',
+        credentials(),
+        'customers/1234567890/experiments/999',
+        'scheduleExperiment',
+        { brand: 'forjado' } as any
+      )
+    ).rejects.toThrow(/MutationCapability/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('22. com capability válida, faz POST no resource:método', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ name: 'op-1' }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await googleAdsResourceMutateRequest(
+      'tok',
+      credentials(),
+      'customers/1234567890/experiments/999',
+      'scheduleExperiment',
+      createMutationCapability('scheduleExperiment')
+    );
+    const [url, requestInit] = fetchSpy.mock.calls[0];
+    expect(url).toContain('experiments/999:scheduleExperiment');
+    expect(requestInit.method).toBe('POST');
+  });
+});
+
+describe('googleAdsResourceGetRequest (A1)', () => {
+  it('23. GET com pageToken na query string, sem guard, com retry', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ errors: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await googleAdsResourceGetRequest(
+      'tok',
+      credentials(),
+      'customers/1234567890/experiments/999',
+      'listAsyncErrors',
+      { pageToken: 'abc' }
+    );
+    const [url, requestInit] = fetchSpy.mock.calls[0];
+    expect(url).toContain('experiments/999:listAsyncErrors');
+    expect(url).toContain('pageToken=abc');
+    expect(requestInit.method).toBe('GET');
+    expect(requestInit.body).toBeUndefined();
+  });
+
+  it('24. sem pageToken, não adiciona query string', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ errors: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await googleAdsResourceGetRequest(
+      'tok',
+      credentials(),
+      'customers/1234567890/experiments/999',
+      'listAsyncErrors'
+    );
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).not.toContain('?');
+  });
+});
+
+describe('isMutationCapability', () => {
+  it('25. reconhece só objetos emitidos por createMutationCapability', () => {
+    expect(isMutationCapability(createMutationCapability('createGoogleCampaign'))).toBe(true);
+    expect(isMutationCapability({ brand: 'forjado' })).toBe(false);
+    expect(isMutationCapability(undefined)).toBe(false);
+    expect(isMutationCapability(null)).toBe(false);
   });
 });

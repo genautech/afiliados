@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertActionAllowedFromStatus,
+  buildGraduateExperimentRequest,
   endExperiment,
   graduateExperiment,
   listExperimentAsyncErrors,
@@ -43,7 +44,9 @@ afterEach(() => {
 });
 
 const EXPERIMENT = 'customers/1234567890/experiments/999';
-const OPERATION = 'customers/1234567890/experiments/999/operations/op-1';
+// Resource name de operation é FLAT (A7) — customers/{cid}/operations/{id}, nunca aninhado
+// sob o experiment.
+const OPERATION = 'customers/1234567890/operations/op-1';
 
 describe('assertActionAllowedFromStatus', () => {
   it('1. END permitido a partir de SCHEDULED e RUNNING', () => {
@@ -78,13 +81,14 @@ describe('scheduleExperiment', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('6. modo mock não chama fetch e devolve operationName determinístico (sem Date.now)', async () => {
+  it('6. modo mock não chama fetch e devolve operationName determinístico e FLAT (A7, sem Date.now)', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const a = await scheduleExperiment('tok', mockCredentials(), EXPERIMENT, 'SETUP');
     const b = await scheduleExperiment('tok', mockCredentials(), EXPERIMENT, 'SETUP');
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(a.operationName).toBe(b.operationName); // determinístico, não Date.now()
+    expect(a.operationName).toBe('customers/1234567890/operations/mock-schedule-999');
   });
 
   it('7. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
@@ -170,12 +174,14 @@ describe('listExperimentAsyncErrors', () => {
   it('17. modo mock não chama fetch e devolve lista vazia', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const result = await listExperimentAsyncErrors('tok', mockCredentials(), OPERATION);
+    const result = await listExperimentAsyncErrors('tok', mockCredentials(), EXPERIMENT);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result).toEqual({ errors: [], truncated: false });
   });
 
-  it('18. modo real: é leitura, NÃO passa pelo guard — pagina até nextPageToken acabar', async () => {
+  // A1 (checkpoint pós-Tarefa 8): recurso é o EXPERIMENTO (não a operation), verbo é GET (não
+  // POST) e paginação vai na query string `pageToken`, não no body.
+  it('18. modo real usa GET no resource name do EXPERIMENTO, não da operation, sem guard — pagina até nextPageToken acabar', async () => {
     const fetchSpy = vi
       .fn()
       .mockResolvedValueOnce(
@@ -184,10 +190,19 @@ describe('listExperimentAsyncErrors', () => {
       .mockResolvedValueOnce(jsonResponse({ errors: [{ message: 'erro 2' }] }));
     vi.stubGlobal('fetch', fetchSpy);
 
-    const result = await listExperimentAsyncErrors('tok', realCredentials(), OPERATION);
+    const result = await listExperimentAsyncErrors('tok', realCredentials(), EXPERIMENT);
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ errors: ['erro 1', 'erro 2'], truncated: false });
+
+    const [firstUrl, firstInit] = fetchSpy.mock.calls[0];
+    expect(firstUrl).toContain(`${EXPERIMENT}:listAsyncErrors`);
+    expect(firstUrl).not.toContain('pageToken='); // 1ª página não tem token ainda
+    expect(firstInit.method).toBe('GET');
+    expect(firstInit.body).toBeUndefined();
+
+    const [secondUrl] = fetchSpy.mock.calls[1];
+    expect(secondUrl).toContain('pageToken=page2');
   });
 
   it('19. respeita o limite de segurança de páginas (não entra em loop infinito)', async () => {
@@ -196,7 +211,7 @@ describe('listExperimentAsyncErrors', () => {
       .mockResolvedValue(jsonResponse({ errors: [{ message: 'x' }], nextPageToken: 'sempre-mais' }));
     vi.stubGlobal('fetch', fetchSpy);
 
-    const result = await listExperimentAsyncErrors('tok', realCredentials(), OPERATION);
+    const result = await listExperimentAsyncErrors('tok', realCredentials(), EXPERIMENT);
 
     expect(result.truncated).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(20); // MAX_ASYNC_ERROR_PAGES
@@ -257,18 +272,26 @@ describe('promoteExperiment', () => {
 });
 
 describe('graduateExperiment', () => {
+  const CAMPAIGN = 'customers/1234567890/campaigns/555';
   const BUDGET = 'customers/1234567890/campaignBudgets/1';
 
   it('26. rejeita fora de RUNNING', async () => {
     await expect(
-      graduateExperiment('tok', mockCredentials(), EXPERIMENT, 'SETUP', BUDGET)
+      graduateExperiment('tok', mockCredentials(), EXPERIMENT, 'SETUP', CAMPAIGN, BUDGET)
     ).rejects.toThrow(/não permitida/);
   });
 
   it('27. modo mock não chama fetch e devolve success', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const result = await graduateExperiment('tok', mockCredentials(), EXPERIMENT, 'RUNNING', BUDGET);
+    const result = await graduateExperiment(
+      'tok',
+      mockCredentials(),
+      EXPERIMENT,
+      'RUNNING',
+      CAMPAIGN,
+      BUDGET
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true });
   });
@@ -277,8 +300,29 @@ describe('graduateExperiment', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      graduateExperiment('tok', realCredentials(), EXPERIMENT, 'RUNNING', BUDGET)
+      graduateExperiment('tok', realCredentials(), EXPERIMENT, 'RUNNING', CAMPAIGN, BUDGET)
     ).rejects.toThrow(/Mutação bloqueada pelo guard/);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// A2 (checkpoint pós-Tarefa 8): payload puro do GraduateExperimentRequest v25 — o formato
+// anterior (`{graduatedCampaignBudget}`) não existe no contrato oficial.
+describe('buildGraduateExperimentRequest', () => {
+  it('29. monta experiment + campaignBudgetMappings com no máximo 1 mapping', () => {
+    const body = buildGraduateExperimentRequest('customers/1234567890/experiments/999', {
+      experimentCampaign: 'customers/1234567890/campaigns/555',
+      campaignBudget: 'customers/1234567890/campaignBudgets/1',
+    });
+    expect(body).toEqual({
+      experiment: 'customers/1234567890/experiments/999',
+      campaignBudgetMappings: [
+        {
+          experimentCampaign: 'customers/1234567890/campaigns/555',
+          campaignBudget: 'customers/1234567890/campaignBudgets/1',
+        },
+      ],
+    });
+    expect(body.campaignBudgetMappings).toHaveLength(1);
   });
 });

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { assertMutationAllowed, type MutationGuardInput } from '@/lib/google-ads/mutation-guard';
+import { isMutationCapability } from '@/lib/google-ads/client';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -23,9 +24,12 @@ describe('assertMutationAllowed', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it('1. mock mode é sempre permitido, independente de flag/confirmação/allowlist', () => {
+  it('1. mock mode é sempre permitido, independente de flag/confirmação/allowlist, e emite capability (A5)', () => {
     const result = assertMutationAllowed(input({ isMock: true, confirmed: false }));
-    expect(result).toEqual({ allowed: true });
+    expect(result.allowed).toBe(true);
+    if (result.allowed) {
+      expect(isMutationCapability(result.capability)).toBe(true);
+    }
   });
 
   it('2. flag ausente nega mesmo com confirmed true e conta na allowlist', () => {
@@ -68,11 +72,15 @@ describe('assertMutationAllowed', () => {
     expect(result.allowed).toBe(false);
   });
 
-  it('7. flag true, confirmed true, conta na allowlist, operação conhecida → permitido', () => {
+  it('7. flag true, confirmed true, conta na allowlist, operação conhecida → permitido e emite capability (A5)', () => {
     process.env.GOOGLE_ADS_MUTATIONS_ENABLED = 'true';
     process.env.GOOGLE_ADS_MUTATION_ALLOWLIST = '1112223333';
     const result = assertMutationAllowed(input({ confirmed: true }));
-    expect(result).toEqual({ allowed: true });
+    expect(result.allowed).toBe(true);
+    if (result.allowed) {
+      expect(isMutationCapability(result.capability)).toBe(true);
+      expect(result.capability.operation).toBe('createGoogleCampaign');
+    }
   });
 
   it('7b. operações de experimento (Tarefas 6/7/8) também estão na allowlist de operações conhecidas', () => {
@@ -87,9 +95,8 @@ describe('assertMutationAllowed', () => {
       'promoteExperiment',
       'graduateExperiment',
     ]) {
-      expect(assertMutationAllowed(input({ confirmed: true, operation }))).toEqual({
-        allowed: true,
-      });
+      const result = assertMutationAllowed(input({ confirmed: true, operation }));
+      expect(result.allowed).toBe(true);
     }
   });
 
@@ -114,7 +121,7 @@ describe('assertMutationAllowed', () => {
     for (const i of inputs) {
       expect(() => assertMutationAllowed(i)).not.toThrow();
       const result = assertMutationAllowed(i);
-      if (result.reason) {
+      if (!result.allowed && result.reason) {
         expect(result.reason).not.toMatch(/token|secret|refresh/i);
       }
     }

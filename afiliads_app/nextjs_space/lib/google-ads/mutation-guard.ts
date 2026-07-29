@@ -1,6 +1,13 @@
 // Guard default-deny para qualquer mutate real na Google Ads API.
 // Falha fechado: qualquer camada ausente ou malformada nega, nunca permite por omissão.
 // Nunca lança exceção — quem chama decide o que fazer com { allowed: false, reason }.
+//
+// A5 (checkpoint pós-Tarefa 8): quando allowed:true, também emite um `MutationCapability`
+// (lib/google-ads/client.ts) — só esse objeto destrava `googleAdsMutateRequest`/
+// `googleAdsResourceMutateRequest`. Isso fecha o bypass onde qualquer código podia chamar o
+// transporte genérico direto num path `:mutate` sem nunca ter passado por este guard.
+
+import { createMutationCapability, type MutationCapability } from './client';
 
 const KNOWN_OPERATIONS = [
   'createGoogleCampaign',
@@ -24,10 +31,9 @@ export interface MutationGuardInput {
   confirmed: boolean; // deve vir explícito do chamador, nunca inferido
 }
 
-export interface MutationGuardResult {
-  allowed: boolean;
-  reason?: string;
-}
+export type MutationGuardResult =
+  | { allowed: true; capability: MutationCapability }
+  | { allowed: false; reason: string };
 
 function parseAllowlist(raw: string | undefined): Set<string> {
   if (!raw) return new Set();
@@ -41,7 +47,7 @@ function parseAllowlist(raw: string | undefined): Set<string> {
 
 export function assertMutationAllowed(input: MutationGuardInput): MutationGuardResult {
   if (input.isMock) {
-    return { allowed: true };
+    return { allowed: true, capability: createMutationCapability(input.operation) };
   }
 
   if (process.env.GOOGLE_ADS_MUTATIONS_ENABLED !== 'true') {
@@ -61,5 +67,5 @@ export function assertMutationAllowed(input: MutationGuardInput): MutationGuardR
     return { allowed: false, reason: `customerId "${input.customerId}" is not in GOOGLE_ADS_MUTATION_ALLOWLIST` };
   }
 
-  return { allowed: true };
+  return { allowed: true, capability: createMutationCapability(input.operation) };
 }

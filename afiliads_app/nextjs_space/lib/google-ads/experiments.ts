@@ -7,13 +7,16 @@
 
 import {
   googleAdsGetResource,
+  googleAdsMutateRequest,
   googleAdsRequest,
-  googleAdsResourceRequest,
+  googleAdsResourceGetRequest,
+  googleAdsResourceMutateRequest,
   isMockMode,
   type GoogleAdsCredentials,
+  type MutationCapability,
 } from './client';
 import { assertMutationAllowed } from './mutation-guard';
-import { findAdGroupAdsInCampaign, updateAdFinalUrls, type AdGroupAdSummary } from './ads';
+import { findAdGroupAdsInCampaign, updateAdFinalUrlsBatch, type AdGroupAdSummary } from './ads';
 import type { ExperimentActionType, ExperimentStatus } from '../google-ads-experiments/types';
 
 export interface CreateExperimentInput {
@@ -88,7 +91,7 @@ export async function createExperiment(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  const data = await googleAdsRequest(token, config, 'experiments:mutate', {
+  const data = await googleAdsMutateRequest(token, config, 'experiments:mutate', guard.capability, {
     body: {
       operations: [buildCreateExperimentOperation(input)],
     },
@@ -150,11 +153,14 @@ export async function createExperimentArms(
   assertExactlyOneControlAndSum100(input.arms);
 
   if (isMockMode(config)) {
+    // Resource name real de experimentArm é composto com til (A7): customers/{cid}/
+    // experimentArms/{experimentId}~{index}, nunca aninhado sob o resource name do experiment.
+    const googleExperimentId = input.experimentResourceName.split('/').pop() ?? 'unknown';
     return input.arms.map((arm, i) => ({
       name: arm.name,
       isControl: arm.isControl,
       trafficSplit: arm.trafficSplit,
-      resourceName: `${input.experimentResourceName}/experimentArms/${i + 1}`,
+      resourceName: `customers/${config.customerId}/experimentArms/${googleExperimentId}~${i + 1}`,
       inDesignCampaignResourceName: arm.isControl
         ? null
         : `customers/${config.customerId}/campaigns/MOCK-IN-DESIGN-${i + 1}`,
@@ -172,7 +178,7 @@ export async function createExperimentArms(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  const data = await googleAdsRequest(token, config, 'experimentArms:mutate', {
+  const data = await googleAdsMutateRequest(token, config, 'experimentArms:mutate', guard.capability, {
     body: {
       operations: buildCreateExperimentArmsOperations(input.experimentResourceName, input.arms),
       partialFailure: false,
@@ -232,10 +238,54 @@ export function parseCreateExperimentArmsResponse(
   });
 }
 
+export interface ExperimentArmRow {
+  resourceName: string;
+  experimentResourceName: string;
+  control: boolean;
+  inDesignCampaignResourceName: string | null;
+}
+
+// Parsing puro de uma linha de `experiment_arm` (sem rede) — testável direto.
+export function parseExperimentArmRow(row: any): ExperimentArmRow | null {
+  const resourceName: string | undefined = row?.experimentArm?.resourceName;
+  const experimentResourceName: string | undefined = row?.experimentArm?.experiment;
+  if (!resourceName || !experimentResourceName) return null;
+  const inDesignCampaigns: string[] = row?.experimentArm?.inDesignCampaigns ?? [];
+  return {
+    resourceName,
+    experimentResourceName,
+    control: Boolean(row?.experimentArm?.control),
+    inDesignCampaignResourceName: inDesignCampaigns[0] ?? null,
+  };
+}
+
+// Consulta os braços de um experimento — usada tanto pelo fallback público
+// (getTreatmentInDesignCampaign) quanto pela resolução interna e vinculada da Tarefa 7 (A6).
+// Correção A3: `SearchGoogleAdsRequest` v25 não tem `includeDrafts` — removido; recursos em
+// design são consultados por busca normal via `experiment_arm.in_design_campaigns`.
+async function queryExperimentArms(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string
+): Promise<ExperimentArmRow[]> {
+  const query = `
+    SELECT experiment_arm.resource_name, experiment_arm.experiment, experiment_arm.control,
+      experiment_arm.in_design_campaigns
+    FROM experiment_arm
+    WHERE experiment_arm.experiment = '${experimentResourceName.replace(/'/g, "\\'")}'
+  `;
+
+  const data = await googleAdsRequest(token, config, 'googleAds:search', { body: { query } });
+  const rows: any[] = data?.results ?? [];
+  return rows
+    .map(parseExperimentArmRow)
+    .filter((row): row is ExperimentArmRow => row !== null);
+}
+
 // Fallback pra reconsultar a in-design campaign do tratamento depois da criação (ex.: se a
 // resposta do mutate não veio com MUTABLE_RESOURCE por algum motivo, ou numa sync posterior).
-// Drafts (recursos em design, ainda não promovidos) só aparecem em busca com includeDrafts —
-// handoff seção 3, ponto 9. Shape exato desse parâmetro não foi validado contra chamada real.
+// Não valida exclusividade do braço de tratamento — pra isso, ver
+// `resolveTreatmentCampaignForVariation`, usado por `applyFinalUrlVariation` (A6).
 export async function getTreatmentInDesignCampaign(
   token: string,
   config: GoogleAdsCredentials,
@@ -245,24 +295,51 @@ export async function getTreatmentInDesignCampaign(
     return `customers/${config.customerId}/campaigns/MOCK-IN-DESIGN-treatment`;
   }
 
-  const query = `
-    SELECT experiment_arm.in_design_campaigns, experiment_arm.control
-    FROM experiment_arm
-    WHERE experiment_arm.experiment = '${experimentResourceName.replace(/'/g, "\\'")}'
-  `;
+  const rows = await queryExperimentArms(token, config, experimentResourceName);
+  const treatmentRow = rows.find((row) => row.control === false);
+  return treatmentRow?.inDesignCampaignResourceName ?? null;
+}
 
-  const data = await googleAdsRequest(token, config, 'googleAds:search', {
-    body: { query, includeDrafts: true },
-  });
+// Deriva o treatment campaign SEMPRE a partir do experimento — nunca aceita um resource name
+// arbitrário do chamador (A6, ponto 1-2). Valida: exatamente 1 braço não-controle, a linha
+// retornada realmente pertence ao `experimentResourceName` pedido (defesa contra resposta
+// cruzada da API) e existe uma in-design campaign associada.
+async function resolveTreatmentCampaignForVariation(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string
+): Promise<string> {
+  const rows = await queryExperimentArms(token, config, experimentResourceName);
+  const treatmentRows = rows.filter((row) => row.control === false);
 
-  const rows: any[] = data?.results ?? [];
-  const treatmentRow = rows.find((row) => row?.experimentArm?.control === false);
-  const inDesignCampaigns: string[] = treatmentRow?.experimentArm?.inDesignCampaigns ?? [];
-  return inDesignCampaigns[0] ?? null;
+  if (treatmentRows.length !== 1) {
+    throw new Error(
+      `Esperado exatamente 1 braço de tratamento (control=false) pro experimento ${experimentResourceName}, encontrado ${treatmentRows.length}.`
+    );
+  }
+
+  const [treatment] = treatmentRows;
+  if (treatment.experimentResourceName !== experimentResourceName) {
+    throw new Error(
+      `Braço de tratamento retornado pertence a "${treatment.experimentResourceName}", não ao experimento pedido "${experimentResourceName}" — abortando por segurança.`
+    );
+  }
+  if (!treatment.inDesignCampaignResourceName) {
+    throw new Error(
+      `Braço de tratamento do experimento ${experimentResourceName} não tem in-design campaign associada ainda.`
+    );
+  }
+
+  return treatment.inDesignCampaignResourceName;
 }
 
 export interface ApplyFinalUrlVariationResult {
   applied: boolean;
+  // true quando pelo menos um anúncio precisou de mutate real (diferencia de alreadyApplied).
+  changed: boolean;
+  // true quando o estado já batia com a variação esperada ANTES de qualquer mutate — nenhuma
+  // rede de escrita foi usada (A6, ponto 3: não confundir com verified).
+  alreadyApplied: boolean;
   treatmentCampaignResourceName: string;
   adsModified: Array<{
     resourceName: string;
@@ -270,26 +347,35 @@ export interface ApplyFinalUrlVariationResult {
     finalUrlAfter: string[];
   }>;
   // true só quando a releitura pós-mutação confirma finalUrls == [newFinalUrl] em TODOS os
-  // anúncios encontrados. É essa flag (não o HTTP 200 do mutate) que Tarefa 8 deve checar
-  // antes de permitir schedule — Hermes review ponto 7: "uma simples resposta 200 não deve
-  // ser o único critério".
+  // anúncios encontrados. É essa flag (não o HTTP 200 do mutate) que deve ser checada antes de
+  // permitir schedule — Hermes review ponto 7: "uma simples resposta 200 não deve ser o único
+  // critério".
   verified: boolean;
   warnings: string[];
 }
 
-// Localiza o(s) anúncio(s) do in-design treatment campaign (Tarefa 6) e troca finalUrls pra
-// newFinalUrl — depois RELÊ pra confirmar que a mudança vingou de verdade. Nunca toca no
-// braço de controle (só recebe o resourceName do treatment).
+// Localiza o(s) anúncio(s) do in-design treatment campaign (derivado internamente do
+// experimento, nunca recebido como parâmetro solto — A6) e troca finalUrls pra newFinalUrl —
+// depois RELÊ pra confirmar que a mudança vingou de verdade. Nunca toca no braço de controle.
+//
+// Idempotência/reconciliação (checkpoint pós-Tarefa 8, item 6): esta função SEMPRE relê o
+// estado atual antes de decidir se precisa mutar. Isso significa que, se uma chamada anterior
+// sofreu timeout mas a mutação na verdade foi aplicada no servidor, uma nova chamada detecta
+// `alreadyApplied:true` e NÃO reenvia a mutate — reler-antes-de-repetir é a estratégia padrão,
+// não uma exceção tratada à parte.
 export async function applyFinalUrlVariation(
   token: string,
   config: GoogleAdsCredentials,
-  treatmentCampaignResourceName: string,
+  experimentResourceName: string,
   newFinalUrl: string
 ): Promise<ApplyFinalUrlVariationResult> {
   if (isMockMode(config)) {
-    const mockAdResourceName = `${treatmentCampaignResourceName}/adGroups/MOCK-AG/adGroupAds/MOCK-AD`;
+    const treatmentCampaignResourceName = `customers/${config.customerId}/campaigns/MOCK-IN-DESIGN-treatment`;
+    const mockAdResourceName = `customers/${config.customerId}/adGroupAds/MOCK-AG~MOCK-AD`;
     return {
       applied: true,
+      changed: true,
+      alreadyApplied: false,
       treatmentCampaignResourceName,
       adsModified: [
         {
@@ -303,9 +389,13 @@ export async function applyFinalUrlVariation(
     };
   }
 
-  const adsBefore = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName, {
-    includeDrafts: true,
-  });
+  const treatmentCampaignResourceName = await resolveTreatmentCampaignForVariation(
+    token,
+    config,
+    experimentResourceName
+  );
+
+  const adsBefore = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName);
 
   if (adsBefore.length === 0) {
     throw new Error(
@@ -313,14 +403,49 @@ export async function applyFinalUrlVariation(
     );
   }
 
-  for (const ad of adsBefore) {
-    await updateAdFinalUrls(token, config, ad.resourceName, [newFinalUrl]);
+  const adsNeedingChange = adsBefore.filter(
+    (ad) => !(ad.finalUrls.length === 1 && ad.finalUrls[0] === newFinalUrl)
+  );
+
+  if (adsNeedingChange.length === 0) {
+    return {
+      applied: false,
+      changed: false,
+      alreadyApplied: true,
+      treatmentCampaignResourceName,
+      adsModified: adsBefore.map((ad) => ({
+        resourceName: ad.resourceName,
+        finalUrlBefore: ad.finalUrls,
+        finalUrlAfter: ad.finalUrls,
+      })),
+      verified: true,
+      warnings: [],
+    };
   }
 
-  // Relê depois de mutar tudo — nunca confia só na resposta HTTP 200 do mutate.
-  const adsAfter = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName, {
-    includeDrafts: true,
+  const guard = assertMutationAllowed({
+    operation: 'updateAdFinalUrls',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
   });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  // A6, ponto 5: TODOS os anúncios que precisam mudar vão numa ÚNICA mutate (partialFailure:
+  // false) — nunca um fetch por anúncio, que poderia deixar alteração parcial em caso de falha
+  // no meio do loop.
+  await updateAdFinalUrlsBatch(
+    token,
+    config,
+    adsNeedingChange.map((ad) => ad.resourceName),
+    [newFinalUrl],
+    guard.capability
+  );
+
+  // Relê depois de mutar tudo — nunca confia só na resposta HTTP 200 do mutate.
+  const adsAfter = await findAdGroupAdsInCampaign(token, config, treatmentCampaignResourceName);
 
   const { adsModified, verified } = compareFinalUrlsAfterMutation(adsBefore, adsAfter, newFinalUrl);
 
@@ -333,11 +458,26 @@ export async function applyFinalUrlVariation(
 
   return {
     applied: true,
+    changed: true,
+    alreadyApplied: false,
     treatmentCampaignResourceName,
     adsModified,
     verified,
     warnings,
   };
+}
+
+// Gate puro (A6, ponto 4) — schedule só deve prosseguir se a variação está com `verified:true` E
+// (`changed:true` OU `alreadyApplied:true`, ambos provam que o estado atual bate com o
+// esperado). Prova PERSISTIDA (não só o resultado desta chamada em memória) é responsabilidade
+// da rota/DB da Tarefa 10 — esta função é o gate mínimo reutilizável, chamável tanto com o
+// resultado fresco quanto com um snapshot persistido equivalente.
+export function assertVariationReadyForSchedule(result: ApplyFinalUrlVariationResult): void {
+  if (!result.verified || !(result.changed || result.alreadyApplied)) {
+    throw new Error(
+      'Variação de pré-sell não confirmada no treatment — não é seguro agendar o experimento ainda.'
+    );
+  }
 }
 
 // Comparação pura (sem rede) entre o estado antes/depois da mutação — é essa lógica que
@@ -412,6 +552,15 @@ export function parseOperationHandleResponse(data: any, methodLabel: string): Op
   return { operationName };
 }
 
+// Resource name de long-running operation é sempre FLAT (`customers/{cid}/operations/{id}`),
+// nunca aninhado sob o experiment (A7) — segue o padrão google.longrunning.Operation que
+// `googleAdsGetResource`/pollExperimentOperation espera (GET direto no resource name, sem
+// `:método`).
+function mockOperationName(config: GoogleAdsCredentials, experimentResourceName: string, label: string): string {
+  const googleExperimentId = experimentResourceName.split('/').pop() ?? 'unknown';
+  return `customers/${config.customerId}/operations/mock-${label}-${googleExperimentId}`;
+}
+
 // Materializa a campanha de tratamento e pode começar a servir/gastar a partir de startDate —
 // é aqui que a distinção "preparar (não veicula)" vs "agendar (pode gastar)" do plano vira
 // realidade. Só permitido a partir de SETUP.
@@ -426,7 +575,7 @@ export async function scheduleExperiment(
   }
 
   if (isMockMode(config)) {
-    return { operationName: `${experimentResourceName}/operations/mock-schedule` };
+    return { operationName: mockOperationName(config, experimentResourceName, 'schedule') };
   }
 
   const guard = assertMutationAllowed({
@@ -439,11 +588,12 @@ export async function scheduleExperiment(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  const data = await googleAdsResourceRequest(
+  const data = await googleAdsResourceMutateRequest(
     token,
     config,
     experimentResourceName,
-    'scheduleExperiment'
+    'scheduleExperiment',
+    guard.capability
   );
   return parseOperationHandleResponse(data, 'scheduleExperiment');
 }
@@ -503,11 +653,17 @@ export interface AsyncErrorsResult {
 const MAX_ASYNC_ERROR_PAGES = 20;
 
 // Erros completos de uma operação assíncrona que falhou só saem daqui — a Operation em si
-// (pollExperimentOperation) só devolve a primeira mensagem resumida (handoff, ponto 14).
+// (pollExperimentOperation) só devolve a primeira mensagem resumida.
+//
+// Correção A1 (checkpoint pós-Tarefa 8): `ListExperimentAsyncErrorsRequest.resource_name` é o
+// resource name do EXPERIMENTO (`customers/{cid}/experiments/{id}`), não da operation — a
+// versão anterior recebia `operationName` e derivava o endpoint dele, o que está errado. Além
+// disso o verbo correto é GET (é uma consulta, não uma mutação) com paginação via query string
+// `pageToken`, não POST com body.
 export async function listExperimentAsyncErrors(
   token: string,
   config: GoogleAdsCredentials,
-  operationName: string
+  experimentResourceName: string
 ): Promise<AsyncErrorsResult> {
   if (isMockMode(config)) {
     return { errors: [], truncated: false };
@@ -518,10 +674,10 @@ export async function listExperimentAsyncErrors(
   let pages = 0;
 
   do {
-    const data = await googleAdsResourceRequest(
+    const data = await googleAdsResourceGetRequest(
       token,
       config,
-      operationName,
+      experimentResourceName,
       'listAsyncErrors',
       pageToken ? { pageToken } : {}
     );
@@ -559,7 +715,7 @@ export async function endExperiment(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  await googleAdsResourceRequest(token, config, experimentResourceName, 'endExperiment');
+  await googleAdsResourceMutateRequest(token, config, experimentResourceName, 'endExperiment', guard.capability);
   return { success: true };
 }
 
@@ -575,7 +731,7 @@ export async function promoteExperiment(
   assertActionAllowedFromStatus('PROMOTE', currentStatus);
 
   if (isMockMode(config)) {
-    return { operationName: `${experimentResourceName}/operations/mock-promote` };
+    return { operationName: mockOperationName(config, experimentResourceName, 'promote') };
   }
 
   const guard = assertMutationAllowed({
@@ -588,22 +744,51 @@ export async function promoteExperiment(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  const data = await googleAdsResourceRequest(
+  const data = await googleAdsResourceMutateRequest(
     token,
     config,
     experimentResourceName,
-    'promoteExperiment'
+    'promoteExperiment',
+    guard.capability
   );
   return parseOperationHandleResponse(data, 'promoteExperiment');
 }
 
+export interface CampaignBudgetMapping {
+  experimentCampaign: string;
+  campaignBudget: string;
+}
+
+// Payload puro (sem rede/guard) do `GraduateExperimentRequest` v25 — corrigido (A2, checkpoint
+// pós-Tarefa 8): a versão anterior enviava `{ graduatedCampaignBudget }`, que não existe no
+// contrato oficial. O request real exige `experiment` + `campaignBudgetMappings[]`, cada
+// mapping com `experimentCampaign` (a campanha do braço de tratamento, que vira independente) e
+// `campaignBudget` (orçamento próprio pra ela) — no máximo 1 mapping no MVP (1 tratamento).
+export function buildGraduateExperimentRequest(
+  experimentResourceName: string,
+  mapping: CampaignBudgetMapping
+) {
+  return {
+    experiment: experimentResourceName,
+    campaignBudgetMappings: [
+      {
+        experimentCampaign: mapping.experimentCampaign,
+        campaignBudget: mapping.campaignBudget,
+      },
+    ],
+  };
+}
+
 // Síncrono — transforma o tratamento numa campanha independente (sem afetar o controle). Exige
-// um orçamento próprio pra campanha graduada; só a partir de RUNNING.
+// a campanha do braço de tratamento (`experimentCampaignResourceName`, derivada do arm
+// control=false — mesma fonte que `resolveTreatmentCampaignForVariation`) e um orçamento
+// próprio pra ela; só a partir de RUNNING.
 export async function graduateExperiment(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
   currentStatus: ExperimentStatus,
+  experimentCampaignResourceName: string,
   graduatedCampaignBudgetResourceName: string
 ): Promise<{ success: true }> {
   assertActionAllowedFromStatus('GRADUATE', currentStatus);
@@ -622,8 +807,16 @@ export async function graduateExperiment(
     throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
   }
 
-  await googleAdsResourceRequest(token, config, experimentResourceName, 'graduateExperiment', {
-    graduatedCampaignBudget: graduatedCampaignBudgetResourceName,
-  });
+  await googleAdsResourceMutateRequest(
+    token,
+    config,
+    experimentResourceName,
+    'graduateExperiment',
+    guard.capability,
+    buildGraduateExperimentRequest(experimentResourceName, {
+      experimentCampaign: experimentCampaignResourceName,
+      campaignBudget: graduatedCampaignBudgetResourceName,
+    })
+  );
   return { success: true };
 }

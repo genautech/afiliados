@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildUpdateAdFinalUrlsBatchOperations,
   buildUpdateAdFinalUrlsOperation,
   findAdGroupAdsInCampaign,
-  parseUpdateAdFinalUrlsResponse,
-  updateAdFinalUrls,
+  parseUpdateAdFinalUrlsBatchResponse,
+  updateAdFinalUrlsBatch,
 } from '@/lib/google-ads/ads';
-import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
+import { createMutationCapability, type GoogleAdsCredentials } from '@/lib/google-ads/client';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -39,34 +40,26 @@ afterEach(() => {
 const CAMPAIGN = 'customers/1234567890/campaigns/999';
 
 describe('findAdGroupAdsInCampaign', () => {
-  it('1. modo mock não chama fetch e devolve 1 ad determinístico', async () => {
+  it('1. modo mock não chama fetch e devolve 1 ad determinístico com resource name flat (A7)', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const ads = await findAdGroupAdsInCampaign('tok', mockCredentials(), CAMPAIGN);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(ads).toHaveLength(1);
+    expect(ads[0].resourceName).toBe('customers/1234567890/adGroupAds/MOCK-AG~MOCK-AD');
   });
 
-  it('2. modo real pede includeDrafts=true quando passado explicitamente', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
-    vi.stubGlobal('fetch', fetchSpy);
-    await findAdGroupAdsInCampaign('tok', realCredentials(), CAMPAIGN, { includeDrafts: true });
-    const [, requestInit] = fetchSpy.mock.calls[0];
-    const body = JSON.parse(requestInit.body as string);
-    expect(body.includeDrafts).toBe(true);
-    expect(body.query).toContain(CAMPAIGN);
-  });
-
-  it('3. includeDrafts default é false quando não informado', async () => {
+  it('2. modo real NÃO envia includeDrafts no body (A3 — campo não existe em SearchGoogleAdsRequest v25)', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
     vi.stubGlobal('fetch', fetchSpy);
     await findAdGroupAdsInCampaign('tok', realCredentials(), CAMPAIGN);
     const [, requestInit] = fetchSpy.mock.calls[0];
     const body = JSON.parse(requestInit.body as string);
-    expect(body.includeDrafts).toBe(false);
+    expect(body).not.toHaveProperty('includeDrafts');
+    expect(body.query).toContain(CAMPAIGN);
   });
 
-  it('4. parseia resourceName/finalUrls das linhas retornadas', async () => {
+  it('3. parseia resourceName/finalUrls das linhas retornadas', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -83,9 +76,7 @@ describe('findAdGroupAdsInCampaign', () => {
         })
       )
     );
-    const ads = await findAdGroupAdsInCampaign('tok', realCredentials(), CAMPAIGN, {
-      includeDrafts: true,
-    });
+    const ads = await findAdGroupAdsInCampaign('tok', realCredentials(), CAMPAIGN);
     expect(ads).toEqual([
       {
         resourceName: `${CAMPAIGN}/adGroups/1/adGroupAds/1`,
@@ -95,7 +86,7 @@ describe('findAdGroupAdsInCampaign', () => {
     ]);
   });
 
-  it('5. descarta linhas incompletas (sem resourceName ou adGroup)', async () => {
+  it('4. descarta linhas incompletas (sem resourceName ou adGroup)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -109,33 +100,82 @@ describe('findAdGroupAdsInCampaign', () => {
   });
 });
 
-describe('updateAdFinalUrls', () => {
-  it('6. modo mock não chama fetch e ecoa a URL pedida', async () => {
+describe('updateAdFinalUrlsBatch', () => {
+  it('5. modo mock não chama fetch e ecoa a URL pedida pra todos os anúncios', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const result = await updateAdFinalUrls('tok', mockCredentials(), 'ad/1', [
-      'https://example.com/nova',
-    ]);
+    const capability = createMutationCapability('updateAdFinalUrls');
+    const result = await updateAdFinalUrlsBatch(
+      'tok',
+      mockCredentials(),
+      ['ad/1', 'ad/2'],
+      ['https://example.com/nova'],
+      capability
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(result.finalUrls).toEqual(['https://example.com/nova']);
+    expect(result).toEqual([
+      { resourceName: 'ad/1', finalUrls: ['https://example.com/nova'] },
+      { resourceName: 'ad/2', finalUrls: ['https://example.com/nova'] },
+    ]);
   });
 
-  it('7. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
+  it('6. lista vazia de anúncios não chama fetch e devolve []', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const result = await updateAdFinalUrlsBatch(
+      'tok',
+      realCredentials(),
+      [],
+      ['https://example.com/nova'],
+      createMutationCapability('updateAdFinalUrls')
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it('7. A5: capability inválida/ausente bloqueia ANTES de qualquer fetch, mesmo em modo real', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      updateAdFinalUrls('tok', realCredentials(), 'ad/1', ['https://example.com/nova'])
-    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+      updateAdFinalUrlsBatch(
+        'tok',
+        realCredentials(),
+        ['ad/1'],
+        ['https://example.com/nova'],
+        { brand: 'nao-e-uma-capability-de-verdade' } as any
+      )
+    ).rejects.toThrow(/bloqueada.*MutationCapability|MutationCapability.*bloqueada/i);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('8. A6: com capability válida, envia TODOS os anúncios numa ÚNICA mutate (partialFailure:false)', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      jsonResponse({ results: [{ resourceName: 'ad/1' }, { resourceName: 'ad/2' }] })
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await updateAdFinalUrlsBatch(
+      'tok',
+      realCredentials(),
+      ['ad/1', 'ad/2'],
+      ['https://example.com/nova'],
+      createMutationCapability('updateAdFinalUrls')
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchSpy.mock.calls[0];
+    const body = JSON.parse(requestInit.body as string);
+    expect(body.operations).toHaveLength(2);
+    expect(body.partialFailure).toBe(false);
+    expect(result).toEqual([
+      { resourceName: 'ad/1', finalUrls: ['https://example.com/nova'] },
+      { resourceName: 'ad/2', finalUrls: ['https://example.com/nova'] },
+    ]);
   });
 });
 
-// buildUpdateAdFinalUrlsOperation/parseUpdateAdFinalUrlsResponse são puros (sem rede/guard) —
-// cobrem o shape do payload/resposta que updateAdFinalUrls monta internamente, já que o guard
-// (teste 7 acima) impede exercitar esse caminho via fetch real até a Tarefa 10 plugar
-// `confirmed` de verdade.
 describe('buildUpdateAdFinalUrlsOperation', () => {
-  it('8. monta updateMask restrito a ad.final_urls, sem tocar outros campos', () => {
+  it('9. monta updateMask restrito a ad.final_urls, sem tocar outros campos', () => {
     const op = buildUpdateAdFinalUrlsOperation('ad/1', ['https://example.com/nova']);
     expect(op).toEqual({
       update: { resourceName: 'ad/1', ad: { finalUrls: ['https://example.com/nova'] } },
@@ -144,19 +184,40 @@ describe('buildUpdateAdFinalUrlsOperation', () => {
   });
 });
 
-describe('parseUpdateAdFinalUrlsResponse', () => {
-  it('9. devolve resourceName + finalUrls quando a API confirma', () => {
-    const result = parseUpdateAdFinalUrlsResponse(
-      { results: [{ resourceName: 'ad/1' }] },
-      'ad/1',
+describe('buildUpdateAdFinalUrlsBatchOperations', () => {
+  it('10. gera 1 operation por resourceName, todas com a mesma finalUrls', () => {
+    const ops = buildUpdateAdFinalUrlsBatchOperations(['ad/1', 'ad/2'], ['https://example.com/nova']);
+    expect(ops).toHaveLength(2);
+    expect(ops[0].update.resourceName).toBe('ad/1');
+    expect(ops[1].update.resourceName).toBe('ad/2');
+    expect(ops.every((op) => op.updateMask === 'ad.final_urls')).toBe(true);
+  });
+});
+
+describe('parseUpdateAdFinalUrlsBatchResponse', () => {
+  it('11. devolve resourceName + finalUrls pra cada resultado confirmado', () => {
+    const result = parseUpdateAdFinalUrlsBatchResponse(
+      { results: [{ resourceName: 'ad/1' }, { resourceName: 'ad/2' }] },
+      ['ad/1', 'ad/2'],
       ['https://example.com/nova']
     );
-    expect(result).toEqual({ resourceName: 'ad/1', finalUrls: ['https://example.com/nova'] });
+    expect(result).toEqual([
+      { resourceName: 'ad/1', finalUrls: ['https://example.com/nova'] },
+      { resourceName: 'ad/2', finalUrls: ['https://example.com/nova'] },
+    ]);
   });
 
-  it('10. lança erro se a API não confirmar resourceName na resposta', () => {
+  it('12. lança erro se o número de resultados não bater com o de anúncios enviados', () => {
     expect(() =>
-      parseUpdateAdFinalUrlsResponse({ results: [{}] }, 'ad/1', ['https://example.com/nova'])
+      parseUpdateAdFinalUrlsBatchResponse({ results: [{ resourceName: 'ad/1' }] }, ['ad/1', 'ad/2'], [
+        'https://example.com/nova',
+      ])
+    ).toThrow(/retornou.*resultado/i);
+  });
+
+  it('13. lança erro se algum resultado não confirmar resourceName', () => {
+    expect(() =>
+      parseUpdateAdFinalUrlsBatchResponse({ results: [{}] }, ['ad/1'], ['https://example.com/nova'])
     ).toThrow(/não confirmou/);
   });
 });
