@@ -44,9 +44,19 @@ no total.
 `lib/google-ads/ads.ts` (`findAdGroupAdsInCampaign`, `updateAdFinalUrls`) +
 `applyFinalUrlVariation()` em `experiments.ts` — acha o RSA do in-design treatment, muta
 `finalUrls` e **relê pra confirmar** antes de reportar sucesso (`verified: boolean`, nunca
-confia só no HTTP 200). 113 testes no total. Próxima: Tarefa 8 (lifecycle assíncrono —
-schedule/promote, polling, `ListExperimentAsyncErrors`) — se for continuar, ler a seção 1.2
-do plano antes.
+confia só no HTTP 200). 113 testes no total.
+
+**Atualização mesma sessão (~13h) — fix de segurança pós-revisão (`521ada6`):** revisão do
+conjunto Tarefas 6-7 achou que `createExperiment`/`createExperimentArms`/`updateAdFinalUrls`
+mutavam de verdade na API mas **não chamavam o mutation guard da Tarefa 2**. Sem risco em
+produção hoje (nada roteava pra essas funções ainda), mas era armadilha pra Tarefa 10.
+Corrigido: guard plugado nas 3, `confirmed: false` hardcoded (mesmo padrão das funções
+antigas, `TODO(Tarefa 10)`). Request-building/response-parsing extraídos como funções puras
+(`buildXxxOperation`/`parseXxxResponse`/`compareFinalUrlsAfterMutation`) pra manter a
+cobertura de teste sem precisar passar pelo guard. 120 testes no total. **Regra pra Tarefa 8
+em diante: plugar o guard já na primeira versão de qualquer função que mute, não depois.**
+Próxima: Tarefa 8 (lifecycle assíncrono — schedule/promote, polling,
+`ListExperimentAsyncErrors`) — se for continuar, ler a seção 1.2 do plano antes.
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
