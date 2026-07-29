@@ -11,6 +11,7 @@
 
 import { googleAdsRequest, isMockMode, type GoogleAdsCredentials } from './client';
 import { mapGoogleExperimentRemoteStatus } from '../google-ads-experiments/types';
+import type { PrismaClient } from '@prisma/client';
 import type { ExperimentReport } from '../google-ads-experiments/schemas';
 
 type ExperimentMetricPoint = ExperimentReport['control'];
@@ -67,11 +68,19 @@ interface RawExperimentReportRow {
 }
 
 function num(value: unknown): number {
-  return Number(value ?? 0);
+  if (value === '' || value === null || value === undefined) return 0;
+  const n = Number(value);
+  if (Number.isNaN(n) || !Number.isFinite(n) || n < 0) return 0;
+  return n;
 }
 
-function stat(value: unknown): number | null {
-  return value === undefined || value === null ? null : Number(value);
+function stat(value: unknown, isPValue = false, isMargin = false): number | null {
+  if (value === '' || value === null || value === undefined) return null;
+  const n = Number(value);
+  if (Number.isNaN(n) || !Number.isFinite(n)) return null;
+  if (isPValue && (n < 0 || n > 1)) return null;
+  if (isMargin && n < 0) return null;
+  return n;
 }
 
 function extractExperimentIdFromResourceName(resourceName: string): string {
@@ -85,8 +94,21 @@ function decideOutcome(
   sampleSize: number,
   targetClicks: number,
   conversionsPValue: number | null,
-  conversionsPointEstimate: number | null
+  conversionsPointEstimate: number | null,
+  conversionsMarginOfError: number | null
 ): { feasibility: ExperimentReport['feasibility']; hasSignificantResult: boolean; summary: string } {
+  if (!Number.isInteger(targetClicks) || targetClicks < 1) {
+    targetClicks = 1;
+  }
+  
+  if (conversionsPValue === null || conversionsPointEstimate === null || conversionsMarginOfError === null) {
+    return {
+      feasibility: 'UNDERPOWERED',
+      hasSignificantResult: false,
+      summary: 'Estatísticas ausentes ou inválidas. Resultado inconclusivo.',
+    };
+  }
+
   if (sampleSize < targetClicks) {
     return {
       feasibility: 'UNDERPOWERED',
@@ -94,22 +116,29 @@ function decideOutcome(
       summary: `Amostra insuficiente: ${sampleSize} cliques acumulados (controle+tratamento), abaixo do alvo de ${targetClicks}. Resultado inconclusivo — aguardando mais dados.`,
     };
   }
-  if (conversionsPValue === null) {
+
+  if (conversionsPValue < 0.05) {
+    const lowerBound = conversionsPointEstimate - conversionsMarginOfError;
+    const upperBound = conversionsPointEstimate + conversionsMarginOfError;
+    
+    if (lowerBound > 0) {
+      return {
+        feasibility: 'VIABLE',
+        hasSignificantResult: true,
+        summary: `Diferença estatisticamente significativa em conversões (p=${conversionsPValue.toFixed(4)}), tratamento acima do controle.`,
+      };
+    }
+    if (upperBound < 0) {
+      return {
+        feasibility: 'VIABLE',
+        hasSignificantResult: true,
+        summary: `Diferença estatisticamente significativa em conversões (p=${conversionsPValue.toFixed(4)}), tratamento abaixo do controle.`,
+      };
+    }
     return {
       feasibility: 'UNDERPOWERED',
       hasSignificantResult: false,
-      summary: 'A API ainda não retornou p-value de conversões para este experimento. Resultado inconclusivo.',
-    };
-  }
-  if (conversionsPValue < 0.05) {
-    const direction =
-      conversionsPointEstimate !== null && conversionsPointEstimate > 0
-        ? 'tratamento acima do controle'
-        : 'tratamento abaixo do controle';
-    return {
-      feasibility: 'VIABLE',
-      hasSignificantResult: true,
-      summary: `Diferença estatisticamente significativa em conversões (p=${conversionsPValue.toFixed(4)}), ${direction}.`,
+      summary: 'Intervalo de confiança cruza zero. Resultado inconclusivo.',
     };
   }
   return {
@@ -122,7 +151,8 @@ function decideOutcome(
 // Parsing puro de uma linha do recurso `experiment` (sem rede) — testável direto.
 export function parseExperimentReportRow(row: RawExperimentReportRow, targetClicks: number): ExperimentReport {
   const m = row.metrics ?? {};
-  const mapped = mapGoogleExperimentRemoteStatus(row.experiment?.status ?? 'UNSPECIFIED');
+  const statusRaw = row.experiment?.status ?? 'UNSPECIFIED';
+  const mapped = mapGoogleExperimentRemoteStatus(statusRaw);
 
   const treatment: ExperimentMetricPoint = {
     impressions: num(m.impressions),
@@ -142,28 +172,28 @@ export function parseExperimentReportRow(row: RawExperimentReportRow, targetClic
   const statistics: ExperimentStatistics = {
     impressions: {
       pointEstimate: stat(m.impressionsPointEstimate),
-      marginOfError: stat(m.impressionsMarginOfError),
-      pValue: stat(m.impressionsPValue),
+      marginOfError: stat(m.impressionsMarginOfError, false, true),
+      pValue: stat(m.impressionsPValue, true),
     },
     clicks: {
       pointEstimate: stat(m.clicksPointEstimate),
-      marginOfError: stat(m.clicksMarginOfError),
-      pValue: stat(m.clicksPValue),
+      marginOfError: stat(m.clicksMarginOfError, false, true),
+      pValue: stat(m.clicksPValue, true),
     },
     costMicros: {
       pointEstimate: stat(m.costMicrosChangePointEstimate),
-      marginOfError: stat(m.costMicrosMarginOfError),
-      pValue: stat(m.costMicrosPValue),
+      marginOfError: stat(m.costMicrosMarginOfError, false, true),
+      pValue: stat(m.costMicrosPValue, true),
     },
     conversions: {
       pointEstimate: stat(m.conversionsAbsoluteChangePointEstimate),
-      marginOfError: stat(m.conversionsAbsoluteChangeMarginOfError),
-      pValue: stat(m.conversionsAbsoluteChangePValue),
+      marginOfError: stat(m.conversionsAbsoluteChangeMarginOfError, false, true),
+      pValue: stat(m.conversionsAbsoluteChangePValue, true),
     },
     conversionValue: {
       pointEstimate: stat(m.conversionValueChangePointEstimate),
-      marginOfError: stat(m.conversionValueMarginOfError),
-      pValue: stat(m.conversionValuePValue),
+      marginOfError: stat(m.conversionValueMarginOfError, false, true),
+      pValue: stat(m.conversionValuePValue, true),
     },
   };
 
@@ -172,11 +202,17 @@ export function parseExperimentReportRow(row: RawExperimentReportRow, targetClic
     sampleSize,
     targetClicks,
     statistics.conversions.pValue,
-    statistics.conversions.pointEstimate
+    statistics.conversions.pointEstimate,
+    statistics.conversions.marginOfError
   );
 
+  const experimentId = row.experiment?.experimentId || extractExperimentIdFromResourceName(row.experiment?.resourceName ?? '');
+  if (!experimentId) {
+    throw new Error('Identidade do experimento ausente na resposta.');
+  }
+
   return {
-    experimentId: row.experiment?.experimentId ?? extractExperimentIdFromResourceName(row.experiment?.resourceName ?? ''),
+    experimentId,
     status: mapped.local,
     control,
     treatment,
@@ -215,9 +251,34 @@ function buildInconclusiveReport(experimentResourceName: string, reason: string)
   };
 }
 
-export interface FallbackCampaignPair {
+export interface ValidatedFallbackArms {
   controlCampaignResourceName: string;
   treatmentCampaignResourceName: string;
+  experimentId: string;
+}
+
+export function validateFallbackArms(
+  experimentId: string,
+  arms: { isControl: boolean; servedCampaignResourceName?: string | null; experimentId: string }[]
+): ValidatedFallbackArms {
+  if (arms.length !== 2) throw new Error('É necessário exatamente 2 braços para o fallback.');
+  const control = arms.find(a => a.isControl);
+  const treatment = arms.find(a => !a.isControl);
+  if (!control || !treatment) throw new Error('Braços de controle e tratamento devem estar presentes e bem definidos.');
+  if (control.experimentId !== experimentId || treatment.experimentId !== experimentId) {
+    throw new Error('Braços não pertencem ao experimento informado.');
+  }
+  if (!control.servedCampaignResourceName || !treatment.servedCampaignResourceName) {
+    throw new Error('Braços devem ter campanhas servidas configuradas.');
+  }
+  if (control.servedCampaignResourceName === treatment.servedCampaignResourceName) {
+    throw new Error('Campanhas de controle e tratamento devem ser distintas.');
+  }
+  return {
+    controlCampaignResourceName: control.servedCampaignResourceName,
+    treatmentCampaignResourceName: treatment.servedCampaignResourceName,
+    experimentId,
+  };
 }
 
 // Campos padrão já usados em outros pontos do código (lib/google-ads.ts) pra métricas de
@@ -230,7 +291,7 @@ async function fetchCampaignMetricPoint(
   const query = `
     SELECT metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value
     FROM campaign
-    WHERE campaign.resource_name = '${campaignResourceName.replace(/'/g, "\\'")}'
+    WHERE campaign.resource_name = '\${campaignResourceName.replace(/'/g, "\\\\'")}'
   `;
   const data = await googleAdsRequest(token, config, 'googleAds:search', { body: { query } });
   const m = data?.results?.[0]?.metrics ?? {};
@@ -251,7 +312,7 @@ async function buildFallbackReport(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
-  fallback: FallbackCampaignPair,
+  fallback: ValidatedFallbackArms,
   targetClicks: number
 ): Promise<ExperimentReport> {
   const [control, treatment] = await Promise.all([
@@ -266,8 +327,8 @@ async function buildFallbackReport(
     treatment,
     statistics: emptyStatistics(),
     hasSignificantResult: false,
-    feasibility: sampleSize < targetClicks ? 'UNDERPOWERED' : 'VIABLE',
-    summary: `Fallback de diagnóstico: recurso \`experiment\` sem linha; métricas lidas direto das campanhas (sem uplift/p-value). Amostra: ${sampleSize} cliques.`,
+    feasibility: 'UNDERPOWERED',
+    summary: `Fallback de diagnóstico: recurso 'experiment' sem linha; métricas lidas direto das campanhas (sem uplift/p-value). Amostra: ${sampleSize} cliques.`,
   };
 }
 
@@ -312,7 +373,7 @@ const MAX_REPORT_PAGES = 5;
 
 export interface FetchExperimentReportOptions {
   targetClicks: number;
-  fallbackCampaigns?: FallbackCampaignPair;
+  fallbackCampaigns?: ValidatedFallbackArms;
 }
 
 // Recurso `experiment` sempre representa o snapshot cumulativo — não segmentamos por
@@ -397,4 +458,65 @@ export function buildMetricSnapshotUpsertInput(
     statistics: report.statistics,
     sourcePayload,
   };
+}
+
+export function sanitizeSourcePayload(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const safe: Record<string, unknown> = {};
+  const data = raw as any;
+  if (data.experiment && typeof data.experiment === 'object') {
+    safe.experiment = {
+      resourceName: data.experiment.resourceName,
+      experimentId: data.experiment.experimentId,
+      status: data.experiment.status,
+    };
+  }
+  if (data.metrics && typeof data.metrics === 'object') {
+    const safeMetrics: Record<string, unknown> = {};
+    for (const key of Object.keys(data.metrics)) {
+      if (typeof data.metrics[key] === 'number' || typeof data.metrics[key] === 'string') {
+        safeMetrics[key] = data.metrics[key];
+      }
+    }
+    safe.metrics = safeMetrics;
+  }
+  const str = JSON.stringify(safe);
+  if (str.length > 5000) return { error: 'Payload exceeds limit' };
+  return safe;
+}
+
+export async function upsertMetricSnapshot(
+  prisma: Pick<PrismaClient, 'googleAdsExperimentMetricSnapshot'>,
+  input: MetricSnapshotUpsertInput
+) {
+  const date = new Date(input.snapshotDate);
+  const snapshotDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+  const data = {
+    experimentId: input.experimentId,
+    snapshotDate,
+    controlImpressions: input.controlImpressions,
+    controlClicks: input.controlClicks,
+    controlCostMicros: input.controlCostMicros,
+    controlConversions: input.controlConversions,
+    controlConversionValue: input.controlConversionValue,
+    treatmentImpressions: input.treatmentImpressions,
+    treatmentClicks: input.treatmentClicks,
+    treatmentCostMicros: input.treatmentCostMicros,
+    treatmentConversions: input.treatmentConversions,
+    treatmentConversionValue: input.treatmentConversionValue,
+    statistics: input.statistics as any,
+    sourcePayload: sanitizeSourcePayload(input.sourcePayload) as any,
+  };
+
+  return prisma.googleAdsExperimentMetricSnapshot.upsert({
+    where: {
+      experimentId_snapshotDate: {
+        experimentId: input.experimentId,
+        snapshotDate,
+      },
+    },
+    create: data,
+    update: data,
+  });
 }

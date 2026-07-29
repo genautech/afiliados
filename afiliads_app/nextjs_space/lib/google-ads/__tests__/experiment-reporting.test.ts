@@ -4,6 +4,8 @@ import {
   buildMetricSnapshotUpsertInput,
   fetchExperimentReport,
   parseExperimentReportRow,
+  upsertMetricSnapshot,
+  validateFallbackArms
 } from '@/lib/google-ads/experiment-reporting';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
 
@@ -93,7 +95,7 @@ describe('parseExperimentReportRow', () => {
   it('3. caminho feliz: amostra suficiente + p-value < 0.05 => VIABLE e resultado significativo', () => {
     const report = parseExperimentReportRow(baseRow(), 50);
     expect(report.experimentId).toBe('999');
-    expect(report.status).toBe('RUNNING'); // ENABLED -> RUNNING (mapGoogleExperimentRemoteStatus)
+    expect(report.status).toBe('RUNNING');
     expect(report.control).toEqual({
       impressions: 1000,
       clicks: 50,
@@ -128,7 +130,7 @@ describe('parseExperimentReportRow', () => {
     );
     expect(report.feasibility).toBe('UNDERPOWERED');
     expect(report.hasSignificantResult).toBe(false);
-    expect(report.summary).toMatch(/não retornou p-value/);
+    expect(report.summary).toMatch(/Estatísticas ausentes ou inválidas/);
   });
 
   it('6. amostra suficiente + p-value >= 0.05 => VIABLE mas sem resultado significativo (nunca escolhe vencedor)', () => {
@@ -147,10 +149,78 @@ describe('parseExperimentReportRow', () => {
     expect(report.status).not.toBe('SETUP');
     expect(weird.status).toBe('ERROR');
   });
+
+  it('8. Testes adversariais (P1): NaN, "", Infinity viram null/0 e evitam falhas', () => {
+    const report = parseExperimentReportRow(baseRow({ 
+      conversionsAbsoluteChangePValue: '', 
+      conversionsAbsoluteChangeMarginOfError: 'abc',
+      conversions: NaN,
+      clicks: -5, // negativas indevidas em base
+      conversionsAbsoluteChangePointEstimate: '2' // Int64 from REST
+    }), 50);
+    
+    expect(report.treatment.conversions).toBe(0);
+    expect(report.treatment.clicks).toBe(0); // rejected negative
+    expect(report.statistics.conversions.pValue).toBe(null); // empty string rejected
+    expect(report.statistics.conversions.marginOfError).toBe(null); // 'abc' rejected
+    expect(report.statistics.conversions.pointEstimate).toBe(2); // '2' parsed fine
+    expect(report.feasibility).toBe('UNDERPOWERED');
+    expect(report.hasSignificantResult).toBe(false);
+  });
+
+  it('9. Testes adversariais (P1): p-value inválido ou intervalo cruzando zero', () => {
+    // p-value < 0 invalid
+    let report = parseExperimentReportRow(baseRow({ conversionsAbsoluteChangePValue: -0.1 }), 50);
+    expect(report.statistics.conversions.pValue).toBe(null);
+    expect(report.hasSignificantResult).toBe(false);
+
+    // p-value > 1 invalid
+    report = parseExperimentReportRow(baseRow({ conversionsAbsoluteChangePValue: 1.2 }), 50);
+    expect(report.statistics.conversions.pValue).toBe(null);
+
+    // crosses zero: estimate 2, margin 3 (lower is -1, upper is 5) => crosses zero despite p-value 0.04
+    report = parseExperimentReportRow(baseRow({ 
+      conversionsAbsoluteChangePointEstimate: 2,
+      conversionsAbsoluteChangeMarginOfError: 3,
+      conversionsAbsoluteChangePValue: 0.04
+    }), 50);
+    expect(report.hasSignificantResult).toBe(false);
+    expect(report.summary).toMatch(/cruza zero/);
+  });
+  
+  it('10. Rejeita ausência de identidade (P2)', () => {
+    expect(() => parseExperimentReportRow({ metrics: {} }, 50)).toThrow(/Identidade do experimento ausente/);
+  });
+});
+
+describe('validateFallbackArms', () => {
+  it('11. valida braços corretamente', () => {
+    const arms = [
+      { isControl: true, servedCampaignResourceName: 'c1', experimentId: 'exp1' },
+      { isControl: false, servedCampaignResourceName: 'c2', experimentId: 'exp1' }
+    ];
+    const res = validateFallbackArms('exp1', arms);
+    expect(res.controlCampaignResourceName).toBe('c1');
+    expect(res.treatmentCampaignResourceName).toBe('c2');
+  });
+
+  it('12. rejeita invalidações', () => {
+    // falta de servedCampaignResourceName
+    expect(() => validateFallbackArms('exp1', [
+      { isControl: true, experimentId: 'exp1' },
+      { isControl: false, servedCampaignResourceName: 'c2', experimentId: 'exp1' }
+    ])).toThrow(/Braços devem ter campanhas/);
+    
+    // IDs diferentes
+    expect(() => validateFallbackArms('exp1', [
+      { isControl: true, servedCampaignResourceName: 'c1', experimentId: 'exp2' },
+      { isControl: false, servedCampaignResourceName: 'c2', experimentId: 'exp1' }
+    ])).toThrow(/Braços não pertencem/);
+  });
 });
 
 describe('fetchExperimentReport', () => {
-  it('8. modo mock não chama fetch e devolve relatório determinístico VIABLE+significativo', async () => {
+  it('13. modo mock não chama fetch e devolve relatório determinístico VIABLE+significativo', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const report = await fetchExperimentReport('tok', mockCredentials(), EXPERIMENT, { targetClicks: 50 });
@@ -160,13 +230,13 @@ describe('fetchExperimentReport', () => {
     expect(report.hasSignificantResult).toBe(true);
   });
 
-  it('9. modo real: busca via googleAds:search, para na primeira página com resultado e faz parse da linha', async () => {
+  it('14. modo real: busca via googleAds:search, para na primeira página com resultado e faz parse da linha', async () => {
     const fetchSpy = vi.fn().mockResolvedValueOnce(
       jsonResponse({
         results: [
           {
             experiment: { resourceName: EXPERIMENT, experimentId: '999', status: 'ENABLED' },
-            metrics: { clicks: 60, controlClicks: 50, conversionsAbsoluteChangePValue: 0.04, conversionsAbsoluteChangePointEstimate: 2 },
+            metrics: { clicks: 60, controlClicks: 50, conversionsAbsoluteChangePValue: 0.04, conversionsAbsoluteChangePointEstimate: 2, conversionsAbsoluteChangeMarginOfError: 1 },
           },
         ],
       })
@@ -178,7 +248,7 @@ describe('fetchExperimentReport', () => {
     expect(report.treatment.clicks).toBe(60);
   });
 
-  it('10. sem linhas e sem fallback => relatório inconclusivo explícito, nunca finge SETUP/RUNNING', async () => {
+  it('15. sem linhas e sem fallback => relatório inconclusivo explícito, nunca finge SETUP/RUNNING', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
     vi.stubGlobal('fetch', fetchSpy);
     const report = await fetchExperimentReport('tok', realCredentials(), EXPERIMENT, { targetClicks: 50 });
@@ -188,12 +258,12 @@ describe('fetchExperimentReport', () => {
     expect(report.summary).toMatch(/não retornou linhas/);
   });
 
-  it('11. sem linhas mas com fallback de campanhas => métricas cruas por campanha, sem uplift/p-value inventado', async () => {
+  it('16. sem linhas mas com fallback de campanhas => métricas cruas por campanha, sem uplift/p-value inventado', async () => {
     const fetchSpy = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ results: [] })) // experiment search
-      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 40, conversions: 3 } }] })) // control campaign
-      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 45, conversions: 5 } }] })); // treatment campaign
+      .mockResolvedValueOnce(jsonResponse({ results: [] }))
+      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 40, conversions: 3 } }] }))
+      .mockResolvedValueOnce(jsonResponse({ results: [{ metrics: { clicks: 45, conversions: 5 } }] }));
     vi.stubGlobal('fetch', fetchSpy);
 
     const report = await fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
@@ -201,6 +271,7 @@ describe('fetchExperimentReport', () => {
       fallbackCampaigns: {
         controlCampaignResourceName: 'customers/1234567890/campaigns/1',
         treatmentCampaignResourceName: 'customers/1234567890/campaigns/2',
+        experimentId: '999'
       },
     });
 
@@ -209,12 +280,13 @@ describe('fetchExperimentReport', () => {
     expect(report.treatment.clicks).toBe(45);
     expect(report.statistics.conversions).toEqual({ pointEstimate: null, marginOfError: null, pValue: null });
     expect(report.hasSignificantResult).toBe(false);
+    expect(report.feasibility).toBe('UNDERPOWERED'); // Mesmo com sample >= 50, sem estatística deve ser UNDERPOWERED
     expect(report.summary).toMatch(/Fallback de diagnóstico/);
   });
 });
 
-describe('buildMetricSnapshotUpsertInput', () => {
-  it('12. mapeia ExperimentReport pro shape de GoogleAdsExperimentMetricSnapshot (mapper puro, sem Prisma)', () => {
+describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
+  it('17. mapeia ExperimentReport pro shape de GoogleAdsExperimentMetricSnapshot (mapper puro, sem Prisma)', () => {
     const report = parseExperimentReportRow(baseRowFixture(), 50);
     const snapshotDate = new Date('2026-07-29T00:00:00.000Z');
     const input = buildMetricSnapshotUpsertInput('local-experiment-id', snapshotDate, report, { raw: true });
@@ -226,7 +298,43 @@ describe('buildMetricSnapshotUpsertInput', () => {
     expect(input.controlConversions).toBe(report.control.conversions);
     expect(input.treatmentConversions).toBe(report.treatment.conversions);
     expect(input.statistics).toBe(report.statistics);
+    // Sanitize in upsert function, input retains original
     expect(input.sourcePayload).toEqual({ raw: true });
+  });
+  
+  it('18. upsertMetricSnapshot normaliza data para UTC midnight e faz upsert idempotente via mock Prisma', async () => {
+    const report = parseExperimentReportRow(baseRowFixture(), 50);
+    // two dates, same UTC day
+    const date1 = new Date('2026-07-29T10:00:00.000Z');
+    const date2 = new Date('2026-07-29T15:00:00.000Z');
+    
+    const input1 = buildMetricSnapshotUpsertInput('exp1', date1, report, { raw: true });
+    const input2 = buildMetricSnapshotUpsertInput('exp1', date2, report, { raw: true });
+    
+    const mockPrisma = {
+      googleAdsExperimentMetricSnapshot: {
+        upsert: vi.fn().mockResolvedValue({})
+      }
+    };
+    
+    await upsertMetricSnapshot(mockPrisma as any, input1);
+    await upsertMetricSnapshot(mockPrisma as any, input2);
+    
+    expect(mockPrisma.googleAdsExperimentMetricSnapshot.upsert).toHaveBeenCalledTimes(2);
+    
+    const call1Args = mockPrisma.googleAdsExperimentMetricSnapshot.upsert.mock.calls[0][0];
+    const call2Args = mockPrisma.googleAdsExperimentMetricSnapshot.upsert.mock.calls[1][0];
+    
+    const expectedMidnight = new Date(Date.UTC(2026, 6, 29)); // Month is 0-indexed in Date.UTC (6 = July)
+    
+    // Assegura idempotencia com a data de meia-noite
+    expect(call1Args.where.experimentId_snapshotDate.snapshotDate).toEqual(expectedMidnight);
+    expect(call2Args.where.experimentId_snapshotDate.snapshotDate).toEqual(expectedMidnight);
+    expect(call1Args.create.snapshotDate).toEqual(expectedMidnight);
+    expect(call2Args.create.snapshotDate).toEqual(expectedMidnight);
+    
+    // Garante q payloads perigosos/gigantes sao sanitizados
+    expect(call1Args.create.sourcePayload).toEqual({});
   });
 });
 
@@ -246,6 +354,7 @@ function baseRowFixture() {
       controlCostMicros: 25_000_000,
       conversionsAbsoluteChangePValue: 0.04,
       conversionsAbsoluteChangePointEstimate: 2,
+      conversionsAbsoluteChangeMarginOfError: 1, // Add margin to avoid crossing zero and get true
     },
   };
 }
