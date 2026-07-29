@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { assertMutationAllowed } from './google-ads/mutation-guard';
 
 // IDs públicos de geoTargetConstant/languageConstant do Google Ads (estáveis, documentados pelo Google).
 const GEO_TARGET_CONSTANTS: Record<string, string> = {
@@ -274,6 +275,29 @@ export async function mutateGoogleCampaign(
   }
 
   // --- REAL API MODE ---
+  if (updates.status) {
+    const guard = assertMutationAllowed({
+      operation: 'mutateGoogleCampaign.status',
+      customerId: config.customerId,
+      isMock: false,
+      confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+    });
+    if (!guard.allowed) {
+      throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+    }
+  }
+  if (updates.budgetDaily !== undefined) {
+    const guard = assertMutationAllowed({
+      operation: 'mutateGoogleCampaign.budget',
+      customerId: config.customerId,
+      isMock: false,
+      confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+    });
+    if (!guard.allowed) {
+      throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+    }
+  }
+
   const token = await getAccessToken(config);
   const logs: string[] = [];
 
@@ -386,6 +410,16 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
   }
 
   // --- REAL API MODE ---
+  const createGuard = assertMutationAllowed({
+    operation: 'createGoogleCampaign',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!createGuard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${createGuard.reason}`);
+  }
+
   const token = await getAccessToken(config);
   const base = `https://googleads.googleapis.com/v25/customers/${config.customerId}`;
   const headers = apiHeaders(token, config);
