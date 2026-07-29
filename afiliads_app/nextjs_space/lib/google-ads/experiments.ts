@@ -69,7 +69,8 @@ export function parseCreateExperimentResponse(data: any): CreateExperimentResult
 export async function createExperiment(
   token: string,
   config: GoogleAdsCredentials,
-  input: CreateExperimentInput
+  input: CreateExperimentInput,
+  capability: MutationCapability
 ): Promise<CreateExperimentResult> {
   if (isMockMode(config)) {
     const mockId = `MOCK-EXPERIMENT-${input.suffix}`;
@@ -81,17 +82,7 @@ export async function createExperiment(
     };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'createExperiment',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
-
-  const data = await googleAdsMutateRequest(token, config, 'experiments:mutate', guard.capability, {
+  const data = await googleAdsMutateRequest(token, config, 'experiments:mutate', capability, {
     body: {
       operations: [buildCreateExperimentOperation(input)],
     },
@@ -148,7 +139,8 @@ function assertExactlyOneControlAndSum100(arms: ExperimentArmInput[]): void {
 export async function createExperimentArms(
   token: string,
   config: GoogleAdsCredentials,
-  input: CreateExperimentArmsInput
+  input: CreateExperimentArmsInput,
+  capability: MutationCapability
 ): Promise<ExperimentArmResult[]> {
   assertExactlyOneControlAndSum100(input.arms);
 
@@ -168,23 +160,19 @@ export async function createExperimentArms(
     }));
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'createExperimentArms',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
-
-  const data = await googleAdsMutateRequest(token, config, 'experimentArms:mutate', guard.capability, {
-    body: {
-      operations: buildCreateExperimentArmsOperations(input.experimentResourceName, input.arms),
-      partialFailure: false,
-      responseContentType: 'MUTABLE_RESOURCE',
-    },
-  });
+  const data = await googleAdsMutateRequest(
+    token,
+    config,
+    'experimentArms:mutate',
+    capability,
+    {
+      body: {
+        operations: buildCreateExperimentArmsOperations(input.experimentResourceName, input.arms),
+        partialFailure: false,
+        responseContentType: 'MUTABLE_RESOURCE',
+      },
+    }
+  );
 
   return parseCreateExperimentArmsResponse(data, input.arms);
 }
@@ -367,7 +355,8 @@ export async function applyFinalUrlVariation(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
-  newFinalUrl: string
+  newFinalUrl: string,
+  capability: MutationCapability
 ): Promise<ApplyFinalUrlVariationResult> {
   if (isMockMode(config)) {
     const treatmentCampaignResourceName = `customers/${config.customerId}/campaigns/MOCK-IN-DESIGN-treatment`;
@@ -423,25 +412,12 @@ export async function applyFinalUrlVariation(
     };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'updateAdFinalUrls',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
-
-  // A6, ponto 5: TODOS os anúncios que precisam mudar vão numa ÚNICA mutate (partialFailure:
-  // false) — nunca um fetch por anúncio, que poderia deixar alteração parcial em caso de falha
-  // no meio do loop.
   await updateAdFinalUrlsBatch(
     token,
     config,
     adsNeedingChange.map((ad) => ad.resourceName),
     [newFinalUrl],
-    guard.capability
+    capability
   );
 
   // Relê depois de mutar tudo — nunca confia só na resposta HTTP 200 do mutate.

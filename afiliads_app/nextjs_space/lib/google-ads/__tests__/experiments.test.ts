@@ -57,7 +57,7 @@ describe('createExperiment', () => {
   it('1. modo mock não chama fetch e devolve status SETUP', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const result = await createExperiment('tok', mockCredentials(), input);
+    const result = await createExperiment('tok', mockCredentials(), input, { allowed: true } as any);
     expect(result.mock).toBe(true);
     expect(result.status).toBe('SETUP');
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -66,8 +66,8 @@ describe('createExperiment', () => {
   it('2. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    await expect(createExperiment('tok', realCredentials(), input)).rejects.toThrow(
-      /Mutação bloqueada pelo guard/
+    await expect(createExperiment('tok', realCredentials(), input, { allowed: true } as any)).rejects.toThrow(
+      /bloqueada:/
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -138,7 +138,7 @@ describe('createExperimentArms — validação de invariantes (antes de qualquer
       createExperimentArms('tok', realCredentials(), {
         experimentResourceName: 'customers/1234567890/experiments/999',
         arms: [controlArm({ campaignResourceName: undefined }), treatmentArm()],
-      })
+      }, { allowed: true } as any)
     ).rejects.toThrow(/campanha existente/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -148,7 +148,7 @@ describe('createExperimentArms — validação de invariantes (antes de qualquer
       createExperimentArms('tok', realCredentials(), {
         experimentResourceName: 'customers/1234567890/experiments/999',
         arms: [treatmentArm({ name: 'a' }), treatmentArm({ name: 'b' })],
-      })
+      }, { allowed: true } as any)
     ).rejects.toThrow(/1 braço de controle/);
   });
 
@@ -157,7 +157,7 @@ describe('createExperimentArms — validação de invariantes (antes de qualquer
       createExperimentArms('tok', realCredentials(), {
         experimentResourceName: 'customers/1234567890/experiments/999',
         arms: [controlArm(), controlArm({ name: 'control-2' })],
-      })
+      }, { allowed: true } as any)
     ).rejects.toThrow(/1 braço de controle/);
   });
 
@@ -166,7 +166,7 @@ describe('createExperimentArms — validação de invariantes (antes de qualquer
       createExperimentArms('tok', realCredentials(), {
         experimentResourceName: 'customers/1234567890/experiments/999',
         arms: [controlArm({ trafficSplit: 30 }), treatmentArm({ trafficSplit: 30 })],
-      })
+      }, { allowed: true } as any)
     ).rejects.toThrow(/precisa ser 100/);
   });
 });
@@ -178,7 +178,7 @@ describe('createExperimentArms — modo mock', () => {
     const arms = await createExperimentArms('tok', mockCredentials(), {
       experimentResourceName: 'customers/1234567890/experiments/999',
       arms: [controlArm(), treatmentArm()],
-    });
+    }, { allowed: true } as any);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(arms[0].inDesignCampaignResourceName).toBeNull();
     expect(arms[1].inDesignCampaignResourceName).toContain('MOCK-IN-DESIGN');
@@ -193,8 +193,8 @@ describe('createExperimentArms — modo real', () => {
       createExperimentArms('tok', realCredentials(), {
         experimentResourceName: 'customers/1234567890/experiments/999',
         arms: [controlArm(), treatmentArm()],
-      })
-    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+      }, { allowed: true } as any)
+    ).rejects.toThrow(/bloqueada:/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
@@ -383,7 +383,8 @@ describe('applyFinalUrlVariation', () => {
       'tok',
       mockCredentials(),
       VARIATION_EXPERIMENT,
-      NEW_URL
+      NEW_URL,
+      { allowed: true } as any
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result.verified).toBe(true);
@@ -404,7 +405,7 @@ describe('applyFinalUrlVariation', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL, { allowed: true } as any)
     ).rejects.toThrow(/Nenhum anúncio encontrado/);
     expect(fetchSpy).toHaveBeenCalledTimes(2); // busca de arms + busca de ads, nenhum mutate tentado
 
@@ -424,7 +425,7 @@ describe('applyFinalUrlVariation', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL, { allowed: true } as any)
     ).rejects.toThrow(/Esperado exatamente 1 braço de tratamento/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -436,7 +437,7 @@ describe('applyFinalUrlVariation', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL, { allowed: true } as any)
     ).rejects.toThrow(/pertence a/);
   });
 
@@ -448,8 +449,8 @@ describe('applyFinalUrlVariation', () => {
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(
-      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL)
-    ).rejects.toThrow(/Mutação bloqueada pelo guard/);
+      applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL, { allowed: true } as any)
+    ).rejects.toThrow(/bloqueada:/);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -461,7 +462,7 @@ describe('applyFinalUrlVariation', () => {
       .mockResolvedValueOnce(adSearchResponse(NEW_URL));
     vi.stubGlobal('fetch', fetchSpy);
 
-    const result = await applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL);
+    const result = await applyFinalUrlVariation('tok', realCredentials(), VARIATION_EXPERIMENT, NEW_URL, { allowed: true } as any);
 
     expect(fetchSpy).toHaveBeenCalledTimes(2); // só as 2 buscas, nenhuma mutate
     expect(result.alreadyApplied).toBe(true);
