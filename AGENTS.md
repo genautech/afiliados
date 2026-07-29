@@ -32,6 +32,14 @@ LLM nunca decide o valor). 86 testes no total. Próxima: Tarefa 6 (criar Experim
 API real, mock primeiro) — se for continuar, ler a seção 1.2 do plano antes (decisões de
 nomenclatura/schema já tomadas, não redecidir).
 
+**Atualização mesma sessão (~10h) — Tarefa 6 concluída (`b331c77`):**
+`lib/google-ads/experiments.ts` — `createExperiment()` (SETUP), `createExperimentArms()`
+(control+treatment na mesma mutate request, `MUTABLE_RESOURCE`, valida invariantes antes de
+qualquer fetch), `getTreatmentInDesignCampaign()` (fallback GAQL `includeDrafts`). **Aviso:**
+shape de alguns campos da API nunca foi validado contra resposta real, só contra mocks
+próprios — conferir documentação atual antes do primeiro teste real (Tarefa 16). 100 testes
+no total. Próxima: Tarefa 7 (aplicar variante de pré-sell no in-design treatment).
+
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
