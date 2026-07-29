@@ -91,9 +91,11 @@ interface LlmOptions {
   agent?: string;
 }
 
-export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai';
-// Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade)
-export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama'];
+export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
+// Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade).
+// 'kimi' fica de fora dos TIER_CHAINS de propósito (nunca é escolhido automaticamente pelo
+// roteador) — só entra quando selecionado manualmente via Integration llm/provider='kimi'.
+export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama', 'kimi'];
 export type Tier = 'premium' | 'standard' | 'light';
 
 // Tier por agente: premium = raciocínio pesado (qualidade > custo);
@@ -139,6 +141,7 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   grok: { premium: 'grok-4.20-reasoning', standard: 'grok-4.1-fast-reasoning', light: 'grok-4.1-fast-non-reasoning' },
   ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
+  kimi: { premium: 'kimi-k3', standard: 'kimi-k3', light: 'kimi-k2.5' },
 };
 
 // Modelos Claude alternativos por tier, tentados em ordem dentro do mesmo passo
@@ -164,6 +167,7 @@ const DEFAULT_BUDGETS: Record<Provider, number> = {
   grok: 0,
   ollama: 0,
   abacusai: 0,
+  kimi: 0,
 };
 
 // Origem da chave usada em cada provider: 'byok' = chave configurada pelo próprio
@@ -200,7 +204,7 @@ async function getMonthUsage(userId: string): Promise<Record<Provider, number>> 
     where: { userId, createdAt: { gte: monthStart }, success: true },
     _sum: { totalTokens: true },
   });
-  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0 };
+  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0, kimi: 0 };
   for (const g of grouped) {
     if (g.provider in usage) usage[g.provider as Provider] = g._sum.totalTokens ?? 0;
   }
@@ -216,6 +220,7 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     google: process.env.GEMINI_API_KEY,
     grok: process.env.XAI_API_KEY,
     ollama: process.env.OLLAMA_API_KEY,
+    kimi: process.env.KIMI_API_KEY,
   };
   const keySources: Partial<Record<Provider, KeySource>> = {};
   for (const p of ACTIVE_PROVIDERS) {
@@ -462,6 +467,36 @@ async function callProvider(
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Ollama: ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens ?? 0,
+          completionTokens: data?.usage?.completion_tokens ?? 0,
+          totalTokens: data?.usage?.total_tokens ?? 0,
+        },
+        model: data?.model ?? model,
+      };
+    }
+
+    case 'kimi': {
+      // Kimi K3 pensa por padrão (reasoning_effort 'max') e consome o orçamento de tokens com
+      // reasoning_content antes de emitir a resposta final — 'low' evita truncar o JSON de saída
+      // em max_tokens baixo (visto em teste manual: content vazio, reasoning_tokens só).
+      const response = await fetch('https://api.moonshot.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 4096,
+          reasoning_effort: 'low',
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do Kimi/Moonshot: ${await response.text()}`);
       const data = await response.json();
       return {
         text: data?.choices?.[0]?.message?.content || '',

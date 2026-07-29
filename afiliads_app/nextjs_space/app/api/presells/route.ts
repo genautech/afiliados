@@ -80,9 +80,13 @@ export async function POST(request: NextRequest) {
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .slice(0, 10000);
+      // Data real informada explicitamente: sem isso, o agente (com conhecimento até uma data de
+      // corte anterior) confunde o ano corrente da página gerada com uma data futura fabricada e
+      // sinaliza falso-positivo crítico de "conteúdo enganoso" (visto em teste real 2026-07-28).
+      const dataAtual = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
       const seq = await runAgentSequence(
         userId,
-        `Presell "${presell.title}" gerada para o produto "${productName}" (ângulo: ${presell.angle}, geo: ${presell.geo}, tipo: ${presell.pageType}).`,
+        `Presell "${presell.title}" gerada para o produto "${productName}" (ângulo: ${presell.angle}, geo: ${presell.geo}, tipo: ${presell.pageType}). Data real de hoje: ${dataAtual} — não é data futura fictícia, é a data corrente; não sinalize datas/anos na página como enganosos só por parecerem posteriores ao seu conhecimento.`,
         [{
           agent: 'compliance-sentinel',
           systemPrompt: 'Você é o Compliance Sentinel do AfiliAds, chamado logo após o Presell Builder gerar uma página nova. Audite o texto real gerado contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos, disclaimers obrigatórios ausentes). Responda APENAS JSON válido.',

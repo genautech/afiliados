@@ -95,7 +95,8 @@ ANALISE a campanha e responda com JSON:
   "summary": "string - resumo em 2-3 frases contendo o veredito"
 }`;
 
-    const userPrompt = `Audite esta campanha de afiliado:
+    const dataAtualAuditoria = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const userPrompt = `Audite esta campanha de afiliado (data real de hoje: ${dataAtualAuditoria} — datas/anos nesse valor ou na presell real não são conteúdo futuro fabricado, são a data corrente):
 ${campaign.bidStrategy
   ? `[GOOGLE ADS SYNC]: dados de status/orçamento/lances ("${campaign.bidStrategy}") vieram do último pull da API do Google Ads — podem estar defasados desde então.`
   : `[GOOGLE ADS SYNC]: esta campanha NUNCA foi sincronizada com a API do Google Ads — os dados abaixo são o registro local; trate divergências com o Google Ads como possíveis.`}

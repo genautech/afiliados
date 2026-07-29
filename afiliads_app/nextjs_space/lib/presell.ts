@@ -626,8 +626,15 @@ function guaranteeBadgesHtml(locale: Locale): string {
   return `<div class="guarantee-badges"><div class="guarantee-badge">${ICON_SHIELD}<span>${esc(locale.guaranteeBadge1)}</span></div><div class="guarantee-badge">${ICON_LOCK}<span>${esc(locale.guaranteeBadge2)}</span></div><div class="guarantee-badge">${ICON_CLOCK}<span>${esc(locale.guaranteeBadge3)}</span></div></div>`;
 }
 
-function navLinksHtml(locale: Locale): string {
-  return `<a href="#science">${esc(locale.navScience)}</a><a href="#ingredients">${esc(locale.navIngredients)}</a><a href="#packages">${esc(locale.navPackages)}</a><a href="#reviews">${esc(locale.navReviews)}</a><a href="#faq">${esc(locale.navFaq)}</a>`;
+function navLinksHtml(locale: Locale, opts: { hasIngredients: boolean; hasPackages: boolean }): string {
+  const links = [
+    `<a href="#science">${esc(locale.navScience)}</a>`,
+    opts.hasIngredients ? `<a href="#ingredients">${esc(locale.navIngredients)}</a>` : '',
+    opts.hasPackages ? `<a href="#packages">${esc(locale.navPackages)}</a>` : '',
+    `<a href="#reviews">${esc(locale.navReviews)}</a>`,
+    `<a href="#faq">${esc(locale.navFaq)}</a>`,
+  ];
+  return links.filter(Boolean).join('');
 }
 
 export function renderPresellHtml(c: PresellContent, opts: { productName: string; hopLink: string; googleAdsId?: string; conversionLabel?: string; ga4Id?: string; metaPixelId?: string; gtmContainerId?: string; customCode?: string; isHealthNiche?: boolean; pageType?: string; popupGate?: boolean; videoUrl?: string; imagemProdutoUrl?: string; imagemRotuloUrl?: string; imagemLifestyleUrl?: string; salesPageScreenshotUrl?: string; segmentRoutes?: SegmentRoute[]; language?: string; presellId?: string }): string {
@@ -743,13 +750,17 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   if (pageType === 'authority' || pageType === 'authority_v2') {
     // Sem pacotes/ingredientes reais do vendor não dá pra inventar preço/quantidade/composição
     // (risco de compliance), então o heading correspondente some em vez de ficar órfão sem conteúdo.
-    if (!(c.pacotes ?? []).some((p) => p?.nome)) {
+    const hasPackages = (c.pacotes ?? []).some((p) => p?.nome);
+    const hasIngredients = (c.ingredientes ?? []).some((i) => i?.nome);
+    if (!hasPackages) {
       t = t.replace(/<section id="packages">[\s\S]*?<\/section>\s*/, '');
     }
-    if (!(c.ingredientes ?? []).some((i) => i?.nome)) {
+    if (!hasIngredients) {
       t = t.replace(/<!--ingredients-heading-start-->[\s\S]*?<!--ingredients-heading-end-->\s*/, '');
     }
-    t = t.replace('{{NAV_LINKS}}', navLinksHtml(locale));
+    // Link do nav só aponta pra âncora que realmente existe na página (evita link morto quando
+    // a seção correspondente foi omitida por falta de dados reais do vendor).
+    t = t.replace('{{NAV_LINKS}}', navLinksHtml(locale, { hasIngredients, hasPackages }));
     t = t.replace('{{SCIENCE_EYEBROW}}', esc(locale.scienceEyebrow));
     t = t.replace('{{CIENTIFICO_TITULO}}', esc(c.cientifico_titulo ?? ''));
     t = t.replace('{{CIENTIFICO_TEXTO}}', esc(c.cientifico_texto ?? ''));
@@ -1237,6 +1248,10 @@ export async function generatePresell(userId: string, args: {
   slugSeed?: string;
   // Foto lifestyle real (não gerada por IA, fornecida pelo chamador) — só usada pelo pageType 'authority_v2'.
   imagemLifestyleUrl?: string;
+  // Sobrescreve o asset de imagem derivado do dossiê do produto (assets.imagemProdutoUrl/imagemRotuloUrl)
+  // — útil quando existe uma versão tratada/recortada melhor do que o asset bruto do vendor.
+  imagemProdutoUrl?: string;
+  imagemRotuloUrl?: string;
 }) {
   const { productName, hopLink } = args;
   const angle = args.angle ?? 'review';
@@ -1284,6 +1299,8 @@ export async function generatePresell(userId: string, args: {
       }
       if (assets?.imagemProdutoUrl) imagemProdutoUrl = assets.imagemProdutoUrl;
       if (assets?.imagemRotuloUrl) imagemRotuloUrl = assets.imagemRotuloUrl;
+      if (args.imagemProdutoUrl) imagemProdutoUrl = args.imagemProdutoUrl;
+      if (args.imagemRotuloUrl) imagemRotuloUrl = args.imagemRotuloUrl;
 
       // Elementos reais extraídos da página de vendas do vendor (Task 3 do pipeline de pesquisa)
       // — headline/ângulo/prova social verdadeiros, só como referência, nunca cópia literal.
