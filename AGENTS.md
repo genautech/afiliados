@@ -1,5 +1,22 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code / Anti-Gravity)
 
+**Estado em 2026-07-29 (~04h) — Sessão Claude Code, Experimentos A/B Google Ads (Tarefas 1–3
+de 16 concluídas):** plano completo em
+`.hermes/plans/2026-07-29_023051-google-ads-experiments-wizard.md` (gitignored, local).
+Revisão crítica do Hermes (`.hermes/handoffs/..._hermes-review.md`) incorporada ao plano —
+concordâncias/discordâncias documentadas na seção 1.1. Feito nesta sessão, sem tocar Railway
+em nenhum momento (`DATABASE_URL` confirmado mascarado antes de cada edição de schema):
+Tarefa 1 (`adabc6f`, harness Vitest), Tarefa 2 (`c86004a`+`a8fb6cb`, mutation guard
+default-deny integrado em `mutateGoogleCampaign`/`createGoogleCampaign` — **toda mutação real
+fica bloqueada até alguma rota passar `confirmed: true`, o que ainda não acontece**), Tarefa 3
+(`b085007`, 4 models Prisma dedicados — `GoogleAdsExperiment`/`Arm`/`Operation`/
+`MetricSnapshot` — + `migration.sql` escrito à mão em `prisma/migrations/` **não aplicado a
+nenhum banco** + backfill idempotente em `scripts/backfill-google-ads-experiments.ts`, dry-run
+por padrão, **nunca executado**). 28 testes novos, todos offline. Campos-protótipo legado em
+`Campaign` (`isExperiment`/`experimentId`/...) preservados intocados. Próxima: Tarefa 4
+(cliente Google Ads compartilhado, `lib/google-ads/client.ts`) — se for continuar, ler a
+seção 1.2 do plano antes (decisões de nomenclatura/schema já tomadas, não redecidir).
+
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
