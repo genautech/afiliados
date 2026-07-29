@@ -4,10 +4,25 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+// B5 (checkpoint pós-Tarefa 8 — .hermes/handoffs/2026-07-29_task8-cross-flow-quality-gate.md):
+// sem este check, um usuário B autenticado podia POSTar SCALE pra um campaignId de outro
+// usuário (A) e, se A já tivesse `budgetScale`/`googleCampaignId` configurados, isso disparava
+// `mutateGoogleCampaign` de VERDADE na conta de A — aumento de gasto real por usuário sem
+// relação com a campanha. Mesmo padrão de `findFirst({where:{id,userId}})` de
+// app/api/campaigns/[id]/route.ts.
+async function assertCampaignOwnership(campaignId: string, userId: string): Promise<boolean> {
+  const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, select: { id: true } });
+  return Boolean(campaign);
+}
+
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    const userId = (session.user as any)?.id;
+    if (!(await assertCampaignOwnership(params?.id, userId))) {
+      return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    }
     const decisions = await prisma.campaignDecision.findMany({ where: { campaignId: params?.id }, orderBy: { createdAt: 'desc' } });
     return NextResponse.json(decisions ?? []);
   } catch (err: any) {
@@ -30,6 +45,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const userId = (session.user as any)?.id;
+    if (!(await assertCampaignOwnership(params?.id, userId))) {
+      return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    }
     const body = await request.json();
     const decision = await prisma.campaignDecision.create({
       data: {

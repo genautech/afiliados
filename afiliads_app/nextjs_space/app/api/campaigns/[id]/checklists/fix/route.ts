@@ -74,28 +74,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     };
     const failureNote = checklistRow.note ?? 'motivo não registrado';
 
-    if (itemKey === 'google_ads_ok') {
-      const mockGadsId = campaign.googleCampaignId || `gads-${Date.now()}`;
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: {
-          googleCampaignId: mockGadsId,
-          googleCampaignName: campaign.campaignNameGenerated || campaign.name,
-          googleAdGroupId: campaign.googleAdGroupId || `adgroup-${Date.now()}`
-        }
-      });
-      const refreshed = await prisma.campaign.findFirst({ where: { id: campaignId }, include: { keywords: true } });
-      const verifiedRows = await runFullChecklistVerify(refreshed!);
-      const nowPassing = verifiedRows.find((r) => r.step === step && r.itemKey === itemKey)?.isChecked ?? true;
-
-      return NextResponse.json({
-        success: true,
-        diagnostico: 'Campanha de teste configurada e vinculada ao Google Ads modo PAUSED.',
-        valorAplicado: mockGadsId,
-        campoAlterado: 'googleCampaignId',
-        passouAVerificar: nowPassing,
-      });
-    }
+    // Removido (B3, checkpoint pós-Tarefa 8 — .hermes/handoffs/2026-07-29_task8-cross-flow-
+    // quality-gate.md): este item chegou a fabricar um googleCampaignId com `Date.now()` sem
+    // NENHUM recurso remoto correspondente, e o compliance tratava a mera presença do ID como
+    // suficiente pra passar `google_ads_ok`. Isso permitia "aprovar" o checklist de Google Ads
+    // sem a campanha nunca ter sido criada de verdade na API. `google_ads_ok` cai agora no
+    // fluxo genérico abaixo (só diagnóstico) — a correção real é rodar a criação de verdade em
+    // `/api/google-ads/create` (que já existe) e sincronizar, nunca auto-aplicar aqui um ID
+    // inventado.
 
     const fieldMapping = ITEM_FIELD_MAP[itemKey];
 

@@ -5,10 +5,24 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getChecklistVerificationType } from '@/lib/wizard-data';
 
+// B5 (checkpoint pós-Tarefa 8 — .hermes/handoffs/2026-07-29_task8-cross-flow-quality-gate.md):
+// antes, esta rota só checava `session?.user` (qualquer usuário autenticado), sem confirmar
+// que `params.id` pertence a ele — IDOR: usuário B lia/escrevia o checklist da campanha de A
+// só sabendo/adivinhando o campaignId. Mesmo padrão de `findFirst({where:{id,userId}})` já
+// usado em app/api/campaigns/[id]/route.ts.
+async function assertCampaignOwnership(campaignId: string, userId: string): Promise<boolean> {
+  const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, select: { id: true } });
+  return Boolean(campaign);
+}
+
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    const userId = (session.user as any)?.id;
+    if (!(await assertCampaignOwnership(params?.id, userId))) {
+      return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    }
     const items = await prisma.campaignChecklist.findMany({ where: { campaignId: params?.id }, orderBy: [{ step: 'asc' }, { itemKey: 'asc' }] });
     return NextResponse.json(items ?? []);
   } catch (err: any) {
@@ -20,6 +34,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    const userId = (session.user as any)?.id;
+    if (!(await assertCampaignOwnership(params?.id, userId))) {
+      return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    }
     const body = await request.json();
     const items = body?.items ?? [];
     const results = [];
