@@ -38,7 +38,15 @@ nomenclatura/schema já tomadas, não redecidir).
 qualquer fetch), `getTreatmentInDesignCampaign()` (fallback GAQL `includeDrafts`). **Aviso:**
 shape de alguns campos da API nunca foi validado contra resposta real, só contra mocks
 próprios — conferir documentação atual antes do primeiro teste real (Tarefa 16). 100 testes
-no total. Próxima: Tarefa 7 (aplicar variante de pré-sell no in-design treatment).
+no total.
+
+**Atualização mesma sessão (~11h) — Tarefa 7 concluída (`bef5844`):**
+`lib/google-ads/ads.ts` (`findAdGroupAdsInCampaign`, `updateAdFinalUrls`) +
+`applyFinalUrlVariation()` em `experiments.ts` — acha o RSA do in-design treatment, muta
+`finalUrls` e **relê pra confirmar** antes de reportar sucesso (`verified: boolean`, nunca
+confia só no HTTP 200). 113 testes no total. Próxima: Tarefa 8 (lifecycle assíncrono —
+schedule/promote, polling, `ListExperimentAsyncErrors`) — se for continuar, ler a seção 1.2
+do plano antes.
 
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
