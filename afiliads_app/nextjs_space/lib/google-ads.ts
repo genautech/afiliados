@@ -1,5 +1,17 @@
 import { prisma } from './prisma';
 import { assertMutationAllowed } from './google-ads/mutation-guard';
+import {
+  GOOGLE_ADS_API_VERSION,
+  buildApiHeaders,
+  buildApiUrl,
+  getAccessToken,
+  isMockMode,
+  toAmountMicros,
+  type GoogleAdsCredentials,
+} from './google-ads/client';
+
+export { isMockMode } from './google-ads/client';
+export type { GoogleAdsCredentials } from './google-ads/client';
 
 // IDs públicos de geoTargetConstant/languageConstant do Google Ads (estáveis, documentados pelo Google).
 const GEO_TARGET_CONSTANTS: Record<string, string> = {
@@ -26,15 +38,6 @@ export interface CreateCampaignResult {
   googleCampaignId?: string;
   googleAdGroupId?: string;
   logs: string[];
-}
-
-export interface GoogleAdsCredentials {
-  customerId: string;
-  developerToken: string;
-  clientId: string;
-  clientSecret: string;
-  refreshToken: string;
-  loginCustomerId?: string;
 }
 
 export interface SyncedCampaignData {
@@ -80,57 +83,8 @@ export async function getGoogleAdsConfig(userId: string): Promise<GoogleAdsCrede
   };
 }
 
-// Cabeçalhos comuns para chamadas REST da Google Ads API. `login-customer-id` é obrigatório
-// quando as credenciais são de uma conta MCC (gerenciadora) operando sobre uma conta filha —
-// sem ele a API responde USER_PERMISSION_DENIED mesmo com token/developer-token válidos.
-// amount_micros precisa ser múltiplo de 10.000 (1 centavo) — a Google Ads API rejeita frações de centavo.
-function toAmountMicros(dollars: number): number {
-  return Math.round(dollars * 100) * 10_000;
-}
-
-function apiHeaders(token: string, config: GoogleAdsCredentials): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-    'developer-token': config.developerToken,
-  };
-  if (config.loginCustomerId) headers['login-customer-id'] = config.loginCustomerId;
-  return headers;
-}
-
-// Verifica se está rodando em modo Mock/Sandbox
-export function isMockMode(config: GoogleAdsCredentials): boolean {
-  return (
-    config.developerToken.startsWith('DEV_TOKEN_MOCK') ||
-    config.clientId.startsWith('CLIENT_ID_MOCK') ||
-    config.customerId.includes('@') // Se o ID for um e-mail do seed
-  );
-}
-
-// Obtém Token de Acesso temporário OAuth2 do Google
-async function getAccessToken(config: GoogleAdsCredentials): Promise<string> {
-  if (isMockMode(config)) {
-    return 'mock_access_token_123';
-  }
-
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      refresh_token: config.refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Falha na autenticação OAuth2 do Google: ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  return data.access_token;
-}
+// Cabeçalhos, versão da API, OAuth2 e isMockMode agora vivem em ./google-ads/client
+// (extraídos na Tarefa 4 do plano de experimentos, mesma implementação, só centralizada).
 
 // Busca dados atuais da campanha no Google Ads
 export async function fetchGoogleCampaign(
@@ -157,11 +111,11 @@ export async function fetchGoogleCampaign(
 
   // --- REAL API MODE ---
   const token = await getAccessToken(config);
-  const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
+  const url = buildApiUrl(config, 'googleAds:search');
 
   const query = `
-    SELECT 
-      campaign.id, 
+    SELECT
+      campaign.id,
       campaign.name, 
       campaign.status, 
       campaign_budget.amount_micros, 
@@ -173,7 +127,7 @@ export async function fetchGoogleCampaign(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: apiHeaders(token, config),
+    headers: buildApiHeaders(token, config),
     body: JSON.stringify({ query }),
   });
 
@@ -218,7 +172,7 @@ export async function fetchGoogleAdsKeywordMetrics(
   }
 
   const token = await getAccessToken(config);
-  const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
+  const url = buildApiUrl(config, 'googleAds:search');
   const query = `
     SELECT
       ad_group_criterion.keyword.text,
@@ -232,7 +186,7 @@ export async function fetchGoogleAdsKeywordMetrics(
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: apiHeaders(token, config),
+    headers: buildApiHeaders(token, config),
     body: JSON.stringify({ query }),
   });
   if (!res.ok) {
@@ -303,10 +257,10 @@ export async function mutateGoogleCampaign(
 
   // 1. Atualizar o Status se solicitado
   if (updates.status) {
-    const url = `https://googleads.googleapis.com/v25/customers/${config.customerId}/campaigns:mutate`;
+    const url = buildApiUrl(config, 'campaigns:mutate');
     const res = await fetch(url, {
       method: 'POST',
-      headers: apiHeaders(token, config),
+      headers: buildApiHeaders(token, config),
       body: JSON.stringify({
         operations: [
           {
@@ -333,11 +287,11 @@ export async function mutateGoogleCampaign(
     // em produção o ideal seria o googleCampaignId vir acompanhado do budgetResourceId,
     // ou realizarmos uma busca prévia.
     // Aqui realizamos a busca do budget associado primeiro.
-    const searchUrl = `https://googleads.googleapis.com/v25/customers/${config.customerId}/googleAds:search`;
+    const searchUrl = buildApiUrl(config, 'googleAds:search');
     const query = `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = '${googleCampaignId}' LIMIT 1`;
     const searchRes = await fetch(searchUrl, {
       method: 'POST',
-      headers: apiHeaders(token, config),
+      headers: buildApiHeaders(token, config),
       body: JSON.stringify({ query }),
     });
 
@@ -346,12 +300,12 @@ export async function mutateGoogleCampaign(
       const budgetResourceName = searchData?.results?.[0]?.campaign?.campaignBudget;
       
       if (budgetResourceName) {
-        const mutateBudgetUrl = `https://googleads.googleapis.com/v25/customers/${config.customerId}/campaignBudgets:mutate`;
+        const mutateBudgetUrl = buildApiUrl(config, 'campaignBudgets:mutate');
         const amountMicros = toAmountMicros(updates.budgetDaily);
         
         const budgetRes = await fetch(mutateBudgetUrl, {
           method: 'POST',
-          headers: apiHeaders(token, config),
+          headers: buildApiHeaders(token, config),
           body: JSON.stringify({
             operations: [
               {
@@ -421,8 +375,8 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
   }
 
   const token = await getAccessToken(config);
-  const base = `https://googleads.googleapis.com/v25/customers/${config.customerId}`;
-  const headers = apiHeaders(token, config);
+  const base = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${config.customerId}`;
+  const headers = buildApiHeaders(token, config);
 
   async function mutate(resource: string, operations: any[]): Promise<any> {
     const res = await fetch(`${base}/${resource}:mutate`, { method: 'POST', headers, body: JSON.stringify({ operations }) });
