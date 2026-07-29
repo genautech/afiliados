@@ -70,8 +70,10 @@ interface RawExperimentReportRow {
 function parseStrictNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value === 'string') {
-    if (value.trim() === '') return null;
-    const n = Number(value);
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) return null;
+    const n = Number(trimmed);
     return Number.isFinite(n) ? n : null;
   }
   return null;
@@ -476,12 +478,17 @@ export function sanitizeSourcePayload(raw: unknown): Record<string, unknown> {
   const safe: Record<string, unknown> = {};
   const data = raw as Record<string, unknown>;
 
+  const checkStr = (val: unknown, limit = 255) => {
+    if (typeof val === 'string' && val.length <= limit) return val;
+    return undefined;
+  };
+
   if (data.experiment && typeof data.experiment === 'object' && !Array.isArray(data.experiment)) {
     const exp = data.experiment as Record<string, unknown>;
     safe.experiment = {
-      resourceName: typeof exp.resourceName === 'string' ? exp.resourceName : undefined,
-      experimentId: typeof exp.experimentId === 'string' ? exp.experimentId : undefined,
-      status: typeof exp.status === 'string' ? exp.status : undefined,
+      resourceName: checkStr(exp.resourceName),
+      experimentId: checkStr(exp.experimentId, 50),
+      status: checkStr(exp.status, 50),
     };
   }
 
@@ -501,8 +508,12 @@ export function sanitizeSourcePayload(raw: unknown): Record<string, unknown> {
     for (const key of Object.keys(rawMetrics)) {
       if (allowlist.has(key)) {
         const val = rawMetrics[key];
-        if (typeof val === 'number' || typeof val === 'string') {
+        if (typeof val === 'number') {
           safeMetrics[key] = val;
+        } else if (typeof val === 'string' && val.length <= 100) {
+          if (/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(val.trim())) {
+            safeMetrics[key] = val;
+          }
         }
       }
     }

@@ -152,14 +152,14 @@ describe('parseExperimentReportRow', () => {
   });
 
   it('8. Testes adversariais (P1): NaN, "", Infinity viram null/0 e evitam falhas', () => {
-    const report = parseExperimentReportRow(baseRow({ 
-      conversionsAbsoluteChangePValue: '', 
+    const report = parseExperimentReportRow(baseRow({
+      conversionsAbsoluteChangePValue: '',
       conversionsAbsoluteChangeMarginOfError: 'abc',
       conversions: NaN,
       clicks: -5, // negativas indevidas em base
       conversionsAbsoluteChangePointEstimate: '2' // Int64 from REST
     }), 50);
-    
+
     expect(report.treatment.conversions).toBe(0);
     expect(report.treatment.clicks).toBe(0); // rejected negative
     expect(report.statistics.conversions.pValue).toBe(null); // empty string rejected
@@ -180,7 +180,7 @@ describe('parseExperimentReportRow', () => {
     expect(report.statistics.conversions.pValue).toBe(null);
 
     // crosses zero: estimate 2, margin 3 (lower is -1, upper is 5) => crosses zero despite p-value 0.04
-    report = parseExperimentReportRow(baseRow({ 
+    report = parseExperimentReportRow(baseRow({
       conversionsAbsoluteChangePointEstimate: 2,
       conversionsAbsoluteChangeMarginOfError: 3,
       conversionsAbsoluteChangePValue: 0.04
@@ -188,13 +188,13 @@ describe('parseExperimentReportRow', () => {
     expect(report.hasSignificantResult).toBe(false);
     expect(report.summary).toMatch(/cruza zero/);
   });
-  
+
   it('10. Rejeita ausência de identidade (P2)', () => {
     expect(() => parseExperimentReportRow({ metrics: {} }, 50)).toThrow(/Identidade do experimento ausente/);
   });
 
   it('10a. Parsing numérico estrito rejeita boolean, object e whitespace (P2)', () => {
-    const report = parseExperimentReportRow(baseRow({ 
+    const report = parseExperimentReportRow(baseRow({
       conversions: true,
       clicks: [10],
       impressions: '   ',
@@ -215,6 +215,21 @@ describe('parseExperimentReportRow', () => {
     expect(() => parseExperimentReportRow(row, 1.5)).toThrow(/targetClicks/);
     expect(() => parseExperimentReportRow(row, '10' as any)).toThrow(/targetClicks/);
   });
+
+  it('10c. parser rejeita formatos numéricos malformados (hex, bin, oct, whitespace interno) antes do Number() (P2)', () => {
+    const report = parseExperimentReportRow(baseRow({ 
+      conversions: '0x10',
+      clicks: '0b10',
+      impressions: '0o10',
+      controlClicks: '10 10',
+      controlImpressions: '10.5.5'
+    }), 50);
+    expect(report.treatment.conversions).toBe(0);
+    expect(report.treatment.clicks).toBe(0);
+    expect(report.treatment.impressions).toBe(0);
+    expect(report.control.clicks).toBe(0);
+    expect(report.control.impressions).toBe(0);
+  });
 });
 
 describe('validateFallbackArms', () => {
@@ -234,7 +249,7 @@ describe('validateFallbackArms', () => {
       { isControl: true, experimentId: 'exp1' },
       { isControl: false, servedCampaignResourceName: 'c2', experimentId: 'exp1' }
     ])).toThrow(/Braços devem ter campanhas/);
-    
+
     // IDs diferentes
     expect(() => validateFallbackArms('exp1', [
       { isControl: true, servedCampaignResourceName: 'c1', experimentId: 'exp2' },
@@ -364,38 +379,38 @@ describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
     // Sanitize in upsert function, input retains original
     expect(input.sourcePayload).toEqual({ raw: true });
   });
-  
+
   it('18. upsertMetricSnapshot normaliza data para UTC midnight e faz upsert idempotente via mock Prisma', async () => {
     const report = parseExperimentReportRow(baseRowFixture(), 50);
     // two dates, same UTC day
     const date1 = new Date('2026-07-29T10:00:00.000Z');
     const date2 = new Date('2026-07-29T15:00:00.000Z');
-    
+
     const input1 = buildMetricSnapshotUpsertInput('exp1', date1, report, { raw: true });
     const input2 = buildMetricSnapshotUpsertInput('exp1', date2, report, { raw: true });
-    
+
     const mockPrisma = {
       googleAdsExperimentMetricSnapshot: {
         upsert: vi.fn().mockResolvedValue({})
       }
     };
-    
+
     await upsertMetricSnapshot(mockPrisma as any, input1);
     await upsertMetricSnapshot(mockPrisma as any, input2);
-    
+
     expect(mockPrisma.googleAdsExperimentMetricSnapshot.upsert).toHaveBeenCalledTimes(2);
-    
+
     const call1Args = mockPrisma.googleAdsExperimentMetricSnapshot.upsert.mock.calls[0][0];
     const call2Args = mockPrisma.googleAdsExperimentMetricSnapshot.upsert.mock.calls[1][0];
-    
+
     const expectedMidnight = new Date(Date.UTC(2026, 6, 29)); // Month is 0-indexed in Date.UTC (6 = July)
-    
+
     // Assegura idempotencia com a data de meia-noite
     expect(call1Args.where.experimentId_snapshotDate.snapshotDate).toEqual(expectedMidnight);
     expect(call2Args.where.experimentId_snapshotDate.snapshotDate).toEqual(expectedMidnight);
     expect(call1Args.create.snapshotDate).toEqual(expectedMidnight);
     expect(call2Args.create.snapshotDate).toEqual(expectedMidnight);
-    
+
     // Garante q payloads perigosos/gigantes sao sanitizados
     expect(call1Args.create.sourcePayload).toEqual({});
   });
@@ -419,10 +434,23 @@ describe('sanitizeSourcePayload', () => {
   it('20. limita tamanho do payload e lida com tipos inesperados', () => {
     expect(sanitizeSourcePayload(null)).toEqual({});
     expect(sanitizeSourcePayload(true)).toEqual({});
-    
-    // huge payload
+
+    // huge payload array (which are bypassed or kept empty)
+    const arr = { metrics: [1, 2, 3] };
+    expect(sanitizeSourcePayload(arr)).toEqual({});
+  });
+
+  it('21. sanitiza strings longas de métricas limitando e removendo strings gigantes (P1)', () => {
     const huge = { metrics: { clicks: 10, impressions: 'a'.repeat(6000) } };
-    expect(sanitizeSourcePayload(huge)).toEqual({ error: 'Payload exceeds limit' });
+    const sanitized = sanitizeSourcePayload(huge);
+    // As it was limited before copy, it doesn't trigger "Payload exceeds limit", it just drops the field 'impressions'
+    expect(sanitized).toEqual({ metrics: { clicks: 10 } });
+
+    // huge identity field
+    const hugeExp = { experiment: { resourceName: 'b'.repeat(300), experimentId: 'c' } };
+    expect(sanitizeSourcePayload(hugeExp)).toEqual({
+      experiment: { resourceName: undefined, experimentId: 'c', status: undefined }
+    });
   });
 });
 
