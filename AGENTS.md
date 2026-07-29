@@ -92,6 +92,30 @@ sem revisão dedicada nesta sessão. 174/174 testes (26 novos), `tsc`/`build` li
 mutação real, migration, backfill ou smoke test — 100% mock. Campanha FemiCore não tocada.
 Próxima: Tarefa 9 (reporting oficial).
 
+**Atualização mesma sessão (~15h) — Tarefa 9 concluída (`49c0841`):**
+`lib/google-ads/experiment-reporting.ts` — `fetchExperimentReport()` consulta o recurso
+`experiment` via GAQL v25 (campos confirmados contra
+`developers.google.com/google-ads/api/fields/v25/experiment_query_builder` ao vivo com
+Firecrawl, não inferidos — lição da Tarefa 8R). Separa métricas de controle/tratamento,
+preserva `pointEstimate`/`marginOfError`/`pValue` sempre vindos direto da API (nunca
+calculados localmente). `decideOutcome()` é a única lógica de decisão local: amostra abaixo
+de `targetClicks` (Tarefa 5, injetado pelo chamador) força `UNDERPOWERED` mesmo se a API já
+devolveu p-value; significância exige `pValue < 0.05` em `conversions`, nunca CTR isolado;
+sem p-value disponível → `hasSignificantResult:false` explícito, nunca assumido. Paginação
+via `nextPageToken` (máx. 5 páginas). Fallback por campanha (`buildFallbackReport`) só
+dispara quando o recurso `experiment` não retorna linha (ex.: `SETUP` sem tráfego ainda) —
+devolve métricas cruas de controle/tratamento sem inventar uplift/p-value, `feasibility`
+sempre `UNDERPOWERED`. `buildMetricSnapshotUpsertInput()` mapeia o relatório pro shape exato
+de `GoogleAdsExperimentMetricSnapshot` (Tarefa 3, campos conferidos no schema), mas **não
+persiste** — grava fica pra Tarefa 10. Somente leitura: usa só `googleAdsRequest`
+(`googleAds:search`), nunca importa nada do mutation guard — não há operação nova em
+`KNOWN_OPERATIONS`. 12 testes novos (186/186 no total), `tsc --noEmit` e `npm run build`
+limpos. Nenhuma chamada real, nenhum mock inventado sem lastro em documentação oficial
+consultada ao vivo nesta sessão. Próxima: Tarefa 10 (gates compartilhados e rotas) — **não
+iniciada, aguardando autorização explícita do usuário** (Tarefa 10 introduz rotas reais,
+confirmação de mutação (`B2`) e schema/allowlist do PATCH genérico (`B6`), escopo maior que
+merece revisão antes de começar).
+
 **Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
