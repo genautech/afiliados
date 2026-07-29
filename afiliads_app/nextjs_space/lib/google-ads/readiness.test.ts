@@ -23,7 +23,7 @@ describe('checkGoogleAdsReadiness', () => {
   };
 
   it('fails if campaign not found', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => null,
     });
@@ -31,11 +31,11 @@ describe('checkGoogleAdsReadiness', () => {
     expect(res.errors[0]).toBe('Campanha não encontrada');
   });
 
-  it('fails if critical checklist items pending', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+  it('fails if critical checklist pending', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findChecklists: async () => [
-        { isCritical: true, isChecked: false, step: 1, itemLabel: 'Aprovação' },
+        { isCritical: true, isChecked: false, step: 2, itemLabel: 'Aprovação presell' },
         { isCritical: true, isChecked: false, step: 9, itemLabel: 'Lançar' }, // Step 9 should be ignored
       ],
     });
@@ -45,20 +45,35 @@ describe('checkGoogleAdsReadiness', () => {
     expect(res.errors[0]).not.toContain('Lançar');
   });
 
-  it('fails if missing final URL', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+  it('fails if finalUrl is empty', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => ({
         name: 'Campanha 1',
-        keywords: [{ keyword: 'test', matchType: 'phrase', isSelected: true }],
+        budgetDaily: 100,
+        presellUrl: null,
+        keywords: [{ keyword: 'test', isSelected: true }],
       }),
     });
     expect(res.ready).toBe(false);
     expect(res.errors[0]).toContain('Configure a URL da pré-sell');
   });
 
+  it('succeeds and returns warning for unverified URL in PREPARE mode', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', defaultDeps);
+    expect(res.ready).toBe(true);
+    expect(res.errors).toHaveLength(0);
+    expect(res.warnings).toContain('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
+  });
+
+  it('fails for unverified URL in SCHEDULE mode', async () => {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'SCHEDULE', defaultDeps);
+    expect(res.ready).toBe(false);
+    expect(res.errors).toContain('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
+  });
+
   it('fails if missing config', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       getAdsConfig: async () => null,
     });
@@ -67,10 +82,11 @@ describe('checkGoogleAdsReadiness', () => {
   });
 
   it('fails if no selected keyword', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => ({
         name: 'Campanha 1',
+        budgetDaily: 100,
         presellUrl: 'https://example.com',
         keywords: [{ keyword: 'test', matchType: 'phrase', isSelected: false }],
       }),
@@ -80,13 +96,14 @@ describe('checkGoogleAdsReadiness', () => {
   });
 
   it('fails if brand bidding forbidden term in keywords', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => ({
         name: 'Campanha 1',
+        budgetDaily: 100,
         presellUrl: 'https://example.com',
+        keywords: [{ keyword: 'femicore scam', isSelected: true }],
         productResearchId: 'p1',
-        keywords: [{ keyword: 'buy femicore', matchType: 'phrase', isSelected: true }],
       }),
       findProduct: async () => ({ id: 'p1', name: 'FemiCore' }),
     });
@@ -95,10 +112,11 @@ describe('checkGoogleAdsReadiness', () => {
   });
 
   it('fails if invalid match type', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => ({
         name: 'Campanha 1',
+        budgetDaily: 100,
         presellUrl: 'https://example.com',
         keywords: [{ keyword: 'test', matchType: 'invalid', isSelected: true }],
       }),
@@ -108,10 +126,11 @@ describe('checkGoogleAdsReadiness', () => {
   });
 
   it('fails if URL is invalid or HTTP', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', {
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,
       findCampaign: async () => ({
         name: 'Campanha 1',
+        budgetDaily: 100,
         presellUrl: 'http://example.com',
         keywords: [{ keyword: 'test', matchType: 'phrase', isSelected: true }],
       }),
@@ -120,9 +139,5 @@ describe('checkGoogleAdsReadiness', () => {
     expect(res.errors.join(' ')).toContain('HTTPS');
   });
 
-  it('fails with warning about unverified URL link (lacuna 10B)', async () => {
-    const res = await checkGoogleAdsReadiness('c1', 'u1', defaultDeps);
-    expect(res.ready).toBe(false); // Because of the unconditional check failure!
-    expect(res.errors).toContain('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
-  });
+
 });

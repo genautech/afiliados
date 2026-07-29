@@ -1,9 +1,42 @@
 import { getForbiddenAdTerms } from '@/lib/campaign-strategy';
 
+export type ReadinessMode = 'PREPARE' | 'SCHEDULE';
+
+export interface ReadinessKeyword {
+  keyword: string;
+  matchType?: string;
+  isSelected?: boolean;
+}
+
+export interface ReadinessCampaign {
+  id?: string;
+  name?: string;
+  campaignNameGenerated?: string | null;
+  budgetDaily: number;
+  budgetTest?: number;
+  geo?: string;
+  presellUrl?: string | null;
+  offerUrl?: string | null;
+  productResearchId?: string | null;
+  keywords?: ReadinessKeyword[];
+}
+
+export interface ReadinessChecklist {
+  step: number;
+  itemLabel: string;
+  isCritical: boolean;
+  isChecked: boolean;
+}
+
+export interface ReadinessAdsConfig {
+  id?: string;
+  customerId?: string;
+}
+
 export type ReadinessDependencies = {
-  findCampaign: (id: string, userId: string) => Promise<any | null>;
-  findChecklists: (campaignId: string) => Promise<any[]>;
-  getAdsConfig: (userId: string) => Promise<any | null>;
+  findCampaign: (id: string, userId: string) => Promise<ReadinessCampaign | null>;
+  findChecklists: (campaignId: string) => Promise<ReadinessChecklist[]>;
+  getAdsConfig: (userId: string) => Promise<ReadinessAdsConfig | null>;
   findProduct: (productId: string) => Promise<any | null>;
 };
 
@@ -25,6 +58,7 @@ export type ReadinessResult = {
 export async function checkGoogleAdsReadiness(
   campaignId: string,
   userId: string,
+  mode: ReadinessMode,
   deps: ReadinessDependencies
 ): Promise<ReadinessResult> {
   const errors: string[] = [];
@@ -37,12 +71,12 @@ export async function checkGoogleAdsReadiness(
   }
 
   const checklists = await deps.findChecklists(campaignId);
-  const criticalUnchecked = checklists.filter((c: any) => c.isCritical && !c.isChecked && c.step !== 9);
+  const criticalUnchecked = checklists.filter((c) => c.isCritical && !c.isChecked && c.step !== 9);
   if (criticalUnchecked.length > 0) {
     errors.push(
       `Complete os itens críticos do checklist antes de criar a campanha no Google Ads (${
         criticalUnchecked.length
-      } pendente(s)): ${criticalUnchecked.map((c: any) => c.itemLabel).join(', ')}.`
+      } pendente(s)): ${criticalUnchecked.map((c) => c.itemLabel).join(', ')}.`
     );
   }
 
@@ -65,7 +99,12 @@ export async function checkGoogleAdsReadiness(
       errors.push('A URL final fornecida é inválida.');
     }
 
-    errors.push('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
+    const msg = 'Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).';
+    if (mode === 'SCHEDULE') {
+      errors.push(msg);
+    } else {
+      warnings.push(msg);
+    }
   }
 
   const config = await deps.getAdsConfig(userId);
@@ -75,7 +114,7 @@ export async function checkGoogleAdsReadiness(
     );
   }
 
-  const selectedKeywords = (campaign.keywords ?? []).filter((k: any) => k.isSelected);
+  const selectedKeywords = (campaign.keywords ?? []).filter((k) => k.isSelected);
   if (selectedKeywords.length === 0) {
     errors.push('Selecione ao menos uma keyword no Wizard (passo 5) antes de criar a campanha no Google Ads.');
   } else {
@@ -100,8 +139,8 @@ export async function checkGoogleAdsReadiness(
 
   if (forbiddenTerms.length > 0) {
     const badKeywords = selectedKeywords
-      .filter((k: any) => containsForbiddenTerm(k.keyword))
-      .map((k: any) => k.keyword);
+      .filter((k) => containsForbiddenTerm(k.keyword))
+      .map((k) => k.keyword);
     if (badKeywords.length > 0) {
       errors.push(
         `Brand bidding proibido pelo vendor: remova/deselecione essas keywords antes de criar a campanha (contêm ${forbiddenTerms.join(
@@ -123,11 +162,11 @@ export async function checkGoogleAdsReadiness(
     errors,
     warnings,
     data: {
-      campaignName,
+      campaignName: campaignName || 'Sem nome',
       budgetDaily,
-      geo: campaign.geo,
+      geo: campaign.geo || '',
       finalUrl,
-      keywords: selectedKeywords.map((k: any) => ({
+      keywords: selectedKeywords.map((k) => ({
         text: k.keyword,
         matchType: (k.matchType || 'phrase').toUpperCase() as 'EXACT' | 'PHRASE' | 'BROAD',
       })),

@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       findProduct: async (pid: string) => prisma.productResearch.findUnique({ where: { id: pid } })
     };
 
-    const readiness = await checkGoogleAdsReadiness(campaignId, userId, deps);
+    const readiness = await checkGoogleAdsReadiness(campaignId, userId, 'PREPARE', deps);
     if (!readiness.ready) {
       return NextResponse.json({ error: readiness.errors[0] }, { status: 422 });
     }

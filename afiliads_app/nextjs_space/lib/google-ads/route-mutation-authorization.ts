@@ -23,6 +23,7 @@ export type AuthorizationContext = {
   resourceId: string;
   revision: string;
   idempotencyKey: string;
+  userId: string;
 };
 
 export function authorizeMutation(
@@ -30,8 +31,8 @@ export function authorizeMutation(
   expectedOperation: typeof knownOperations[number],
   currentResourceId: string,
   currentRevision: string,
-  currentUserId: string,
-  expectedUserId: string
+  authenticatedUserId: string,
+  resourceOwnerUserId: string
 ): AuthorizationContext {
   const result = MutationAuthorizationSchema.safeParse(payload);
 
@@ -41,7 +42,7 @@ export function authorizeMutation(
 
   const { operation, resourceId, revision, idempotencyKey } = result.data;
 
-  if (currentUserId !== expectedUserId) {
+  if (authenticatedUserId !== resourceOwnerUserId) {
     throw new Error('Falha de autorização: recurso pertence a outro usuário.');
   }
 
@@ -52,7 +53,7 @@ export function authorizeMutation(
   if (resourceId !== currentResourceId) {
     throw new Error('Falha de autorização: ID do recurso divergente.');
   }
-  
+
   if (revision !== currentRevision) {
     throw new Error('Falha de autorização: revisão do recurso divergente. O recurso pode ter sido modificado por outro processo.');
   }
@@ -62,5 +63,6 @@ export function authorizeMutation(
     resourceId,
     revision,
     idempotencyKey,
+    userId: authenticatedUserId,
   };
 }

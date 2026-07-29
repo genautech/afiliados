@@ -38,13 +38,23 @@ describe('authorizeMutation', () => {
     const payload = {
       confirmed: true,
       operation: 'SETUP_EXPERIMENT',
-      resourceId: 'c2',
+      resourceId: 'c2', // Divergent resource
       revision: 'r1',
       idempotencyKey: 'idemp_key_123'
     };
 
     expect(() => authorizeMutation(payload, 'SETUP_EXPERIMENT', 'c1', 'r1', 'u1', 'u1'))
       .toThrow('ID do recurso');
+    const payloadRev = {
+      confirmed: true,
+      operation: 'SETUP_EXPERIMENT',
+      resourceId: 'c1',
+      revision: 'r2', // Divergent revision
+      idempotencyKey: 'idemp_key_123'
+    };
+
+    expect(() => authorizeMutation(payloadRev, 'SETUP_EXPERIMENT', 'c1', 'r1', 'u1', 'u1'))
+      .toThrow('revisão do recurso');
   });
 
   it('blocks invalid idempotency key', () => {
@@ -53,6 +63,14 @@ describe('authorizeMutation', () => {
 
     const payloadShortKey = { confirmed: true, operation: 'SETUP_EXPERIMENT', resourceId: 'res1', revision: 'rev1', idempotencyKey: 'short' };
     expect(() => authorizeMutation(payloadShortKey, 'SETUP_EXPERIMENT', 'res1', 'rev1', 'u1', 'u1')).toThrow(/payload inválido/);
+
+    const payloadSpaces = { confirmed: true, operation: 'SETUP_EXPERIMENT', resourceId: 'res1', revision: 'rev1', idempotencyKey: '          ' };
+    expect(() => authorizeMutation(payloadSpaces, 'SETUP_EXPERIMENT', 'res1', 'rev1', 'u1', 'u1')).toThrow(/payload inválido/);
+  });
+
+  it('rejects extra fields', () => {
+    const payloadExtra = { confirmed: true, operation: 'SETUP_EXPERIMENT', resourceId: 'res1', revision: 'rev1', idempotencyKey: '1234567890', extra: true };
+    expect(() => authorizeMutation(payloadExtra, 'SETUP_EXPERIMENT', 'res1', 'rev1', 'u1', 'u1')).toThrow(/payload inválido/);
   });
 
   it('returns typed context when valid', () => {

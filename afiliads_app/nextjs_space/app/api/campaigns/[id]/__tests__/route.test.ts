@@ -82,7 +82,6 @@ describe('PATCH /api/campaigns/[id]', () => {
     const req = createRequest({ name: 'New Name', productResearchId: 'p1' });
     const res = await PATCH(req, { params: { id: 'c1' } });
     expect(res.status).toBe(200);
-    
     expect(mockPrisma.campaign.update).toHaveBeenCalledWith({
       where: { id: 'c1' },
       data: {
