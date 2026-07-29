@@ -57,6 +57,13 @@ export function buildApiUrl(config: GoogleAdsCredentials, resourcePath: string):
   return `${GOOGLE_ADS_BASE_URL}/${GOOGLE_ADS_API_VERSION}/customers/${config.customerId}/${resourcePath}`;
 }
 
+// Custom methods de lifecycle (scheduleExperiment/promoteExperiment/endExperiment/...) são
+// chamados no próprio resource name da instância (`customers/X/experiments/999:metodo`), não
+// no padrão `customers/X/{recurso}:mutate` — resourceName já vem com "customers/..." incluso.
+export function buildResourceMethodUrl(resourceName: string, method: string): string {
+  return `${GOOGLE_ADS_BASE_URL}/${GOOGLE_ADS_API_VERSION}/${resourceName}:${method}`;
+}
+
 export async function getAccessToken(config: GoogleAdsCredentials): Promise<string> {
   if (isMockMode(config)) {
     return 'mock_access_token_123';
@@ -93,15 +100,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function googleAdsRequest(
-  token: string,
-  config: GoogleAdsCredentials,
-  resourcePath: string,
-  options: GoogleAdsRequestOptions = {}
+async function executeRequest(
+  url: string,
+  headers: Record<string, string>,
+  method: 'GET' | 'POST',
+  body: unknown,
+  retry: { attempts: number; delayMs: number } | undefined,
+  errorLabel: string
 ): Promise<any> {
-  const { method = 'POST', body, retry } = options;
-  const url = buildApiUrl(config, resourcePath);
-  const headers = buildApiHeaders(token, config);
   const maxAttempts = retry ? Math.max(1, retry.attempts) : 1;
 
   let lastError: unknown;
@@ -118,11 +124,11 @@ export async function googleAdsRequest(
         // 5xx é o único caso tratado como transiente; 4xx (payload/auth/permissão) nunca se
         // resolve tentando de novo.
         if (retry && attempt < maxAttempts && res.status >= 500) {
-          lastError = new GoogleAdsApiError(resourcePath, res.status, rawBody);
+          lastError = new GoogleAdsApiError(errorLabel, res.status, rawBody);
           await sleep(retry.delayMs);
           continue;
         }
-        throw new GoogleAdsApiError(resourcePath, res.status, rawBody);
+        throw new GoogleAdsApiError(errorLabel, res.status, rawBody);
       }
 
       return res.json();
@@ -139,4 +145,58 @@ export async function googleAdsRequest(
   }
 
   throw lastError instanceof Error ? lastError : new Error('Falha desconhecida na Google Ads API');
+}
+
+// Chamada no padrão `customers/{id}/{recurso}:ação` (search, mutate de recurso coleção).
+export async function googleAdsRequest(
+  token: string,
+  config: GoogleAdsCredentials,
+  resourcePath: string,
+  options: GoogleAdsRequestOptions = {}
+): Promise<any> {
+  const { method = 'POST', body, retry } = options;
+  return executeRequest(
+    buildApiUrl(config, resourcePath),
+    buildApiHeaders(token, config),
+    method,
+    body,
+    retry,
+    resourcePath
+  );
+}
+
+// Custom method na instância de um resource já existente (`customers/X/experiments/999:schedule
+// Experiment`) — usado pelo lifecycle assíncrono/síncrono de Experiment (Tarefa 8). Nunca tem
+// retry: são todas mutações ou consultas de operação em andamento, não idempotentes por padrão.
+export async function googleAdsResourceRequest(
+  token: string,
+  config: GoogleAdsCredentials,
+  resourceName: string,
+  method: string,
+  body: unknown = {}
+): Promise<any> {
+  return executeRequest(
+    buildResourceMethodUrl(resourceName, method),
+    buildApiHeaders(token, config),
+    'POST',
+    body,
+    undefined,
+    `${resourceName}:${method}`
+  );
+}
+
+// GET bruto num resource name completo (ex.: polling de long-running operation) — sem `:método`.
+export async function googleAdsGetResource(
+  token: string,
+  config: GoogleAdsCredentials,
+  resourceName: string
+): Promise<any> {
+  return executeRequest(
+    `${GOOGLE_ADS_BASE_URL}/${GOOGLE_ADS_API_VERSION}/${resourceName}`,
+    buildApiHeaders(token, config),
+    'GET',
+    undefined,
+    { attempts: 3, delayMs: 500 }, // polling de status é idempotente — GET, sempre seguro re-tentar
+    resourceName
+  );
 }

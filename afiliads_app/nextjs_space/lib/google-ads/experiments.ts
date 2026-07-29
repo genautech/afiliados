@@ -1,14 +1,20 @@
-// Serviço de setup de Experimentos A/B (Tarefa 6 do plano) — cria o Experiment em SETUP e os
-// 2 braços (control + treatment) na mesma mutate request, e resolve a in-design campaign do
-// tratamento. Não faz schedule/promote/end (Tarefa 8) nem aplica variação de pré-sell
-// (Tarefa 7) — só o setup inicial. Nenhuma chamada real foi exercida nesta sessão: todos os
-// testes usam fetch mockado; o shape exato de alguns campos (ex.: `includeDrafts`) precisa
-// ser conferido contra a documentação atual da API antes do primeiro teste real (Tarefa 16).
+// Serviço de Experimentos A/B: setup (Tarefa 6), aplicar variação de pré-sell (Tarefa 7) e
+// lifecycle assíncrono/síncrono (Tarefa 8 — schedule/poll/listAsyncErrors/end/promote/
+// graduate). Nenhuma chamada real foi exercida nesta sessão: todos os testes usam fetch
+// mockado; o shape exato de alguns campos (ex.: `includeDrafts`, nomes de método de custom
+// RPC) precisa ser conferido contra a documentação atual da API antes do primeiro teste real
+// (Tarefa 16).
 
-import { googleAdsRequest, isMockMode, type GoogleAdsCredentials } from './client';
+import {
+  googleAdsGetResource,
+  googleAdsRequest,
+  googleAdsResourceRequest,
+  isMockMode,
+  type GoogleAdsCredentials,
+} from './client';
 import { assertMutationAllowed } from './mutation-guard';
 import { findAdGroupAdsInCampaign, updateAdFinalUrls, type AdGroupAdSummary } from './ads';
-import type { ExperimentStatus } from '../google-ads-experiments/types';
+import type { ExperimentActionType, ExperimentStatus } from '../google-ads-experiments/types';
 
 export interface CreateExperimentInput {
   name: string;
@@ -361,4 +367,263 @@ export function compareFinalUrlsAfterMutation(
   );
 
   return { adsModified, verified };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lifecycle (Tarefa 8) — schedule/promote são assíncronos (retornam uma long-running operation
+// que precisa de poll); end/graduate são síncronos segundo a documentação consultada no
+// handoff (ver .hermes/handoffs/2026-07-29_google-ads-experiments_claude-handoff.md, seção 3,
+// pontos 11-13). Cada ação só é permitida a partir de estados específicos — checado ANTES de
+// qualquer rede, mesmo padrão de validação-antes-do-fetch da Tarefa 6.
+// ---------------------------------------------------------------------------------------------
+
+const ALLOWED_ACTION_SOURCE_STATUSES: Record<ExperimentActionType, ExperimentStatus[]> = {
+  END: ['SCHEDULED', 'RUNNING'],
+  PROMOTE: ['RUNNING'],
+  GRADUATE: ['RUNNING'],
+};
+
+// Pura — usada tanto pelas 3 funções abaixo quanto (Tarefa 10) pela rota, antes de sequer
+// montar o request.
+export function assertActionAllowedFromStatus(
+  action: ExperimentActionType,
+  currentStatus: ExperimentStatus
+): void {
+  const allowed = ALLOWED_ACTION_SOURCE_STATUSES[action];
+  if (!allowed.includes(currentStatus)) {
+    throw new Error(
+      `Ação ${action} não permitida a partir do status ${currentStatus} (permitido a partir de: ${allowed.join(', ')}).`
+    );
+  }
+}
+
+export interface OperationHandle {
+  operationName: string;
+}
+
+// Payload/parsing puros — schedule e promote devolvem a mesma forma de long-running operation.
+export function parseOperationHandleResponse(data: any, methodLabel: string): OperationHandle {
+  const operationName: string | undefined = data?.name ?? data?.operationName;
+  if (!operationName) {
+    throw new Error(
+      `Google Ads API não retornou o nome da operação assíncrona pra ${methodLabel}.`
+    );
+  }
+  return { operationName };
+}
+
+// Materializa a campanha de tratamento e pode começar a servir/gastar a partir de startDate —
+// é aqui que a distinção "preparar (não veicula)" vs "agendar (pode gastar)" do plano vira
+// realidade. Só permitido a partir de SETUP.
+export async function scheduleExperiment(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string,
+  currentStatus: ExperimentStatus
+): Promise<OperationHandle> {
+  if (currentStatus !== 'SETUP') {
+    throw new Error(`Só é possível agendar um experimento em SETUP (status atual: ${currentStatus}).`);
+  }
+
+  if (isMockMode(config)) {
+    return { operationName: `${experimentResourceName}/operations/mock-schedule` };
+  }
+
+  const guard = assertMutationAllowed({
+    operation: 'scheduleExperiment',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  const data = await googleAdsResourceRequest(
+    token,
+    config,
+    experimentResourceName,
+    'scheduleExperiment'
+  );
+  return parseOperationHandleResponse(data, 'scheduleExperiment');
+}
+
+export type OperationStatus = 'PENDING' | 'DONE' | 'FAILED';
+
+export interface PollOperationResult {
+  status: OperationStatus;
+  errors: string[];
+}
+
+// Parsing puro do shape padrão de google.longrunning.Operation ({done, error, response}).
+export function parsePollOperationResponse(data: any): PollOperationResult {
+  if (!data?.done) {
+    return { status: 'PENDING', errors: [] };
+  }
+  if (data?.error) {
+    const message = data.error?.message ?? JSON.stringify(data.error);
+    return { status: 'FAILED', errors: [message] };
+  }
+  return { status: 'DONE', errors: [] };
+}
+
+// Só leitura (GET) — sem guard, mesmo critério de fetchGoogleCampaign/getTreatmentInDesign
+// Campaign. Retry seguro (3 tentativas) porque polling é idempotente por natureza.
+export async function pollExperimentOperation(
+  token: string,
+  config: GoogleAdsCredentials,
+  operationName: string
+): Promise<PollOperationResult> {
+  if (isMockMode(config)) {
+    return { status: 'DONE', errors: [] };
+  }
+
+  const data = await googleAdsGetResource(token, config, operationName);
+  return parsePollOperationResponse(data);
+}
+
+export interface AsyncErrorsPage {
+  errors: string[];
+  nextPageToken?: string;
+}
+
+export function parseAsyncErrorsPage(data: any): AsyncErrorsPage {
+  const rawErrors: any[] = data?.errors ?? [];
+  const errors = rawErrors.map((e) => e?.message ?? JSON.stringify(e));
+  return { errors, nextPageToken: data?.nextPageToken || undefined };
+}
+
+export interface AsyncErrorsResult {
+  errors: string[];
+  // true se atingiu o limite de páginas de segurança sem esgotar — evita loop infinito por
+  // bug de paginação (nextPageToken que nunca chega a undefined).
+  truncated: boolean;
+}
+
+const MAX_ASYNC_ERROR_PAGES = 20;
+
+// Erros completos de uma operação assíncrona que falhou só saem daqui — a Operation em si
+// (pollExperimentOperation) só devolve a primeira mensagem resumida (handoff, ponto 14).
+export async function listExperimentAsyncErrors(
+  token: string,
+  config: GoogleAdsCredentials,
+  operationName: string
+): Promise<AsyncErrorsResult> {
+  if (isMockMode(config)) {
+    return { errors: [], truncated: false };
+  }
+
+  const errors: string[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+
+  do {
+    const data = await googleAdsResourceRequest(
+      token,
+      config,
+      operationName,
+      'listAsyncErrors',
+      pageToken ? { pageToken } : {}
+    );
+    const page = parseAsyncErrorsPage(data);
+    errors.push(...page.errors);
+    pageToken = page.nextPageToken;
+    pages += 1;
+  } while (pageToken && pages < MAX_ASYNC_ERROR_PAGES);
+
+  return { errors, truncated: Boolean(pageToken) };
+}
+
+// Síncrono (sem operation/poll) — encerra o experimento. Permitido a partir de SCHEDULED ou
+// RUNNING (não faz sentido encerrar algo que nunca saiu de SETUP; use remoção/limpeza local
+// pra isso, não este método).
+export async function endExperiment(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string,
+  currentStatus: ExperimentStatus
+): Promise<{ success: true }> {
+  assertActionAllowedFromStatus('END', currentStatus);
+
+  if (isMockMode(config)) {
+    return { success: true };
+  }
+
+  const guard = assertMutationAllowed({
+    operation: 'endExperiment',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  await googleAdsResourceRequest(token, config, experimentResourceName, 'endExperiment');
+  return { success: true };
+}
+
+// Assíncrono — aplica as mudanças do tratamento de volta na campanha original. Só a partir de
+// RUNNING (decisão de vencedor não deve ser tomada sem dados rodando — ver plano seção 6, nunca
+// promover cedo demais).
+export async function promoteExperiment(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string,
+  currentStatus: ExperimentStatus
+): Promise<OperationHandle> {
+  assertActionAllowedFromStatus('PROMOTE', currentStatus);
+
+  if (isMockMode(config)) {
+    return { operationName: `${experimentResourceName}/operations/mock-promote` };
+  }
+
+  const guard = assertMutationAllowed({
+    operation: 'promoteExperiment',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  const data = await googleAdsResourceRequest(
+    token,
+    config,
+    experimentResourceName,
+    'promoteExperiment'
+  );
+  return parseOperationHandleResponse(data, 'promoteExperiment');
+}
+
+// Síncrono — transforma o tratamento numa campanha independente (sem afetar o controle). Exige
+// um orçamento próprio pra campanha graduada; só a partir de RUNNING.
+export async function graduateExperiment(
+  token: string,
+  config: GoogleAdsCredentials,
+  experimentResourceName: string,
+  currentStatus: ExperimentStatus,
+  graduatedCampaignBudgetResourceName: string
+): Promise<{ success: true }> {
+  assertActionAllowedFromStatus('GRADUATE', currentStatus);
+
+  if (isMockMode(config)) {
+    return { success: true };
+  }
+
+  const guard = assertMutationAllowed({
+    operation: 'graduateExperiment',
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+  });
+  if (!guard.allowed) {
+    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+  }
+
+  await googleAdsResourceRequest(token, config, experimentResourceName, 'graduateExperiment', {
+    graduatedCampaignBudget: graduatedCampaignBudgetResourceName,
+  });
+  return { success: true };
 }

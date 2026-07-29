@@ -75,10 +75,18 @@ describe('assertMutationAllowed', () => {
     expect(result).toEqual({ allowed: true });
   });
 
-  it('7b. operações de experimento (Tarefas 6/7) também estão na allowlist de operações conhecidas', () => {
+  it('7b. operações de experimento (Tarefas 6/7/8) também estão na allowlist de operações conhecidas', () => {
     process.env.GOOGLE_ADS_MUTATIONS_ENABLED = 'true';
     process.env.GOOGLE_ADS_MUTATION_ALLOWLIST = '1112223333';
-    for (const operation of ['createExperiment', 'createExperimentArms', 'updateAdFinalUrls']) {
+    for (const operation of [
+      'createExperiment',
+      'createExperimentArms',
+      'updateAdFinalUrls',
+      'scheduleExperiment',
+      'endExperiment',
+      'promoteExperiment',
+      'graduateExperiment',
+    ]) {
       expect(assertMutationAllowed(input({ confirmed: true, operation }))).toEqual({
         allowed: true,
       });

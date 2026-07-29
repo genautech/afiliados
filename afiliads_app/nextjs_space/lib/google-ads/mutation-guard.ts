@@ -9,6 +9,10 @@ const KNOWN_OPERATIONS = [
   'createExperiment',
   'createExperimentArms',
   'updateAdFinalUrls',
+  'scheduleExperiment',
+  'endExperiment',
+  'promoteExperiment',
+  'graduateExperiment',
 ] as const;
 
 export type MutationGuardOperation = (typeof KNOWN_OPERATIONS)[number];
