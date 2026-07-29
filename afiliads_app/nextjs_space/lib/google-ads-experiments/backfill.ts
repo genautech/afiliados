@@ -4,6 +4,8 @@
 // ser testada sem banco real — ver plano seção 4 "Compatibilidade com os campos já
 // adicionados a Campaign".
 
+import { EXPERIMENT_STATUSES } from './types';
+
 export interface LegacyExperimentCampaign {
   id: string;
   userId: string;
@@ -42,15 +44,7 @@ export interface ExperimentDraft {
   arms: [ExperimentArmDraft, ExperimentArmDraft];
 }
 
-const KNOWN_EXPERIMENT_STATUSES = new Set([
-  "SETUP",
-  "SCHEDULED",
-  "RUNNING",
-  "PROMOTED",
-  "GRADUATED",
-  "ENDED",
-  "ERROR",
-]);
+const KNOWN_EXPERIMENT_STATUSES = new Set<string>(EXPERIMENT_STATUSES);
 
 export function buildBackfillIdempotencyKey(campaignId: string): string {
   return `legacy-backfill-${campaignId}`;
