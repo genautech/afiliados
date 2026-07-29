@@ -1,5 +1,7 @@
 # Afiliados — contexto para agentes (Hermes / Cursor / Claude Code / Anti-Gravity)
 
+**Estado em 2026-07-29 (~16h) — Sessão Anti-Gravity (Tarefa 10A - Fundações de segurança das rotas concluída):** Readiness check extraído e testado (`lib/google-ads/readiness.ts`) com injeção de dependência e integrado em `app/api/google-ads/create/route.ts` sem alterar comportamento legítimo. Criado schema explícito de confirmação vinculado à operação (`lib/google-ads/route-mutation-authorization.ts`). Adicionado Zod schema e allowlist estrita para o PATCH genérico de campanhas (`lib/campaigns/patch-schema.ts`), controlando transições de status e blindando a persistência contra campos ilegais. Todas as modificações foram feitas 100% offline, respeitando rigorosamente TDD com mocks em Vitest. Nenhuma chamada de rede, Prisma mutation em banco real, chamadas ao Google Ads, migrations ou backfills foram executadas. Restrições aos arquivos de deploy observadas. Testes verdes: 216 pass (incluindo testes de readiness, mutação, schema). Construção (`npx tsc --noEmit` e `npm run build`) validada sem erros. Nenhuma rota de experiments de setup, actions ou sync criada ainda. Próxima: Tarefa 10B (setup/sync idempotentes) — não iniciada, aguardando autorização e handoff específicos.
+
 **Estado em 2026-07-29 (~04h) — Sessão Claude Code, Experimentos A/B Google Ads (Tarefas 1–3
 de 16 concluídas):** plano completo em
 `.hermes/plans/2026-07-29_023051-google-ads-experiments-wizard.md` (gitignored, local).
