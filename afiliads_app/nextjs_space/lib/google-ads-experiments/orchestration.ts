@@ -943,6 +943,18 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
         finalUrl: arm.isControl ? controlFinalUrl : validated.treatmentFinalUrl,
       }));
 
+      const persistedArmsConfig = asConfigObject(experiment.variationConfig) ?? {};
+      experiment = await prismaClient.googleAdsExperiment.update({
+        where: { id: experiment.id },
+        data: {
+          variationConfig: {
+            ...persistedArmsConfig,
+            saga: { ...(persistedArmsConfig.saga ?? {}), arms: 'COMPLETE' },
+          },
+        },
+        include: { arms: { orderBy: { isControl: 'desc' } } },
+      });
+
       // P1-4: insert local atômico — createMany é uma única instrução SQL; nunca deixa só um
       // dos dois braços persistido (ao contrário do loop de `create` anterior).
       const insertResult = await prismaClient.googleAdsExperimentArm.createMany({ data: armsData });
@@ -958,17 +970,6 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
       experiment = await prismaClient.googleAdsExperiment.findUniqueOrThrow({
         where: { id: experiment.id },
         include: { arms: { orderBy: { isControl: 'desc' } } },
-      });
-
-      const persistedArmsConfig = asConfigObject(experiment.variationConfig) ?? {};
-      await prismaClient.googleAdsExperiment.update({
-        where: { id: experiment.id },
-        data: {
-          variationConfig: {
-            ...persistedArmsConfig,
-            saga: { ...(persistedArmsConfig.saga ?? {}), arms: 'COMPLETE' },
-          },
-        },
       });
       armsRes = experiment.arms;
     }
