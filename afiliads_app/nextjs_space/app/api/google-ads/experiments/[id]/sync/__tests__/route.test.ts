@@ -28,7 +28,7 @@ describe('POST /api/google-ads/experiments/[id]/sync', () => {
   test('200 success delegando pro orquestrador', async () => {
     (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
     (syncExperiment as any).mockResolvedValue({ success: true, changed: true, status: 'RUNNING' });
-    
+
     const req = new NextRequest('http://localhost', { method: 'POST' });
     const res = await POST(req, { params: { id: 'e1' } } as any);
     expect(res.status).toBe(200);
@@ -40,7 +40,7 @@ describe('POST /api/google-ads/experiments/[id]/sync', () => {
   test('Propaga erro custom do orquestrador (ex: 502)', async () => {
     (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
     (syncExperiment as any).mockRejectedValue({ status: 502, message: 'Google Ads Error' });
-    
+
     const req = new NextRequest('http://localhost', { method: 'POST' });
     const res = await POST(req, { params: { id: 'e1' } } as any);
     expect(res.status).toBe(502);

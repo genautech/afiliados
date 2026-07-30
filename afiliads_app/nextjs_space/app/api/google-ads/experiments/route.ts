@@ -9,7 +9,9 @@ export async function POST(request: NextRequest) {
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const userId = (session.user as any).id;
 
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: 'Payload JSON inválido' }, { status: 400 });
+
     const result = await setupExperiment({ userId, payload: body });
 
     return NextResponse.json(result);

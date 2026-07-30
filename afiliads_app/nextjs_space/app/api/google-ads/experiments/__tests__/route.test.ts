@@ -36,15 +36,15 @@ describe('POST /api/google-ads/experiments', () => {
   test('200 success delegando pro orquestrador', async () => {
     (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
     (setupExperiment as any).mockResolvedValue({ success: true });
-    
-    const req = new NextRequest('http://localhost', { 
-      method: 'POST', 
+
+    const req = new NextRequest('http://localhost', {
+      method: 'POST',
       body: JSON.stringify({
         campaignId: 'c1',
         presellId: 'p1',
         treatmentFinalUrl: 'https://ex.com',
         authorization: { confirmed: true, operation: 'SETUP_EXPERIMENT', resourceId: 'c1', revision: 'r1', idempotencyKey: 'k1' }
-      }) 
+      })
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -53,15 +53,15 @@ describe('POST /api/google-ads/experiments', () => {
   test('Propaga 404/409 do orquestrador', async () => {
     (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
     (setupExperiment as any).mockRejectedValue({ status: 409, message: 'Conflict' });
-    
-    const req = new NextRequest('http://localhost', { 
-      method: 'POST', 
+
+    const req = new NextRequest('http://localhost', {
+      method: 'POST',
       body: JSON.stringify({
         campaignId: 'c1',
         presellId: 'p1',
         treatmentFinalUrl: 'https://ex.com',
         authorization: { confirmed: true, operation: 'SETUP_EXPERIMENT', resourceId: 'c1', revision: 'r1', idempotencyKey: 'k1' }
-      }) 
+      })
     });
     const res = await POST(req);
     expect(res.status).toBe(409);
