@@ -5,6 +5,7 @@
 // funções puras testáveis com `now`/dados injetados, não regra embutida no schema.
 
 import { z } from 'zod';
+import { MutationAuthorizationSchema } from '../google-ads/route-mutation-authorization';
 import {
   EXPERIMENT_ACTIONS,
   EXPERIMENT_FEASIBILITY,
@@ -12,7 +13,7 @@ import {
   EXPERIMENT_VARIATION_TYPES,
 } from './types';
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
 const NUMERIC_ID = /^\d+$/;
 
 // Split de cada braço inteiro entre 1 e 99; MVP sempre 2 braços (control + treatment).
@@ -174,3 +175,18 @@ export function assertStartDateIsFuture(startDate: string, now: Date = new Date(
   const todayUtcMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return startUtcMidnight > todayUtcMidnight;
 }
+
+// 8. Payload completo de setup (POST /api/google-ads/experiments) com validação estrita.
+export const SetupExperimentPayloadSchema = z
+  .object({
+    campaignId: z.string().min(1),
+    presellId: z.string().min(1),
+    treatmentFinalUrl: experimentUrlSchema,
+    name: z.string().min(1).max(255).optional(),
+    startDate: z.string().regex(ISO_DATE, 'startDate precisa ser YYYY-MM-DD').optional(),
+    endDate: z.string().regex(ISO_DATE, 'endDate precisa ser YYYY-MM-DD').optional(),
+    trafficSplitTreatment: z.number().int().min(1).max(99).optional().default(50),
+    authorization: MutationAuthorizationSchema.strict(),
+  })
+  .strict();
+export type SetupExperimentPayload = z.infer<typeof SetupExperimentPayloadSchema>;
