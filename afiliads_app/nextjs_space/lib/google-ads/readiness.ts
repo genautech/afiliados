@@ -1,5 +1,3 @@
-import { getForbiddenAdTerms } from '@/lib/campaign-strategy';
-
 export type ReadinessMode = 'PREPARE' | 'SCHEDULE';
 
 export interface ReadinessKeyword {
@@ -37,7 +35,7 @@ export type ReadinessDependencies = {
   findCampaign: (id: string, userId: string) => Promise<ReadinessCampaign | null>;
   findChecklists: (campaignId: string) => Promise<ReadinessChecklist[]>;
   getAdsConfig: (userId: string) => Promise<ReadinessAdsConfig | null>;
-  findProduct: (productId: string) => Promise<Parameters<typeof getForbiddenAdTerms>[0] | null>;
+  findProduct: (productId: string) => Promise<any | null>;
   verifyApprovedUrlUnchanged?: () => Promise<boolean>;
 };
 
@@ -139,6 +137,7 @@ export async function checkGoogleAdsReadiness(
   if (campaign.productResearchId) {
     const product = await deps.findProduct(campaign.productResearchId);
     if (product) {
+      const { getForbiddenAdTerms } = await import('@/lib/campaign-strategy');
       forbiddenTerms = getForbiddenAdTerms(product);
     }
   }

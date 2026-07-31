@@ -1,7 +1,6 @@
 import { ProductResearch } from '@prisma/client';
 import { recommendBridgePage, BridgePageType } from '@/lib/bridgePageRecommender';
 import { SalesPageType } from '@/lib/salesPageAnalyzer';
-import { rankPresellOutcomes } from '@/lib/presell';
 
 export type Channel = 'SEARCH' | 'YOUTUBE' | 'DEMAND_GEN' | 'PMAX';
 export type Funnel = 'BRIDGE' | 'DIRECT' | 'REVIEW' | 'SL';
@@ -239,6 +238,7 @@ export async function deriveCampaignStrategy(
   // canal do interstitial, reaplicado depois como última palavra.
   let bridgeTypeSource: CampaignStrategy['bridgeTypeSource'] = 'estatico';
   try {
+    const { rankPresellOutcomes } = await import('@/lib/presell');
     const { ranked } = await rankPresellOutcomes(userId, product.vertical, recommendedChannel ?? undefined);
     const best = ranked.find((r) => r.profit > 0 && (r.pageType !== 'interstitial' || (recommendedChannel && INTERSTITIAL_SAFE_CHANNELS.has(recommendedChannel))));
     if (best && best.pageType !== recommendedBridgeType && ['advertorial', 'pogo', 'vsl', 'interstitial'].includes(best.pageType)) {

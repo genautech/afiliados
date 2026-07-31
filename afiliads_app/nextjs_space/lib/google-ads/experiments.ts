@@ -5,7 +5,7 @@
 // RPC) precisa ser conferido contra a documentação atual da API antes do primeiro teste real
 // (Tarefa 16).
 
-import { createHash } from 'node:crypto';
+import { createHash } from 'crypto';
 import {
   googleAdsGetResource,
   googleAdsMutateRequest,

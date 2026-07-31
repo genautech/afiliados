@@ -1,5 +1,5 @@
 import { prisma } from '../prisma';
-import { checkGoogleAdsReadiness } from '../google-ads/readiness';
+import type { checkGoogleAdsReadiness } from '../google-ads/readiness';
 import { authorizeMutation, type AuthorizationContext } from '../google-ads/route-mutation-authorization';
 import { getGoogleAdsConfig } from '../google-ads';
 import { getAccessToken, isMockMode, googleAdsRequest } from '../google-ads/client';
@@ -9,7 +9,7 @@ import { findAdGroupAdsInCampaign } from '../google-ads/ads';
 import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot, validateFallbackArms } from '../google-ads/experiment-reporting';
 import { SetupExperimentPayloadSchema, ScheduleExperimentRoutePayloadSchema, ExperimentActionRoutePayloadSchema, type SetupExperimentPayload } from './schemas';
 import { redactSensitive } from '../google-ads/errors';
-import { createHash } from 'node:crypto';
+import { createHash } from 'crypto';
 
 export interface SetupExperimentInput {
   userId: string;
@@ -572,7 +572,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
   }
 
   // 3. Readiness check (PREPARE)
-  const checkReadiness = deps?.checkReadiness ?? checkGoogleAdsReadiness;
+  const checkReadiness = deps?.checkReadiness ?? (await import('../google-ads/readiness')).checkGoogleAdsReadiness;
   const readiness = await checkReadiness(campaign.id, userId, 'PREPARE', deps?.readinessDeps);
   if (!readiness.ready) {
     throw { status: 422, message: redactSensitive(readiness.errors?.[0] || 'Readiness falhou') };
@@ -1283,7 +1283,7 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
     throw { status: 422, message: 'A URL remota da campanha treatment diverge da variação aprovada' };
   }
 
-  const checkReadiness = deps?.checkReadiness ?? checkGoogleAdsReadiness;
+  const checkReadiness = deps?.checkReadiness ?? (await import('../google-ads/readiness')).checkGoogleAdsReadiness;
   const readinessDeps = {
     ...(deps?.readinessDeps ?? defaultReadinessDependencies(prismaClient, userId)),
     verifyApprovedUrlUnchanged: async () => approvedUrlUnchanged,
@@ -1815,4 +1815,37 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     }).catch(() => {});
     throw { status: 502, message: sanitizedMsg };
   }
+}
+
+export async function syncDueExperiments(opts?: {
+  userId?: string;
+  syncSingle?: (id: string, userId: string) => Promise<any>;
+  prismaClient?: any;
+}) {
+  const prismaClient = opts?.prismaClient ?? prisma;
+  const syncSingle = opts?.syncSingle ?? syncExperiment;
+
+  const dueExperiments = await prismaClient.googleAdsExperiment.findMany({
+    where: {
+      syncEnabled: true,
+      status: { in: ['SETUP', 'SCHEDULED', 'RUNNING'] },
+      ...(opts?.userId ? { userId: opts.userId } : {}),
+    },
+    select: { id: true, userId: true },
+  });
+
+  let syncedCount = 0;
+  const errors: Array<{ experimentId: string; error: string }> = [];
+
+  for (const exp of dueExperiments) {
+    try {
+      await syncSingle(exp.id, exp.userId);
+      syncedCount++;
+    } catch (e: any) {
+      const errorMsg = e?.message ?? String(e);
+      errors.push({ experimentId: exp.id, error: errorMsg });
+    }
+  }
+
+  return { syncedCount, errors };
 }

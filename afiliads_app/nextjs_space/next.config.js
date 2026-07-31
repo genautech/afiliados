@@ -9,9 +9,8 @@ const nextConfig = {
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../'),
     instrumentationHook: true,
-    serverComponentsExternalPackages: ['google-auth-library', 'gaxios', 'agent-base', 'https-proxy-agent'],
+    serverComponentsExternalPackages: ['google-auth-library', 'gaxios', 'agent-base', 'https-proxy-agent', 'basic-ftp'],
   },
-  serverExternalPackages: ['google-auth-library', 'gaxios', 'agent-base', 'https-proxy-agent'],
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -29,7 +28,18 @@ const nextConfig = {
     // hermes/knowledge/ e Obsidian) só quando rodam de verdade em nodejs; sem isso, o build do
     // bundle edge quebra com "Module not found: Can't resolve 'fs'".
     if (nextRuntime === 'edge') {
-      config.resolve.fallback = { ...(config.resolve.fallback || {}), fs: false, path: false };
+      config.resolve.fallback = {
+        ...(config.resolve.fallback || {}),
+        fs: false,
+        path: false,
+        net: false,
+        tls: false,
+        stream: false,
+        crypto: false,
+        dns: false,
+        http: false,
+        https: false,
+      };
     }
     return config;
   },

@@ -8,6 +8,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   await registerLoopScheduler();
   await registerMarketIntelScheduler();
+  await registerExperimentSyncScheduler();
 }
 
 async function registerLoopScheduler() {
@@ -137,4 +138,28 @@ async function registerMarketIntelScheduler() {
   g.__afiliadsMarketIntelTimer = setInterval(tick, CHECK_MS);
   console.log('[market-intel-scheduler] ligado — semanal por produto com campanha ativa');
   setTimeout(tick, 90 * 1000);
+}
+
+async function registerExperimentSyncScheduler() {
+  if (process.env.EXPERIMENT_SYNC_SCHEDULER !== 'on') {
+    console.log('[experiment-sync-scheduler] desligado (EXPERIMENT_SYNC_SCHEDULER != on)');
+    return;
+  }
+  const CHECK_MS = 60 * 60 * 1000;
+  const g = globalThis as any;
+  if (g.__afiliadsExperimentSyncTimer) return;
+
+  const tick = async () => {
+    try {
+      const { syncDueExperiments } = await import('./lib/google-ads-experiments/orchestration');
+      const res = await syncDueExperiments();
+      console.log(`[experiment-sync-scheduler] tick ok — ${res.syncedCount} experimento(s) sincronizado(s)`);
+    } catch (e: any) {
+      console.error('[experiment-sync-scheduler] erro no tick:', e?.message);
+    }
+  };
+
+  g.__afiliadsExperimentSyncTimer = setInterval(tick, CHECK_MS);
+  console.log('[experiment-sync-scheduler] ligado — polling de métricas/LRO a cada 60min');
+  setTimeout(tick, 120 * 1000);
 }
