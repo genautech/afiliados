@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
     if (bridgePageType === BridgePageType.QUIZ_FUNNEL || bridgePageType === BridgePageType.LEAD_GEN_PAGE) {
       const res = await callAgent(userId, {
         agent: 'bridge-page-builder',
+        campaignId,
         systemPrompt: QUIZ_LEAD_PROMPT,
         userPrompt: `Produto: ${product.name} | Vertical: ${product.vertical} | Resumo: ${product.summary}\nTipo pedido: ${bridgePageType}\nContexto/recomendação: ${context}\nJSON puro.`,
       });

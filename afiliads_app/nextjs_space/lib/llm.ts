@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { GoogleAuth } from 'google-auth-library';
 import { estimateCostUsd } from './llm-pricing';
+import { assertCampaignLlmAllowed, type CampaignGuardTarget } from './campaign-guard';
 
 let vertexAuth: GoogleAuth | null = null;
 let vertexClientPromise: Promise<any> | null = null;
@@ -89,6 +90,8 @@ interface LlmOptions {
   userPrompt: string;
   fallbackKey?: string;
   agent?: string;
+  campaignId?: string;
+  campaignTarget?: CampaignGuardTarget;
 }
 
 export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
@@ -573,6 +576,13 @@ export async function callAgent(
   userId: string,
   opts: LlmOptions & { agent: string; json?: boolean; validate?: (data: any, text: string) => string | null }
 ): Promise<AgentCallResult> {
+  const guardTarget: CampaignGuardTarget = opts.campaignTarget ?? (
+    opts.campaignId
+      ? { kind: 'campaign', campaignId: opts.campaignId }
+      : { kind: 'non-campaign' }
+  );
+  await assertCampaignLlmAllowed(userId, guardTarget);
+
   const tier = AGENT_TIERS[opts.agent] ?? 'standard';
   const ctx = await getRoutingContext(userId, opts.fallbackKey);
   const chain = buildChain(ctx, tier);

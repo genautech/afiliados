@@ -171,7 +171,7 @@ Sua auditoria deve partir dessa decisão — concorde ou aponte por que divergir
           return `O Ads Auditor levantou estes riscos sem ler a presell de verdade: ${flagged}\n\nTEXTO REAL da presell (${campaign.presellUrl}):\n"""${presellText}"""\n\nRetorne JSON: {"alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`;
         },
       }] : []),
-    ]);
+    ], campaignId);
 
     const adsStep = seq.steps[0];
     let result: any;

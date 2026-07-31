@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
         `Presell "${presell.title}" gerada para o produto "${productName}" (ângulo: ${presell.angle}, geo: ${presell.geo}, tipo: ${presell.pageType}). Data real de hoje: ${dataAtual} — não é data futura fictícia, é a data corrente; não sinalize datas/anos na página como enganosos só por parecerem posteriores ao seu conhecimento.`,
         [{
           agent: 'compliance-sentinel',
+          campaignId: presell.campaignId ?? body?.campaignId ?? undefined,
           systemPrompt: 'Você é o Compliance Sentinel do AfiliAds, chamado logo após o Presell Builder gerar uma página nova. Audite o texto real gerado contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos, disclaimers obrigatórios ausentes). Responda APENAS JSON válido.',
           buildUserPrompt: ({ baseContext }) => `${baseContext}\n\nTexto real da página gerada:\n"""${strippedHtml}"""\n\nRetorne JSON: {"score": number (0-100), "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
         }],

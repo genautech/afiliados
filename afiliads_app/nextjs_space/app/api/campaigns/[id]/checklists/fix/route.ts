@@ -94,7 +94,7 @@ Contexto da campanha: ${JSON.stringify(context)}
 JSON puro.`;
 
       try {
-        const res = await callAgent(userId, { agent: 'checklist-fixer', systemPrompt, userPrompt });
+        const res = await callAgent(userId, { agent: 'checklist-fixer', systemPrompt, userPrompt, campaignId });
         const data = res.data;
         const suggested = typeof data?.valor_sugerido === 'string' ? data.valor_sugerido.trim() : '';
         if (!suggested) {
@@ -142,7 +142,7 @@ Contexto da campanha: ${JSON.stringify(context)}
 JSON puro.`;
 
     try {
-      const res = await callAgent(userId, { agent: 'checklist-fixer', systemPrompt, userPrompt });
+      const res = await callAgent(userId, { agent: 'checklist-fixer', systemPrompt, userPrompt, campaignId });
       const data = res.data;
       const correction = typeof data?.correcao === 'string' ? data.correcao.trim() : '';
       if (!correction) {

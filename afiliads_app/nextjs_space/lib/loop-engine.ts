@@ -46,6 +46,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
       try {
         const res = await callAgent(userId, {
           agent: 'ads-auditor',
+          campaignId: campaign.id,
           systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi "${rules.decision}". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
           userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).
 [INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances ("${campaign.bidStrategy || 'não configurada'}") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.
@@ -79,6 +80,7 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
             .slice(0, 10000);
           const res = await callAgent(userId, {
             agent: 'compliance-sentinel',
+            campaignId: campaign.id,
             systemPrompt: 'Você é o Compliance Sentinel do AfiliAds no loop de auto-correção. Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
             userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}):\n"""${html}"""\nRetorne JSON: {"aprovado": true|false, "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
           });
@@ -245,6 +247,7 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
           .slice(0, 10000);
         const res = await callAgent(userId, {
           agent: 'compliance-sentinel',
+          campaignId: campaign.id,
           systemPrompt: 'Você é o Compliance Sentinel do AfiliAds verificando uma campanha PAUSADA (sem gasto de ads ativo, mas a presell pode continuar publicada e acessível). Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
           userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}) — campanha está PAUSADA, este é um check de compliance de rotina, não uma auditoria de ads:\n"""${html}"""\nRetorne JSON: {"aprovado": true|false, "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
         });

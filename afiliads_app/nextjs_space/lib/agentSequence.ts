@@ -6,6 +6,7 @@ export interface AgentSequenceStepDef {
   buildUserPrompt: (ctx: { baseContext: string; previous: AgentSequenceStepResult[] }) => string;
   json?: boolean;
   validate?: (data: any, text: string) => string | null;
+  campaignId?: string;
 }
 
 export interface AgentSequenceStepResult {
@@ -30,6 +31,7 @@ export async function runAgentSequence(
   userId: string,
   baseContext: string,
   steps: AgentSequenceStepDef[],
+  topCampaignId?: string,
 ): Promise<AgentSequenceResult> {
   const results: AgentSequenceStepResult[] = [];
   let totalTokens = 0;
@@ -43,6 +45,7 @@ export async function runAgentSequence(
         userPrompt,
         json: step.json,
         validate: step.validate,
+        campaignId: step.campaignId ?? topCampaignId,
       });
       totalTokens += res.usage.totalTokens;
       results.push({ agent: step.agent, data: res.data, text: res.text, tokens: res.usage.totalTokens, error: null });
