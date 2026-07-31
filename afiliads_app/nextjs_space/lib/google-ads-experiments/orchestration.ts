@@ -1189,6 +1189,10 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
     }
   }
 
+  if (!existingLifecycle && (experiment.operations || []).some((operation: any) => operation.operationType === 'SCHEDULE')) {
+    throw { status: 409, message: 'Operação SCHEDULE legada sem envelope de idempotência; sincronização manual obrigatória' };
+  }
+
   if (experiment.status !== 'SETUP') throw { status: 409, message: `Experimento não pode ser agendado a partir de ${experiment.status}` };
   const proof = asConfigObject(configBefore.proof);
   const treatmentArm = (experiment.arms || []).find((arm: any) => !arm.isControl);
@@ -1344,6 +1348,10 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
     if (existing.state === 'IN_FLIGHT' || existing.state === 'UNKNOWN') {
       throw { status: 409, message: `${action} anterior possui resultado remoto inconclusivo; sincronize antes de repetir` };
     }
+  }
+
+  if (!existing && action === 'PROMOTE' && (experiment.operations || []).some((operation: any) => operation.operationType === 'PROMOTE')) {
+    throw { status: 409, message: 'Operação PROMOTE legada sem envelope de idempotência; sincronização manual obrigatória' };
   }
 
   try {

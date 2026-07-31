@@ -196,6 +196,25 @@ describe('scheduleExperimentLifecycle', () => {
     expect(prisma.googleAdsExperimentOperation.create).not.toHaveBeenCalled();
   });
 
+  it('bloqueia registro legado com operação SCHEDULE sem envelope lifecycle', async () => {
+    const legacy = experiment({
+      operations: [{
+        operationName: 'customers/1234567890/operations/legacy-schedule',
+        operationType: 'SCHEDULE',
+        status: 'PENDING',
+      }],
+    });
+    const { deps } = harness(legacy);
+    await expect(scheduleExperimentLifecycle({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: { authorization: authorization() },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.scheduleExperiment).not.toHaveBeenCalled();
+  });
+
   it('checkpoint COMPLETE com a mesma chave retorna sem token, guard ou mutate', async () => {
     const operationName = 'customers/1234567890/operations/mock-schedule-999';
     const complete = experiment({
@@ -229,6 +248,29 @@ describe('scheduleExperimentLifecycle', () => {
 });
 
 describe('runExperimentAction', () => {
+  it('bloqueia registro legado com operação PROMOTE sem envelope lifecycle', async () => {
+    const legacy = experiment({
+      status: 'RUNNING',
+      operations: [{
+        operationName: 'customers/1234567890/operations/legacy-promote',
+        operationType: 'PROMOTE',
+        status: 'PENDING',
+      }],
+    });
+    const { deps } = harness(legacy);
+    await expect(runExperimentAction({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: {
+        action: 'PROMOTE',
+        authorization: authorization({ operation: 'PROMOTE_EXPERIMENT', idempotencyKey: 'promote-key-123' }),
+      },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.promoteExperiment).not.toHaveBeenCalled();
+  });
+
   it('END exige autorização exata e persiste estado terminal', async () => {
     const { prisma, deps } = harness(experiment({ status: 'RUNNING' }));
     deps.assertMutationAllowed.mockReturnValue({
