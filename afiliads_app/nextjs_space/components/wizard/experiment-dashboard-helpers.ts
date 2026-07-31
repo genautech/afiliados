@@ -1,3 +1,5 @@
+import { analyzeExperimentSignificance } from '@/lib/google-ads-experiments/statistics';
+
 export interface ExperimentDashboardReport {
   outcome: 'UNDERPOWERED' | 'NOT_SIGNIFICANT' | 'SIGNIFICANT_WINNER' | 'SIGNIFICANT_LOSER';
   controlClicks: number;
@@ -5,17 +7,65 @@ export interface ExperimentDashboardReport {
   targetClicks: number;
   conversionsUplift?: number;
   pValue?: number;
+  controlConversions?: number;
+  treatmentConversions?: number;
+  controlImpressions?: number;
+  treatmentImpressions?: number;
 }
 
 export function getExperimentActionFeasibility(report?: ExperimentDashboardReport | null): {
   canPromote: boolean;
   canGraduate: boolean;
   reason?: string;
+  confidencePct?: number;
+  recommendation?: string;
 } {
   if (!report) {
     return { canPromote: false, canGraduate: false, reason: 'Nenhum relatório de métricas disponível ainda' };
   }
 
+  // Se tivermos os dados brutos de conversões, executamos o Z-test determinístico completo
+  if (
+    typeof report.controlClicks === 'number' &&
+    typeof report.treatmentClicks === 'number' &&
+    typeof report.controlConversions === 'number' &&
+    typeof report.treatmentConversions === 'number'
+  ) {
+    const stat = analyzeExperimentSignificance(
+      {
+        clicks: report.controlClicks,
+        impressions: report.controlImpressions ?? report.controlClicks * 10,
+        conversions: report.controlConversions,
+        costMicros: 0,
+      },
+      {
+        clicks: report.treatmentClicks,
+        impressions: report.treatmentImpressions ?? report.treatmentClicks * 10,
+        conversions: report.treatmentConversions,
+        costMicros: 0,
+      }
+    );
+
+    if (stat.recommendation === 'PROMOTE_TREATMENT') {
+      return {
+        canPromote: true,
+        canGraduate: true,
+        confidencePct: stat.confidencePct,
+        recommendation: stat.recommendation,
+        reason: stat.reason,
+      };
+    }
+
+    return {
+      canPromote: false,
+      canGraduate: false,
+      confidencePct: stat.confidencePct,
+      recommendation: stat.recommendation,
+      reason: stat.reason,
+    };
+  }
+
+  // Fallback para os outcomes estruturados
   if (report.outcome === 'UNDERPOWERED') {
     return {
       canPromote: false,
@@ -98,10 +148,10 @@ export function getDetailedStatusVocabulary(opts: {
         };
       }
       return {
-        label: 'Configuração Local Concluída (Rascunho)',
-        badgeColor: 'slate',
+        label: 'Configuração Local Concluída (RASCUNHO - Sem Custo)',
+        badgeColor: 'gray',
         servesAds: false,
-        description: 'Campanha gravada localmente no AfiliAds. Não existe recurso criado no Google Ads ainda.',
+        description: 'Estado de experimento pendente de inicialização.',
       };
   }
 }
