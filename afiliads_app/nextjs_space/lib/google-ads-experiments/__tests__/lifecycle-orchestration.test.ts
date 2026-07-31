@@ -70,13 +70,55 @@ function experiment(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function harness(exp = experiment()) {
+function harness(exp: any = experiment()) {
+  // Mock stateful que emula o contrato REAL do Prisma 6.7.0 (verificado empiricamente
+  // em /tmp/prisma-cas-check): update/updateMany fazem bump automático de @updatedAt,
+  // e o predicado where.updatedAt só casa quando a revisão ainda é a atual (CAS).
+  // Um mock "count: 1 incondicional" esconde a classe inteira de bugs de CAS obsoleto
+  // (achados P1/P2 da auditoria deleg_ae9bec01).
+  const missing = exp == null;
+  const state = {
+    updatedAt: exp?.updatedAt ?? updatedAt,
+    variationConfig: exp?.variationConfig ?? null,
+    status: exp?.status ?? 'SETUP',
+    lastError: exp?.lastError ?? null,
+  };
+  const bump = () => {
+    state.updatedAt = new Date(state.updatedAt.getTime() + 1000);
+  };
+  const currentRow = () => {
+    if (missing) return null;
+    return {
+      ...exp,
+      variationConfig: state.variationConfig,
+      status: state.status,
+      updatedAt: state.updatedAt,
+      lastError: state.lastError,
+    };
+  };
+  const applyData = (data: any) => {
+    if (data?.variationConfig !== undefined) state.variationConfig = data.variationConfig;
+    if (data?.status !== undefined) state.status = data.status;
+    if (data?.lastError !== undefined) state.lastError = data.lastError;
+    bump();
+  };
   const prisma: any = {
     googleAdsExperiment: {
-      findFirst: vi.fn().mockResolvedValue(exp),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      update: vi.fn().mockImplementation(async ({ data }: any) => ({ ...exp, ...data })),
-      findUniqueOrThrow: vi.fn().mockResolvedValue(exp),
+      findFirst: vi.fn().mockImplementation(async () => currentRow()),
+      updateMany: vi.fn().mockImplementation(async ({ where, data }: any) => {
+        if (where?.updatedAt && where.updatedAt.getTime() !== state.updatedAt.getTime()) return { count: 0 };
+        if (where?.status && where.status !== state.status) return { count: 0 };
+        applyData(data);
+        return { count: 1 };
+      }),
+      update: vi.fn().mockImplementation(async ({ data }: any) => {
+        applyData(data);
+        return currentRow();
+      }),
+      findUniqueOrThrow: vi.fn().mockImplementation(async (args: any = {}) => {
+        if (args?.select?.updatedAt && !args?.include) return { updatedAt: state.updatedAt };
+        return currentRow();
+      }),
     },
     googleAdsExperimentOperation: {
       create: vi.fn().mockImplementation(async ({ data }: any) => ({ id: 'op_local', ...data })),
@@ -165,6 +207,28 @@ describe('scheduleExperimentLifecycle', () => {
     expect(deps.scheduleExperiment).not.toHaveBeenCalled();
   });
 
+  it('409 fail-closed quando escrita concorrente (sync) intercala entre claim e commit', async () => {
+    const { prisma, deps } = harness(experiment());
+    // Simula sync concorrente: escreve durante a chamada remota, fazendo o Prisma
+    // bumpar @updatedAt — o commit CAS deve falhar (count=0) e nada é clobbered.
+    deps.scheduleExperiment.mockImplementation(async () => {
+      await prisma.googleAdsExperiment.updateMany({
+        where: { id: 'exp_1' },
+        data: { decisionPolicy: { concurrentSync: true } },
+      });
+      return { operationName: 'customers/1234567890/operations/mock-schedule-999' };
+    });
+    await expect(scheduleExperimentLifecycle({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: { authorization: scheduleAuthorization() },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+    const row = await prisma.googleAdsExperiment.findFirst();
+    expect(row.variationConfig.saga.schedule).toBe('IN_FLIGHT');
+    expect(row.variationConfig.lifecycle.schedule.state).toBe('IN_FLIGHT');
+  });
+
   it('nega schedule sem prova persistida da variação antes de readiness ou mutate', async () => {
     const { deps } = harness(experiment({ variationConfig: { saga: {} } }));
     await expect(scheduleExperimentLifecycle({
@@ -207,7 +271,8 @@ describe('scheduleExperimentLifecycle', () => {
       deps: deps as any,
     })).rejects.toMatchObject({ status: 502 });
     expect(prisma.googleAdsExperiment.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: expect.objectContaining({ id: 'exp_1', updatedAt, status: 'SETUP' }),
+      // Revisão pós-claim (o claim bumpara @updatedAt): o CAS downstream nunca usa a revisão pré-claim
+      where: expect.objectContaining({ id: 'exp_1', updatedAt: expect.any(Date), status: 'SETUP' }),
       data: expect.objectContaining({
         variationConfig: expect.objectContaining({
           saga: expect.objectContaining({ schedule: 'UNKNOWN' }),
@@ -393,7 +458,7 @@ describe('runExperimentAction', () => {
       expect.objectContaining({ operation: 'endExperiment' })
     );
     expect(prisma.googleAdsExperiment.updateMany).toHaveBeenNthCalledWith(2, {
-      where: expect.objectContaining({ id: 'exp_1', updatedAt, status: 'RUNNING' }),
+      where: expect.objectContaining({ id: 'exp_1', updatedAt: expect.any(Date), status: 'RUNNING' }),
       data: expect.objectContaining({ status: 'ENDED', lastError: null }),
     });
     expect(result.experiment.status).toBe('ENDED');

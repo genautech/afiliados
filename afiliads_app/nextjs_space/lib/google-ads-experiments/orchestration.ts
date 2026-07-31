@@ -518,9 +518,20 @@ async function claimSagaStep(
     return { claimed: false, experiment: fresh };
   }
 
+  // O claim acabou de fazer o Prisma bumpar @updatedAt no DB (comportamento automático
+  // de updateMany — verificado empiricamente em Prisma 6.7.0). O objeto em memória
+  // ainda carrega a revisão PRÉ-claim; sem reler, qualquer CAS downstream (commit,
+  // marcação UNKNOWN) casaria com a revisão velha e retornaria count=0 — bug de
+  // liveness que derrubaria todo lifecycle com sucesso remoto em 409 (auditoria
+  // deleg_ae9bec01). Relê só a revisão pós-claim e a propaga.
+  const claimedRevision = await prismaClient.googleAdsExperiment.findUniqueOrThrow({
+    where: { id: experiment.id },
+    select: { updatedAt: true },
+  });
+
   return {
     claimed: true,
-    experiment: { ...experiment, variationConfig: nextConfig },
+    experiment: { ...experiment, variationConfig: nextConfig, updatedAt: claimedRevision.updatedAt },
   };
 }
 
@@ -1311,10 +1322,13 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
       lifecycle: { ...(asConfigObject(claimedConfig.lifecycle) ?? {}), schedule: { ...lifecycle.schedule, state: 'UNKNOWN' } },
       saga: { ...(asConfigObject(claimedConfig.saga) ?? {}), schedule: 'UNKNOWN' },
     };
-    await prismaClient.googleAdsExperiment.updateMany({
+    const unknownCas = await prismaClient.googleAdsExperiment.updateMany({
       where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
       data: { variationConfig: failedConfig, lastError: message },
     });
+    if (unknownCas.count !== 1) {
+      throw { status: 502, message: `${message} (estado local divergiu após a falha remota; sincronização obrigatória)` };
+    }
     throw { status: 502, message };
   }
 
@@ -1548,10 +1562,13 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
       lifecycle: { ...(asConfigObject(claimedCfg.lifecycle) ?? {}), [contract.saga]: { ...lifecycle[contract.saga], state: 'UNKNOWN' } },
       saga: { ...(asConfigObject(claimedCfg.saga) ?? {}), [contract.saga]: 'UNKNOWN' },
     };
-    await prismaClient.googleAdsExperiment.updateMany({
+    const unknownCas = await prismaClient.googleAdsExperiment.updateMany({
       where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
       data: { variationConfig: failedCfg, lastError: message },
     });
+    if (unknownCas.count !== 1) {
+      throw { status: 502, message: `${message} (estado local divergiu após a falha remota; sincronização obrigatória)` };
+    }
     throw { status: 502, message };
   }
 

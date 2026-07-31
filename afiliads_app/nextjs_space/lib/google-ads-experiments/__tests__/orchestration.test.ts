@@ -31,6 +31,12 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
     (prisma.googleAdsExperiment.update as any).mockResolvedValue({ id: 'exp1', arms: [] });
     (prisma.googleAdsExperiment.updateMany as any).mockResolvedValue({ count: 1 });
     (prisma.googleAdsExperimentArm.createMany as any).mockResolvedValue({ count: 2 });
+    // claimSagaStep relê a revisão pós-claim (select updatedAt) após todo claim bem-sucedido,
+    // e o caminho de claim-perdido relê a linha completa; default cobre ambos os shapes.
+    (prisma.googleAdsExperiment.findUniqueOrThrow as any).mockImplementation(async (args: any = {}) => {
+      if (args?.select?.updatedAt && !args?.include) return { updatedAt: new Date() };
+      return { id: 'exp1', arms: armsFixture(), variationConfig: currentConfig(), updatedAt: new Date() };
+    });
   });
 
   const mockConfig = {
