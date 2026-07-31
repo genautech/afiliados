@@ -486,6 +486,7 @@ export default function WizardPage() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [ftpDomains, setFtpDomains] = useState<string[]>([]);
   const [publishingOwnDomain, setPublishingOwnDomain] = useState(false);
+  const [presellCustomContext, setPresellCustomContext] = useState('');
 
   // Step 5
   const [selectedKeywords, setSelectedKeywords] = useState<Array<{keyword:string;layer:string;matchType:string;relevance:number;selected:boolean}>>([]);
@@ -1095,7 +1096,7 @@ export default function WizardPage() {
   // e de um hopLink real (offerUrl).
   const generatePresellHtml = async (extraContext?: string) => {
     if (!offerUrl || !/^https?:\/\//.test(offerUrl)) {
-      toast.error('Preencha a URL da oferta (offerUrl, passo 1) com um link https:// válido antes de gerar a presell.');
+      toast.error('Preencha a URL da oferta / Link de Afiliado (offerUrl) com um link https:// válido antes de gerar a presell.');
       return;
     }
     const cid = campaignId || (await saveCampaign());
@@ -1103,6 +1104,14 @@ export default function WizardPage() {
       toast.error('Não foi possível salvar a campanha antes de gerar a presell.');
       return;
     }
+    if (cid) {
+      fetch(`/api/campaigns/${cid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerUrl, pageType, popupGate, videoUrl, presellUrl, hostingerDomain, flowpageUrl }),
+      }).catch(() => {});
+    }
+    const ctxToPass = extraContext || presellCustomContext || undefined;
     const productName = researchProducts.find(p => p.id === sourceProductResearchId)?.name || name || vertical;
     setGeneratingPresell(true);
     try {
@@ -1120,7 +1129,7 @@ export default function WizardPage() {
           channel,
           geo,
           trackingId: name || undefined,
-          context: extraContext || undefined,
+          context: ctxToPass,
         }),
       });
       const data = await res.json();
@@ -1577,6 +1586,25 @@ export default function WizardPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div className="sm:col-span-2">
+                  <div className="flex items-center gap-1">
+                    <Label className="text-slate-300">Link de Afiliado / Oferta (HopLink)</Label>
+                    <AgentHelp fieldKey="offerUrl" fieldValue={offerUrl} onApply={setOfferUrl} />
+                  </div>
+                  <Input
+                    value={offerUrl}
+                    onChange={(e: any) => setOfferUrl(e?.target?.value ?? '')}
+                    onBlur={(e: any) => {
+                      const v = e?.target?.value ?? '';
+                      if (campaignId) fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ offerUrl: v }) }).catch(() => {});
+                    }}
+                    placeholder="https://hop.clickbank.net/..."
+                    className={inputCls}
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Este link é usado nos botões CTA da pré-sell gerada. Se alterar antes de regerar, o novo HTML usará este link atualizado.
+                  </p>
+                </div>
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} onApply={setPresellUrl} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} onBlur={(e:any) => { const v = e?.target?.value ?? ''; if (campaignId) fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presellUrl: v }) }).catch(() => {}); }} placeholder="https://seudominio.com/review" className={inputCls} /></div>
                 <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL FlowPage</Label><AgentHelp fieldKey="flowpageUrl" fieldValue={flowpageUrl} onApply={setFlowpageUrl} /></div>
                   <div className="flex gap-2"><Input value={flowpageUrl} onChange={(e:any) => setFlowpageUrl(e?.target?.value ?? '')} placeholder="URL do FlowPage" className={`${inputCls} flex-1`} />
@@ -1588,6 +1616,18 @@ export default function WizardPage() {
 
               {/* Pre-sell builder */}
               <div className="mt-6 space-y-3">
+                <div className="bg-[#0f172a] p-3 rounded-lg border border-[#334155] space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Label className="text-slate-300 text-xs font-semibold">Ângulo Editorial / Instruções Adicionais para IA (Opcional)</Label>
+                  </div>
+                  <Textarea
+                    value={presellCustomContext}
+                    onChange={(e: any) => setPresellCustomContext(e?.target?.value ?? '')}
+                    placeholder="Ex: Focar em autoridade editorial, depoimentos de transformações reais, destacar garantia de 60 dias..."
+                    className={`${inputCls} min-h-[50px] text-xs`}
+                  />
+                </div>
+
                 <div className="flex items-center justify-between">
                   <h3 className="text-white font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-yellow-400" /> Builder de Pré-sell</h3>
                   <div className="flex gap-2">
