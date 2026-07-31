@@ -25,6 +25,7 @@ import {
   NEGATIVES_BY_VERTICAL
 } from '@/lib/wizard-data';
 import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
+import { ExperimentSetupCard } from '@/components/wizard/ExperimentSetupCard';
 
 const STEPS = [
   { num: 1, title: 'Oferta', icon: FileText },
@@ -1862,6 +1863,13 @@ export default function WizardPage() {
                 </div>
               </div>
               <Step7LeadingStream campaignId={campaignId ?? ''} budgetDaily={budgetDaily} onSuccess={runChecklistVerify} />
+              {campaignId && (
+                <ExperimentSetupCard
+                  campaignId={campaignId}
+                  controlPresellUrl={presellUrl}
+                  onExperimentUpdated={runChecklistVerify}
+                />
+              )}
               <div className="space-y-3">
                 {GOOGLE_ADS_CHECKLIST.map(item => (
                   <ChecklistItemRow
