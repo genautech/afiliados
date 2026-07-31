@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
         where: { id: campaignId },
         data: {
           googleCampaignName: gadsData.name,
+          googleCampaignId: gadsData.googleCampaignId ?? campaign.googleCampaignId,
           budgetDaily: gadsData.budgetDaily,
           bidStrategy: gadsData.bidStrategy,
           status: localStatus,
@@ -108,14 +109,17 @@ export async function POST(request: NextRequest) {
       });
     } else if (direction === 'push') {
       // 2. PUSH: Enviar atualizações locais para o Google Ads
-      // Precisamos identificar o ID da campanha no Google Ads.
-      // Caso não tenhamos, tentamos primeiro buscar para obter o ID
-      let gadsId = campaign.googleCampaignName; // Ou algum campo que identifique o ID.
-      // Se não for puramente numérico, vamos fazer um Pull rápido para achar o ID no Google Ads.
+      // Prioridade 1: ID numérico estável salvo no banco (campaign.googleCampaignId).
+      let gadsId = campaign.googleCampaignId;
+      // Prioridade 2: busca remota caso não haja ID numérico salvo localmente.
       if (!gadsId || isNaN(Number(gadsId))) {
         const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
         if (gadsData?.googleCampaignId) {
           gadsId = gadsData.googleCampaignId;
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { googleCampaignId: gadsId },
+          }).catch(() => {});
         }
       }
 

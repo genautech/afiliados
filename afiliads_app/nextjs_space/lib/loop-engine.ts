@@ -155,10 +155,16 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
       const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
       const gadsConfig = await getGoogleAdsConfig(userId);
       if (gadsConfig) {
-        let gadsId = campaign.googleCampaignName;
+        let gadsId = campaign.googleCampaignId;
         if (!gadsId || isNaN(Number(gadsId))) {
           const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) gadsId = gadsData.googleCampaignId;
+          if (gadsData?.googleCampaignId) {
+            gadsId = gadsData.googleCampaignId;
+            await prisma.campaign.update({
+              where: { id: campaign.id },
+              data: { googleCampaignId: gadsId },
+            }).catch(() => {});
+          }
         }
         if (gadsId && !isNaN(Number(gadsId))) {
           await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
@@ -176,10 +182,16 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
       const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
       const gadsConfig = await getGoogleAdsConfig(userId);
       if (gadsConfig) {
-        let gadsId = campaign.googleCampaignName;
+        let gadsId = campaign.googleCampaignId;
         if (!gadsId || isNaN(Number(gadsId))) {
           const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) gadsId = gadsData.googleCampaignId;
+          if (gadsData?.googleCampaignId) {
+            gadsId = gadsData.googleCampaignId;
+            await prisma.campaign.update({
+              where: { id: campaign.id },
+              data: { googleCampaignId: gadsId },
+            }).catch(() => {});
+          }
         }
         if (gadsId && !isNaN(Number(gadsId))) {
           await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
