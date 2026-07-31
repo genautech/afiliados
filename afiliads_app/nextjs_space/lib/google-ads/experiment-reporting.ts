@@ -53,12 +53,30 @@ const REPORT_FIELDS = [
   'metrics.control_conversion_value',
 ].join(', ');
 
+const EXPERIMENT_RESOURCE_RE = /^customers\/(\d+)\/experiments\/(\d+)$/;
+const CAMPAIGN_RESOURCE_RE = /^customers\/(\d+)\/campaigns\/(\d+)$/;
+
+function parseExperimentResourceName(resourceName: string) {
+  const match = EXPERIMENT_RESOURCE_RE.exec(resourceName);
+  if (!match) throw new Error('Invalid experiment resource name format');
+  return { customerId: match[1], experimentId: match[2] };
+}
+
+function parseConfiguredCustomerId(customerId: unknown): string {
+  if (typeof customerId !== 'string') throw new Error('customerId da configuração possui formato inválido.');
+  const raw = customerId.trim();
+  if (/^\d{10}$/.test(raw)) return raw;
+  if (/^\d{3}-\d{3}-\d{4}$/.test(raw)) return raw.replace(/-/g, '');
+  throw new Error('customerId da configuração possui formato inválido.');
+}
+
 // Query builder puro (sem rede) — testável direto, mesmo padrão de `queryExperimentArms`.
 export function buildExperimentReportQuery(experimentResourceName: string): string {
+  parseExperimentResourceName(experimentResourceName);
   return `
     SELECT ${REPORT_FIELDS}
     FROM experiment
-    WHERE experiment.resource_name = '${experimentResourceName.replace(/'/g, "\\'")}'
+    WHERE experiment.resource_name = '${experimentResourceName}'
   `;
 }
 
@@ -79,10 +97,31 @@ function parseStrictNumber(value: unknown): number | null {
   return null;
 }
 
-function num(value: unknown): number {
-  const n = parseStrictNumber(value);
-  if (n === null || n < 0) return 0;
-  return n;
+interface ParsedMetric {
+  value: number;
+  valid: boolean;
+}
+
+function parseCounter(value: unknown): ParsedMetric {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647
+      ? { value, valid: true }
+      : { value: 0, valid: false };
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed <= 2_147_483_647
+      ? { value: parsed, valid: true }
+      : { value: 0, valid: false };
+  }
+  return { value: 0, valid: false };
+}
+
+function parseNonNegativeMetric(value: unknown): ParsedMetric {
+  const parsed = parseStrictNumber(value);
+  return parsed !== null && parsed >= 0
+    ? { value: parsed, valid: true }
+    : { value: 0, valid: false };
 }
 
 function stat(value: unknown, isPValue = false, isMargin = false): number | null {
@@ -97,6 +136,12 @@ function extractExperimentIdFromResourceName(resourceName: string): string {
   return resourceName.split('/').pop() ?? resourceName;
 }
 
+function validateTargetClicks(targetClicks: unknown): asserts targetClicks is number {
+  if (typeof targetClicks !== 'number' || !Number.isFinite(targetClicks) || !Number.isInteger(targetClicks) || targetClicks < 1) {
+    throw new Error('targetClicks inválido');
+  }
+}
+
 // Corte determinístico: sem p-value real da API, nunca inventamos significância. Amostra abaixo
 // do alvo (Tarefa 5, `targetClicks`) sempre vira UNDERPOWERED, mesmo que a API já tenha
 // devolvido algum p-value pontual — evita declarar resultado cedo demais (plano, seção 1.2).
@@ -107,9 +152,7 @@ function decideOutcome(
   conversionsPointEstimate: number | null,
   conversionsMarginOfError: number | null
 ): { feasibility: ExperimentReport['feasibility']; hasSignificantResult: boolean; summary: string } {
-  if (typeof targetClicks !== 'number' || !Number.isInteger(targetClicks) || targetClicks < 1) {
-    throw new Error('targetClicks inválido');
-  }
+  validateTargetClicks(targetClicks);
   
   if (conversionsPValue === null || conversionsPointEstimate === null || conversionsMarginOfError === null) {
     return {
@@ -159,25 +202,51 @@ function decideOutcome(
 }
 
 // Parsing puro de uma linha do recurso `experiment` (sem rede) — testável direto.
-export function parseExperimentReportRow(row: RawExperimentReportRow, targetClicks: number): ExperimentReport {
+export function parseExperimentReportRow(
+  row: RawExperimentReportRow,
+  targetClicks: number,
+  expectedResourceName?: string
+): ExperimentReport {
+  validateTargetClicks(targetClicks);
   const m = row.metrics ?? {};
-  const statusRaw = row.experiment?.status ?? 'UNSPECIFIED';
+  const remoteStatusCandidate = row.experiment?.status;
+  const statusRaw = typeof remoteStatusCandidate === 'string' && remoteStatusCandidate.trim().length > 0
+    ? remoteStatusCandidate.trim()
+    : 'UNSPECIFIED';
   const mapped = mapGoogleExperimentRemoteStatus(statusRaw);
 
+  const treatmentValues = {
+    impressions: parseCounter(m.impressions),
+    clicks: parseCounter(m.clicks),
+    costMicros: parseNonNegativeMetric(m.costMicros),
+    conversions: parseNonNegativeMetric(m.conversions),
+    conversionValue: parseNonNegativeMetric(m.conversionsValue),
+  };
+  const controlValues = {
+    impressions: parseCounter(m.controlImpressions),
+    clicks: parseCounter(m.controlClicks),
+    costMicros: parseNonNegativeMetric(m.controlCostMicros),
+    conversions: parseNonNegativeMetric(m.controlConversions),
+    conversionValue: parseNonNegativeMetric(m.controlConversionValue),
+  };
   const treatment: ExperimentMetricPoint = {
-    impressions: num(m.impressions),
-    clicks: num(m.clicks),
-    costMicros: num(m.costMicros),
-    conversions: num(m.conversions),
-    conversionValue: num(m.conversionsValue),
+    impressions: treatmentValues.impressions.value,
+    clicks: treatmentValues.clicks.value,
+    costMicros: treatmentValues.costMicros.value,
+    conversions: treatmentValues.conversions.value,
+    conversionValue: treatmentValues.conversionValue.value,
   };
   const control: ExperimentMetricPoint = {
-    impressions: num(m.controlImpressions),
-    clicks: num(m.controlClicks),
-    costMicros: num(m.controlCostMicros),
-    conversions: num(m.controlConversions),
-    conversionValue: num(m.controlConversionValue),
+    impressions: controlValues.impressions.value,
+    clicks: controlValues.clicks.value,
+    costMicros: controlValues.costMicros.value,
+    conversions: controlValues.conversions.value,
+    conversionValue: controlValues.conversionValue.value,
   };
+  const cumulativeMetricsValid = [
+    ...Object.values(treatmentValues),
+    ...Object.values(controlValues),
+  ].every((parsed) => parsed.valid);
 
   const statistics: ExperimentStatistics = {
     impressions: {
@@ -208,15 +277,33 @@ export function parseExperimentReportRow(row: RawExperimentReportRow, targetClic
   };
 
   const sampleSize = treatment.clicks + control.clicks;
-  const outcome = decideOutcome(
-    sampleSize,
-    targetClicks,
-    statistics.conversions.pValue,
-    statistics.conversions.pointEstimate,
-    statistics.conversions.marginOfError
-  );
+  const outcome = cumulativeMetricsValid
+    ? decideOutcome(
+      sampleSize,
+      targetClicks,
+      statistics.conversions.pValue,
+      statistics.conversions.pointEstimate,
+      statistics.conversions.marginOfError
+    )
+    : {
+      feasibility: 'UNDERPOWERED' as const,
+      hasSignificantResult: false,
+      summary: 'Métricas cumulativas inválidas ou ausentes. Resultado inconclusivo.',
+    };
 
-  const experimentId = row.experiment?.experimentId || extractExperimentIdFromResourceName(row.experiment?.resourceName ?? '');
+  const resourceName = row.experiment?.resourceName ?? '';
+  const resourceIdentity = resourceName ? parseExperimentResourceName(resourceName) : null;
+  const declaredExperimentId = row.experiment?.experimentId;
+  if (resourceIdentity && declaredExperimentId && resourceIdentity.experimentId !== declaredExperimentId) {
+    throw new Error('Identidade do experimento divergente na resposta.');
+  }
+  if (expectedResourceName) {
+    const expectedIdentity = parseExperimentResourceName(expectedResourceName);
+    if (resourceName !== expectedResourceName || (declaredExperimentId && declaredExperimentId !== expectedIdentity.experimentId)) {
+      throw new Error('Identidade do experimento divergente na resposta.');
+    }
+  }
+  const experimentId = declaredExperimentId || resourceIdentity?.experimentId || '';
   if (!experimentId) {
     throw new Error('Identidade do experimento ausente na resposta.');
   }
@@ -224,6 +311,8 @@ export function parseExperimentReportRow(row: RawExperimentReportRow, targetClic
   return {
     experimentId,
     status: mapped.local,
+    remoteStatusRaw: mapped.remoteStatusRaw,
+    metricsValid: cumulativeMetricsValid,
     control,
     treatment,
     statistics,
@@ -252,6 +341,8 @@ function buildInconclusiveReport(experimentResourceName: string, reason: string)
   return {
     experimentId: extractExperimentIdFromResourceName(experimentResourceName),
     status: mapGoogleExperimentRemoteStatus('UNKNOWN').local,
+    remoteStatusRaw: 'UNKNOWN',
+    metricsValid: false,
     control: emptyMetricPoint(),
     treatment: emptyMetricPoint(),
     statistics: emptyStatistics(),
@@ -261,10 +352,13 @@ function buildInconclusiveReport(experimentResourceName: string, reason: string)
   };
 }
 
+const VALIDATED_FALLBACK_ARMS = Symbol('validatedFallbackArms');
+
 export interface ValidatedFallbackArms {
   controlCampaignResourceName: string;
   treatmentCampaignResourceName: string;
   experimentId: string;
+  readonly [VALIDATED_FALLBACK_ARMS]: true;
 }
 
 export function validateFallbackArms(
@@ -288,6 +382,7 @@ export function validateFallbackArms(
     controlCampaignResourceName: control.servedCampaignResourceName,
     treatmentCampaignResourceName: treatment.servedCampaignResourceName,
     experimentId,
+    [VALIDATED_FALLBACK_ARMS]: true,
   };
 }
 
@@ -297,7 +392,7 @@ async function fetchCampaignMetricPoint(
   token: string,
   config: GoogleAdsCredentials,
   campaignResourceName: string
-): Promise<ExperimentMetricPoint> {
+): Promise<{ point: ExperimentMetricPoint; valid: boolean }> {
   if (!/^customers\/\d+\/campaigns\/\d+$/.test(campaignResourceName)) {
     throw new Error('Invalid campaign resource name format');
   }
@@ -309,12 +404,22 @@ async function fetchCampaignMetricPoint(
   `;
   const data = await googleAdsRequest(token, config, 'googleAds:search', { body: { query } });
   const m = data?.results?.[0]?.metrics ?? {};
+  const parsed = {
+    impressions: parseCounter(m.impressions),
+    clicks: parseCounter(m.clicks),
+    costMicros: parseNonNegativeMetric(m.costMicros),
+    conversions: parseNonNegativeMetric(m.conversions),
+    conversionValue: parseNonNegativeMetric(m.conversionsValue),
+  };
   return {
-    impressions: num(m.impressions),
-    clicks: num(m.clicks),
-    costMicros: num(m.costMicros),
-    conversions: num(m.conversions),
-    conversionValue: num(m.conversionsValue),
+    point: {
+      impressions: parsed.impressions.value,
+      clicks: parsed.clicks.value,
+      costMicros: parsed.costMicros.value,
+      conversions: parsed.conversions.value,
+      conversionValue: parsed.conversionValue.value,
+    },
+    valid: Object.values(parsed).every((value) => value.valid),
   };
 }
 
@@ -329,14 +434,28 @@ async function buildFallbackReport(
   fallback: ValidatedFallbackArms,
   targetClicks: number
 ): Promise<ExperimentReport> {
-  const [control, treatment] = await Promise.all([
+  if (fallback[VALIDATED_FALLBACK_ARMS] !== true) {
+    throw new Error('Fallback arms não validados.');
+  }
+  const experimentIdentity = parseExperimentResourceName(experimentResourceName);
+  const controlMatch = CAMPAIGN_RESOURCE_RE.exec(fallback.controlCampaignResourceName);
+  const treatmentMatch = CAMPAIGN_RESOURCE_RE.exec(fallback.treatmentCampaignResourceName);
+  if (!controlMatch || !treatmentMatch || controlMatch[1] !== experimentIdentity.customerId || treatmentMatch[1] !== experimentIdentity.customerId) {
+    throw new Error('Campanhas de fallback não pertencem ao customer do experimento.');
+  }
+  const [controlResult, treatmentResult] = await Promise.all([
     fetchCampaignMetricPoint(token, config, fallback.controlCampaignResourceName),
     fetchCampaignMetricPoint(token, config, fallback.treatmentCampaignResourceName),
   ]);
+  const control = controlResult.point;
+  const treatment = treatmentResult.point;
+  const metricsValid = controlResult.valid && treatmentResult.valid;
   const sampleSize = control.clicks + treatment.clicks;
   return {
     experimentId: extractExperimentIdFromResourceName(experimentResourceName),
     status: mapGoogleExperimentRemoteStatus('UNKNOWN').local,
+    remoteStatusRaw: 'UNKNOWN',
+    metricsValid,
     control,
     treatment,
     statistics: emptyStatistics(),
@@ -372,7 +491,7 @@ function buildMockRawRow(experimentResourceName: string): RawExperimentReportRow
       conversions: 7,
       conversionsAbsoluteChangePointEstimate: 2,
       conversionsAbsoluteChangeMarginOfError: 1.5,
-      conversionsAbsoluteChangePValue: 0.04,
+      conversionsAbsoluteChangePValue: null,
       controlConversions: 5,
       conversionsValue: 700,
       conversionValueChangePointEstimate: 200,
@@ -400,8 +519,14 @@ export async function fetchExperimentReport(
   experimentResourceName: string,
   options: FetchExperimentReportOptions
 ): Promise<ExperimentReport> {
+  validateTargetClicks(options.targetClicks);
+  const requestedIdentity = parseExperimentResourceName(experimentResourceName);
+  const configuredCustomerId = parseConfiguredCustomerId(config.customerId);
+  if (configuredCustomerId !== requestedIdentity.customerId) {
+    throw new Error('Experiment resource name não pertence ao customer da configuração.');
+  }
   if (isMockMode(config)) {
-    return parseExperimentReportRow(buildMockRawRow(experimentResourceName), options.targetClicks);
+    return parseExperimentReportRow(buildMockRawRow(experimentResourceName), options.targetClicks, experimentResourceName);
   }
 
   const query = buildExperimentReportQuery(experimentResourceName);
@@ -427,7 +552,7 @@ export async function fetchExperimentReport(
     );
   }
 
-  return parseExperimentReportRow(rows[0], options.targetClicks);
+  return parseExperimentReportRow(rows[0], options.targetClicks, experimentResourceName);
 }
 
 export interface MetricSnapshotUpsertInput {
@@ -455,6 +580,9 @@ export function buildMetricSnapshotUpsertInput(
   report: ExperimentReport,
   sourcePayload: unknown = null
 ): MetricSnapshotUpsertInput {
+  if (report.metricsValid !== true) {
+    throw new Error('Relatório contém métricas cumulativas inválidas; snapshot não persistido.');
+  }
   return {
     experimentId: dbExperimentId,
     snapshotDate,
@@ -508,7 +636,7 @@ export function sanitizeSourcePayload(raw: unknown): Record<string, unknown> {
     for (const key of Object.keys(rawMetrics)) {
       if (allowlist.has(key)) {
         const val = rawMetrics[key];
-        if (typeof val === 'number') {
+        if (typeof val === 'number' && Number.isFinite(val)) {
           safeMetrics[key] = val;
         } else if (typeof val === 'string' && val.length <= 100) {
           if (/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(val.trim())) {
@@ -530,7 +658,10 @@ export async function upsertMetricSnapshot(
   input: MetricSnapshotUpsertInput
 ) {
   const date = new Date(input.snapshotDate);
-  const snapshotDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  if (!Number.isFinite(date.getTime())) throw new Error('snapshotDate inválido');
+  const snapshotDate = new Date(0);
+  snapshotDate.setUTCFullYear(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  snapshotDate.setUTCHours(0, 0, 0, 0);
 
   const data = {
     experimentId: input.experimentId,

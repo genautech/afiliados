@@ -63,6 +63,29 @@ describe('createExperiment', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('1a. seeds completos distintos não colidem mesmo com o mesmo suffix curto', async () => {
+    const first = await createExperiment('tok', mockCredentials(), {
+      ...input, suffix: 'abcdefghijkl', mockIdentitySeed: 'abcdefghijkl-ONE',
+    }, { allowed: true } as any);
+    const second = await createExperiment('tok', mockCredentials(), {
+      ...input, suffix: 'abcdefghijkl', mockIdentitySeed: 'abcdefghijkl-TWO',
+    }, { allowed: true } as any);
+    expect(first.googleExperimentId).not.toBe(second.googleExperimentId);
+    expect(first.resourceName).not.toBe(second.resourceName);
+  });
+
+  it('1b. contraexemplo de colisão do hash polinomial gera identidades distintas', async () => {
+    const first = await createExperiment('tok', mockCredentials(), {
+      ...input, suffix: 'sameprefix12', mockIdentitySeed: 'sameprefix12-T_ZdEhD5woUz',
+    }, { allowed: true } as any);
+    const second = await createExperiment('tok', mockCredentials(), {
+      ...input, suffix: 'sameprefix12', mockIdentitySeed: 'sameprefix12-h-cbelt_9Reh',
+    }, { allowed: true } as any);
+    expect(first.googleExperimentId).not.toBe(second.googleExperimentId);
+    expect(first.googleExperimentId).toMatch(/^\d+$/);
+    expect(second.googleExperimentId).toMatch(/^\d+$/);
+  });
+
   it('2. modo real (sem GOOGLE_ADS_MUTATIONS_ENABLED) é bloqueado pelo guard — zero fetch', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -82,6 +105,7 @@ describe('buildCreateExperimentOperation', () => {
     const op = buildCreateExperimentOperation({
       name: 'Teste presell A/B',
       suffix: 'exp-1',
+      mockIdentitySeed: 'internal-only-seed',
       startDate: '2030-01-10',
       endDate: '2030-01-20',
     });
@@ -93,6 +117,7 @@ describe('buildCreateExperimentOperation', () => {
       startDate: '2030-01-10',
       endDate: '2030-01-20',
     });
+    expect(op.create).not.toHaveProperty('mockIdentitySeed');
   });
 });
 

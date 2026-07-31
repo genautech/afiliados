@@ -5,6 +5,7 @@
 // RPC) precisa ser conferido contra a documentação atual da API antes do primeiro teste real
 // (Tarefa 16).
 
+import { createHash } from 'node:crypto';
 import {
   googleAdsGetResource,
   googleAdsMutateRequest,
@@ -23,6 +24,8 @@ export interface CreateExperimentInput {
   name: string;
   // Sufixo que a API aplica ao nome da campanha de tratamento gerada automaticamente.
   suffix: string;
+  // Seed interno usado somente pelo modo mock; nunca é serializado para a API real.
+  mockIdentitySeed?: string;
   type?: string; // default SEARCH_CUSTOM — único workflow do MVP (ver handoff seção 3)
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
@@ -64,6 +67,20 @@ export function parseCreateExperimentResponse(data: any): CreateExperimentResult
   };
 }
 
+function buildMockExperimentIdentity(customerId: string, suffix: string) {
+  const rawCustomerId = customerId.trim();
+  const normalizedCustomerId = /^\d{10}$/.test(rawCustomerId)
+    ? rawCustomerId
+    : /^\d{3}-\d{3}-\d{4}$/.test(rawCustomerId)
+      ? rawCustomerId.replace(/-/g, '')
+      : null;
+  if (!normalizedCustomerId) throw new Error('customerId mock possui formato inválido.');
+
+  const digestHex = createHash('sha256').update(suffix, 'utf8').digest('hex');
+  const experimentId = BigInt(`0x${digestHex}`).toString(10);
+  return { customerId: normalizedCustomerId, experimentId };
+}
+
 // Cria o Experiment sempre em SETUP — nesse estado não veicula nem gasta (ver plano seção 1,
 // correção conceitual: SETUP != sandbox, só não serve anúncios ainda).
 export async function createExperiment(
@@ -73,11 +90,11 @@ export async function createExperiment(
   capability: MutationCapability
 ): Promise<CreateExperimentResult> {
   if (isMockMode(config)) {
-    const mockId = `MOCK-EXPERIMENT-${input.suffix}`;
+    const mockIdentity = buildMockExperimentIdentity(config.customerId, input.mockIdentitySeed ?? input.suffix);
     return {
       mock: true,
-      resourceName: `customers/${config.customerId}/experiments/${mockId}`,
-      googleExperimentId: mockId,
+      resourceName: `customers/${mockIdentity.customerId}/experiments/${mockIdentity.experimentId}`,
+      googleExperimentId: mockIdentity.experimentId,
       status: 'SETUP',
     };
   }

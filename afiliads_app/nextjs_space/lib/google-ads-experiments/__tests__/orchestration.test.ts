@@ -59,7 +59,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       { name: 'treatment', isControl: false, trafficSplit: 50, resourceName: 'armT', inDesignCampaignResourceName: 'customers/1234567890/campaigns/MOCK-TREATMENT', servedCampaignResourceName: null },
     ]),
     applyFinalUrlVariation: vi.fn().mockResolvedValue({ verified: true, alreadyApplied: false, adsModified: [{ resourceName: 'ad1' }] }),
-    fetchExperimentReport: vi.fn().mockResolvedValue({ status: 'ENABLED', control: { impressions: 10, clicks: 2, costMicros: 100, conversions: 0, conversionValue: 0 }, treatment: { impressions: 10, clicks: 3, costMicros: 150, conversions: 1, conversionValue: 10 }, statistics: {} }),
+    fetchExperimentReport: vi.fn().mockResolvedValue({ status: 'RUNNING', remoteStatusRaw: 'ENABLED', metricsValid: true, control: { impressions: 10, clicks: 2, costMicros: 100, conversions: 0, conversionValue: 0 }, treatment: { impressions: 10, clicks: 3, costMicros: 150, conversions: 1, conversionValue: 10 }, statistics: {} }),
     upsertMetricSnapshot: vi.fn().mockResolvedValue(true),
   };
 
@@ -184,6 +184,10 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     expect(res.success).toBe(true);
     expect(baseDeps.createExperiment).toHaveBeenCalledTimes(1);
+    expect((baseDeps.createExperiment as any).mock.calls[0][2]).toEqual(expect.objectContaining({
+      suffix: 'validkey1234',
+      mockIdentitySeed: 'validkey_1234567890',
+    }));
     expect(baseDeps.createExperimentArms).toHaveBeenCalledTimes(1);
     expect(baseDeps.applyFinalUrlVariation).toHaveBeenCalledTimes(1);
 
@@ -820,7 +824,9 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       // Reporting não vê nenhum erro e mapeia como se estivesse rodando normalmente —
       // simula exatamente o cenário do bug: reporting tenta "limpar" o estado de erro.
       const fetchExperimentReport = vi.fn().mockResolvedValue({
-        status: 'ENABLED',
+        status: 'RUNNING',
+        remoteStatusRaw: 'ENABLED',
+        metricsValid: true,
         control: { impressions: 1, clicks: 1, costMicros: 1, conversions: 0, conversionValue: 0 },
         treatment: { impressions: 1, clicks: 1, costMicros: 1, conversions: 0, conversionValue: 0 },
         statistics: {},
@@ -842,6 +848,55 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       expect(lastCall.data.status).toBe('ERROR');
     });
 
+    test('P1-D2: operação já FAILED preserva ERROR e diagnóstico em sincronizações posteriores', async () => {
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'exp1', userId: 'u1', resourceName: 'res1', status: 'ERROR', lastError: 'erro anterior', arms: [],
+        operations: [{
+          id: 'op1', operationName: 'op_name_1', status: 'FAILED',
+          errorMessage: 'falha terminal persistida', errors: [],
+        }],
+      });
+      const fetchExperimentReport = vi.fn().mockResolvedValue({
+        status: 'RUNNING', remoteStatusRaw: 'ENABLED', metricsValid: true,
+        control: { impressions: 1, clicks: 1, costMicros: 1, conversions: 0, conversionValue: 0 },
+        treatment: { impressions: 1, clicks: 1, costMicros: 1, conversions: 0, conversionValue: 0 },
+        statistics: {},
+      });
+      const pollExperimentOperation = vi.fn();
+
+      const res = await syncExperiment('exp1', 'u1', {
+        ...baseDeps, fetchExperimentReport, pollExperimentOperation,
+      });
+
+      expect(pollExperimentOperation).not.toHaveBeenCalled();
+      expect(res.status).toBe('ERROR');
+      expect(res.warnings).toContain('Operação assíncrona falhou — status travado em ERROR');
+      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: { id: 'exp1' },
+        data: expect.objectContaining({ status: 'ERROR', lastError: 'falha terminal persistida' }),
+      }));
+    });
+
+    test('P1-D3: erro posterior de reporting não sobrescreve diagnóstico terminal persistido', async () => {
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'exp1', userId: 'u1', resourceName: 'res1', status: 'ERROR', lastError: 'erro anterior', arms: [],
+        operations: [{
+          id: 'op1', operationName: 'op_name_1', status: 'FAILED',
+          errorMessage: 'falha terminal persistida', errors: [],
+        }],
+      });
+      const fetchExperimentReport = vi.fn().mockRejectedValue(new Error('reporting indisponível'));
+
+      await expect(syncExperiment('exp1', 'u1', {
+        ...baseDeps, fetchExperimentReport,
+      })).rejects.toMatchObject({ status: 502, message: 'reporting indisponível' });
+
+      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith({
+        where: { id: 'exp1' },
+        data: { status: 'ERROR', lastError: 'falha terminal persistida' },
+      });
+    });
+
     test('preserva remoteStatusRaw em decisionPolicy e no retorno', async () => {
       (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
         id: 'exp1', userId: 'u1', resourceName: 'res1', status: 'SETUP', decisionPolicy: { initialParam: 'value' }, arms: [],
@@ -855,6 +910,55 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
           decisionPolicy: expect.objectContaining({ lastRemoteStatusRaw: 'ENABLED', initialParam: 'value' }),
         }),
       });
+    });
+
+    test('deriva fallback somente dos arms persistidos e validados', async () => {
+      const fetchExperimentReport = vi.fn().mockResolvedValue({
+        ...await baseDeps.fetchExperimentReport(),
+        status: 'RUNNING',
+        remoteStatusRaw: 'ENABLED',
+      });
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'exp1', userId: 'u1', resourceName: 'customers/1234567890/experiments/999', status: 'RUNNING',
+        arms: [
+          { experimentId: 'exp1', isControl: true, servedCampaignResourceName: 'customers/1234567890/campaigns/111' },
+          { experimentId: 'exp1', isControl: false, servedCampaignResourceName: 'customers/1234567890/campaigns/222' },
+        ],
+      });
+
+      await syncExperiment('exp1', 'u1', { ...baseDeps, fetchExperimentReport });
+      expect(fetchExperimentReport).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), 'customers/1234567890/experiments/999',
+        expect.objectContaining({
+          fallbackCampaigns: expect.objectContaining({
+            controlCampaignResourceName: 'customers/1234567890/campaigns/111',
+            treatmentCampaignResourceName: 'customers/1234567890/campaigns/222',
+            experimentId: 'exp1',
+          }),
+        })
+      );
+    });
+
+    test('não sobrescreve snapshot diário quando o reporting contém métricas inválidas', async () => {
+      const upsertMetricSnapshot = vi.fn();
+      const fetchExperimentReport = vi.fn().mockResolvedValue({
+        ...await baseDeps.fetchExperimentReport(),
+        status: 'RUNNING',
+        remoteStatusRaw: 'ENABLED',
+        metricsValid: false,
+        control: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionValue: 0 },
+      });
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'exp1', userId: 'u1', resourceName: 'customers/1234567890/experiments/999', status: 'RUNNING', arms: [],
+      });
+
+      await expect(syncExperiment('exp1', 'u1', { ...baseDeps, fetchExperimentReport, upsertMetricSnapshot }))
+        .rejects.toMatchObject({ status: 502, message: expect.stringMatching(/métricas cumulativas inválidas/) });
+      expect(upsertMetricSnapshot).not.toHaveBeenCalled();
+      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: { id: 'exp1' },
+        data: expect.objectContaining({ status: 'ERROR', lastError: expect.stringMatching(/métricas cumulativas inválidas/) }),
+      }));
     });
 
     test('sync repetido sem mudança de status -> changed:false', async () => {
@@ -874,7 +978,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       const deps = {
         ...baseDeps,
         fetchExperimentReport: vi.fn().mockResolvedValue({
-          status: 'SOME_UNMAPPED_STATUS', control: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionValue: 0 },
+          status: 'ERROR', remoteStatusRaw: 'SOME_UNMAPPED_STATUS', metricsValid: true, control: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionValue: 0 },
           treatment: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionValue: 0 }, statistics: {},
         }),
       };

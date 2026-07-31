@@ -9,6 +9,7 @@ import {
   sanitizeSourcePayload
 } from '@/lib/google-ads/experiment-reporting';
 import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
+import { createExperiment } from '@/lib/google-ads/experiments';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -41,6 +42,13 @@ afterEach(() => {
 
 const EXPERIMENT = 'customers/1234567890/experiments/999';
 
+function validatedFallback() {
+  return validateFallbackArms('local-exp-1', [
+    { isControl: true, servedCampaignResourceName: 'customers/1234567890/campaigns/111', experimentId: 'local-exp-1' },
+    { isControl: false, servedCampaignResourceName: 'customers/1234567890/campaigns/222', experimentId: 'local-exp-1' },
+  ]);
+}
+
 describe('buildExperimentReportQuery', () => {
   it('1. monta GAQL sobre o recurso `experiment` filtrado pelo resource_name, com métricas de controle e tratamento', () => {
     const query = buildExperimentReportQuery(EXPERIMENT);
@@ -51,9 +59,9 @@ describe('buildExperimentReportQuery', () => {
     expect(query).toContain('metrics.conversions_absolute_change_p_value');
   });
 
-  it('2. escapa aspas simples no resource name', () => {
-    const query = buildExperimentReportQuery("customers/1/experiments/O'Brien");
-    expect(query).toContain("O\\'Brien");
+  it('2. rejeita resource name fora do contrato antes da rede', () => {
+    expect(() => buildExperimentReportQuery("customers/1/experiments/O'Brien")).toThrow(/Invalid experiment resource name/);
+    expect(() => buildExperimentReportQuery("x\\'; SELECT campaign.id FROM campaign --")).toThrow(/Invalid experiment resource name/);
   });
 });
 
@@ -97,6 +105,7 @@ describe('parseExperimentReportRow', () => {
     const report = parseExperimentReportRow(baseRow(), 50);
     expect(report.experimentId).toBe('999');
     expect(report.status).toBe('RUNNING');
+    expect(report.remoteStatusRaw).toBe('ENABLED');
     expect(report.control).toEqual({
       impressions: 1000,
       clicks: 50,
@@ -230,6 +239,38 @@ describe('parseExperimentReportRow', () => {
     expect(report.control.clicks).toBe(0);
     expect(report.control.impressions).toBe(0);
   });
+
+  it('10d. contador inválido torna o resultado inconclusivo mesmo com estatística significativa', () => {
+    const report = parseExperimentReportRow(baseRow({ clicks: 'abc' }), 50);
+    expect(report.treatment.clicks).toBe(0);
+    expect(report.metricsValid).toBe(false);
+    expect(report.hasSignificantResult).toBe(false);
+    expect(report.feasibility).toBe('UNDERPOWERED');
+    expect(report.summary).toMatch(/métricas cumulativas inválidas/i);
+  });
+
+  it('10e. rejeita contadores fracionários, inseguros e identidade divergente', () => {
+    const fractional = parseExperimentReportRow(baseRow({ clicks: '1.5' }), 1);
+    const unsafe = parseExperimentReportRow(baseRow({ clicks: '9007199254740993' }), 1);
+    expect(fractional.hasSignificantResult).toBe(false);
+    expect(unsafe.hasSignificantResult).toBe(false);
+    expect(() => parseExperimentReportRow({
+      ...baseRow(),
+      experiment: { resourceName: EXPERIMENT, experimentId: 'OTHER', status: 'ENABLED' },
+    }, 50, EXPERIMENT)).toThrow(/Identidade do experimento divergente/);
+  });
+
+  it.each(['', '   ', 123, false])('10f. status remoto inválido %p normaliza para UNSPECIFIED', (status) => {
+    const row = baseRowFixture() as any;
+    row.experiment.status = status;
+    const report = parseExperimentReportRow(row, 50);
+    expect(report.status).toBe('ERROR');
+    expect(report.remoteStatusRaw).toBe('UNSPECIFIED');
+  });
+
+  it('10g. targetClicks inválido falha antes do atalho de métricas cumulativas inválidas', () => {
+    expect(() => parseExperimentReportRow(baseRow({ clicks: 'corrompido' }), NaN)).toThrow(/targetClicks/);
+  });
 });
 
 describe('validateFallbackArms', () => {
@@ -259,14 +300,39 @@ describe('validateFallbackArms', () => {
 });
 
 describe('fetchExperimentReport', () => {
-  it('13. modo mock não chama fetch e devolve relatório determinístico VIABLE+significativo', async () => {
+  it('13. modo mock não chama fetch nem fabrica vencedor significativo', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const report = await fetchExperimentReport('tok', mockCredentials(), EXPERIMENT, { targetClicks: 50 });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(report.experimentId).toBe('999');
-    expect(report.feasibility).toBe('VIABLE');
-    expect(report.hasSignificantResult).toBe(true);
+    expect(report.feasibility).toBe('UNDERPOWERED');
+    expect(report.hasSignificantResult).toBe(false);
+  });
+
+  it('13a. resourceName criado pelo mock oficial é canônico e aceito pelo reporting', async () => {
+    const credentials = mockCredentials();
+    const created = await createExperiment('tok', credentials, {
+      name: 'Mock integrado', suffix: 'exp-integrado-1', startDate: '2030-01-10', endDate: '2030-01-20',
+    }, { allowed: true } as any);
+    expect(created.resourceName).toMatch(/^customers\/1234567890\/experiments\/\d+$/);
+    expect(created.googleExperimentId).toMatch(/^\d+$/);
+    const report = await fetchExperimentReport('tok', credentials, created.resourceName, { targetClicks: 50 });
+    expect(report.experimentId).toBe(created.googleExperimentId);
+    expect(report.status).toBe('RUNNING');
+  });
+
+  it.each([
+    ['sem fallback', undefined],
+    ['com fallback', {} as any],
+  ])('13b. targetClicks inválido falha antes de HTTP em resposta potencialmente vazia %s', async (_label, fallbackCampaigns) => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
+      targetClicks: 0,
+      fallbackCampaigns,
+    })).rejects.toThrow(/targetClicks/);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('14. modo real: busca via googleAds:search, para na primeira página com resultado e faz parse da linha', async () => {
@@ -307,11 +373,7 @@ describe('fetchExperimentReport', () => {
 
     const report = await fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
       targetClicks: 50,
-      fallbackCampaigns: {
-        controlCampaignResourceName: 'customers/1234567890/campaigns/1',
-        treatmentCampaignResourceName: 'customers/1234567890/campaigns/2',
-        experimentId: '999'
-      },
+      fallbackCampaigns: validatedFallback(),
     });
 
     expect(fetchSpy).toHaveBeenCalledTimes(3);
@@ -333,11 +395,7 @@ describe('fetchExperimentReport', () => {
 
     await fetchExperimentReport('tok', realCredentials(), EXPERIMENT, {
       targetClicks: 50,
-      fallbackCampaigns: {
-        controlCampaignResourceName: 'customers/1234567890/campaigns/111',
-        treatmentCampaignResourceName: 'customers/1234567890/campaigns/222',
-        experimentId: '999'
-      },
+      fallbackCampaigns: validatedFallback(),
     });
 
     const call1 = JSON.parse(fetchSpy.mock.calls[1][1].body);
@@ -348,7 +406,7 @@ describe('fetchExperimentReport', () => {
     expect(call2.query).not.toContain("$");
   });
 
-  it('16b. fallback falha rápido com resource name inválido (P1)', async () => {
+  it('16b. fallback não validado ou com resource name inválido falha antes das queries de campanha', async () => {
     const fetchSpy = vi.fn().mockResolvedValueOnce(jsonResponse({ results: [] }));
     vi.stubGlobal('fetch', fetchSpy);
 
@@ -357,15 +415,47 @@ describe('fetchExperimentReport', () => {
       fallbackCampaigns: {
         controlCampaignResourceName: 'invalido',
         treatmentCampaignResourceName: 'customers/123/campaigns/222',
-        experimentId: '999'
-      },
-    })).rejects.toThrow(/Invalid campaign resource name format/);
+        experimentId: 'outro-experimento'
+      } as any,
+    })).rejects.toThrow(/Fallback arms não validados/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('16c. rejeita linha de experimento diferente da solicitada', async () => {
+    const fetchSpy = vi.fn().mockResolvedValueOnce(jsonResponse({ results: [{
+      experiment: { resourceName: 'customers/1234567890/experiments/998', experimentId: '998', status: 'ENABLED' },
+      metrics: baseRowFixture().metrics,
+    }] }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(fetchExperimentReport('tok', realCredentials(), EXPERIMENT, { targetClicks: 50 }))
+      .rejects.toThrow(/Identidade do experimento divergente/);
+  });
+
+  it('16d. rejeita experimento de customer diferente da configuração antes da rede', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(fetchExperimentReport('tok', realCredentials({ customerId: '9999999999' }), EXPERIMENT, { targetClicks: 50 }))
+      .rejects.toThrow(/customer da configuração/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('16e. rejeita campanhas fallback de outro customer antes das queries de campanha', async () => {
+    const fetchSpy = vi.fn().mockResolvedValueOnce(jsonResponse({ results: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const fallback = validateFallbackArms('local-exp', [
+      { experimentId: 'local-exp', isControl: true, servedCampaignResourceName: 'customers/9999999999/campaigns/111' },
+      { experimentId: 'local-exp', isControl: false, servedCampaignResourceName: 'customers/1234567890/campaigns/222' },
+    ]);
+    await expect(fetchExperimentReport('tok', realCredentials(), EXPERIMENT, { targetClicks: 50, fallbackCampaigns: fallback }))
+      .rejects.toThrow(/não pertencem ao customer/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
   it('17. mapeia ExperimentReport pro shape de GoogleAdsExperimentMetricSnapshot (mapper puro, sem Prisma)', () => {
     const report = parseExperimentReportRow(baseRowFixture(), 50);
+    expect(report.metricsValid).toBe(true);
     const snapshotDate = new Date('2026-07-29T00:00:00.000Z');
     const input = buildMetricSnapshotUpsertInput('local-experiment-id', snapshotDate, report, { raw: true });
 
@@ -414,6 +504,34 @@ describe('buildMetricSnapshotUpsertInput & upsertMetricSnapshot', () => {
     // Garante q payloads perigosos/gigantes sao sanitizados
     expect(call1Args.create.sourcePayload).toEqual({});
   });
+
+  it('18a. rejeita snapshotDate inválido antes do Prisma', async () => {
+    const report = parseExperimentReportRow(baseRowFixture(), 50);
+    const input = buildMetricSnapshotUpsertInput('exp1', new Date('invalid'), report);
+    const mockPrisma = { googleAdsExperimentMetricSnapshot: { upsert: vi.fn() } };
+    await expect(upsertMetricSnapshot(mockPrisma as any, input)).rejects.toThrow(/snapshotDate inválido/);
+    expect(mockPrisma.googleAdsExperimentMetricSnapshot.upsert).not.toHaveBeenCalled();
+  });
+
+  it('18b. normaliza UTC sem converter anos entre 0 e 99 para 1900+', async () => {
+    const report = parseExperimentReportRow(baseRowFixture(), 50);
+    const year99 = new Date(0);
+    year99.setUTCFullYear(99, 6, 29);
+    year99.setUTCHours(15, 30, 0, 0);
+    const mockPrisma = { googleAdsExperimentMetricSnapshot: { upsert: vi.fn().mockResolvedValue({}) } };
+    await upsertMetricSnapshot(mockPrisma as any, buildMetricSnapshotUpsertInput('exp1', year99, report));
+    const stored = mockPrisma.googleAdsExperimentMetricSnapshot.upsert.mock.calls[0][0].create.snapshotDate;
+    expect(stored.getUTCFullYear()).toBe(99);
+    expect(stored.toISOString()).toBe('0099-07-29T00:00:00.000Z');
+  });
+
+  it('18c. relatório com métrica inválida não produz input de snapshot', () => {
+    const row = baseRowFixture() as any;
+    row.metrics.clicks = 'corrompido';
+    const report = parseExperimentReportRow(row, 50);
+    expect(() => buildMetricSnapshotUpsertInput('exp1', new Date(), report))
+      .toThrow(/métricas cumulativas inválidas/);
+  });
 });
 
 describe('sanitizeSourcePayload', () => {
@@ -451,6 +569,11 @@ describe('sanitizeSourcePayload', () => {
     expect(sanitizeSourcePayload(hugeExp)).toEqual({
       experiment: { resourceName: undefined, experimentId: 'c', status: undefined }
     });
+  });
+
+  it('22. remove números não finitos do payload diagnóstico', () => {
+    expect(sanitizeSourcePayload({ metrics: { clicks: Infinity, impressions: NaN, conversions: 3 } }))
+      .toEqual({ metrics: { conversions: 3 } });
   });
 });
 

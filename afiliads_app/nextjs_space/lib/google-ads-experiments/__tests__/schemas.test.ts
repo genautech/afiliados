@@ -204,6 +204,7 @@ describe('ExperimentSyncResultSchema / ExperimentReportSchema', () => {
       ExperimentSyncResultSchema.safeParse({
         experimentId: 'exp_1',
         status: 'RUNNING',
+        remoteStatusRaw: 'ENABLED',
         lastSyncedAt: '2030-01-15T00:00:00Z',
         changed: true,
         warnings: [],
@@ -217,6 +218,8 @@ describe('ExperimentSyncResultSchema / ExperimentReportSchema', () => {
       ExperimentReportSchema.safeParse({
         experimentId: 'exp_1',
         status: 'RUNNING',
+        remoteStatusRaw: 'ENABLED',
+        metricsValid: true,
         control: metricPoint,
         treatment: metricPoint,
         statistics: {
@@ -227,6 +230,22 @@ describe('ExperimentSyncResultSchema / ExperimentReportSchema', () => {
         summary: 'Amostra insuficiente até agora.',
       }).success
     ).toBe(true);
+  });
+
+  it('21a. rejeita remoteStatusRaw vazio ou whitespace em report e sync', () => {
+    const syncBase = {
+      experimentId: 'exp_1', status: 'RUNNING', lastSyncedAt: '2030-01-15T00:00:00Z', changed: false, warnings: [],
+    };
+    expect(ExperimentSyncResultSchema.safeParse({ ...syncBase, remoteStatusRaw: '' }).success).toBe(false);
+    expect(ExperimentSyncResultSchema.safeParse({ ...syncBase, remoteStatusRaw: '   ' }).success).toBe(false);
+
+    const metricPoint = { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionValue: 0 };
+    const reportBase = {
+      experimentId: 'exp_1', status: 'RUNNING', metricsValid: true, control: metricPoint, treatment: metricPoint,
+      statistics: {}, hasSignificantResult: false, feasibility: 'UNDERPOWERED', summary: 'x',
+    };
+    expect(ExperimentReportSchema.safeParse({ ...reportBase, remoteStatusRaw: '' }).success).toBe(false);
+    expect(ExperimentReportSchema.safeParse({ ...reportBase, remoteStatusRaw: '   ' }).success).toBe(false);
   });
 });
 

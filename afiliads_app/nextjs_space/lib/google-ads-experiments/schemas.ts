@@ -149,6 +149,7 @@ const ExperimentStatisticSchema = z.object({
 export const ExperimentSyncResultSchema = z.object({
   experimentId: z.string().min(1),
   status: ExperimentStatusSchema,
+  remoteStatusRaw: z.string().trim().min(1),
   lastSyncedAt: z.string(),
   changed: z.boolean(),
   warnings: z.array(z.string()),
@@ -159,6 +160,8 @@ export type ExperimentSyncResult = z.infer<typeof ExperimentSyncResultSchema>;
 export const ExperimentReportSchema = z.object({
   experimentId: z.string().min(1),
   status: ExperimentStatusSchema,
+  remoteStatusRaw: z.string().trim().min(1),
+  metricsValid: z.boolean(),
   control: ExperimentMetricPointSchema,
   treatment: ExperimentMetricPointSchema,
   statistics: z.record(ExperimentStatisticSchema),

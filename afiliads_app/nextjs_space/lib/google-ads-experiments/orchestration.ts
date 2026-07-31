@@ -5,8 +5,7 @@ import { getGoogleAdsConfig } from '../google-ads';
 import { getAccessToken, isMockMode, googleAdsRequest } from '../google-ads/client';
 import { assertMutationAllowed } from '../google-ads/mutation-guard';
 import { createExperiment, createExperimentArms, applyFinalUrlVariation, pollExperimentOperation, listExperimentAsyncErrors } from '../google-ads/experiments';
-import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot } from '../google-ads/experiment-reporting';
-import { mapGoogleExperimentRemoteStatus } from './types';
+import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot, validateFallbackArms } from '../google-ads/experiment-reporting';
 import { SetupExperimentPayloadSchema, type SetupExperimentPayload } from './schemas';
 import { redactSensitive } from '../google-ads/errors';
 
@@ -766,6 +765,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
             {
               name: experiment.name,
               suffix,
+              mockIdentitySeed: authContext.idempotencyKey,
               type: 'SEARCH_CUSTOM',
               startDate: remoteCreateInput.startDate,
               endDate: remoteCreateInput.endDate,
@@ -1133,11 +1133,20 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
   const fetchToken = deps?.getAccessToken ?? getAccessToken;
   const token = deps?.token ?? (isMock ? 'mock_access_token_123' : await fetchToken(config));
 
+  const latestOperation = exp.operations?.[0];
+  let operationTerminalFailed = latestOperation?.status === 'FAILED';
+  let operationFailureMessage: string | null = operationTerminalFailed
+    ? redactSensitive(
+      latestOperation?.errorMessage
+        || latestOperation?.errors?.[0]
+        || exp.lastError
+        || 'Operação assíncrona falhou'
+    )
+    : null;
+
   try {
     // P1-D: uma operação assíncrona FAILED é estado terminal fail-closed — reporting coletado
     // depois disso é só diagnóstico, nunca pode limpar/reescrever esse erro final.
-    let operationJustFailed = false;
-    let operationFailureMessage: string | null = null;
 
     // Point 6: Carregar operação pendente, usar pollExperimentOperation
     const pendingOp = exp.operations?.find((op: any) => op.status === 'PENDING');
@@ -1172,7 +1181,7 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
           },
         });
 
-        operationJustFailed = true;
+        operationTerminalFailed = true;
         operationFailureMessage = firstErrorMsg;
 
         await prismaClient.googleAdsExperiment.update({
@@ -1183,18 +1192,26 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     }
 
     const callFetchExperimentReport = deps?.fetchExperimentReport ?? fetchExperimentReport;
-    const reportRes = await callFetchExperimentReport(token, config, exp.resourceName, { targetClicks: 100 });
+    const armsReadyForFallback = Array.isArray(exp.arms)
+      && exp.arms.length === 2
+      && exp.arms.every((arm: any) => Boolean(arm.servedCampaignResourceName));
+    const fallbackCampaigns = armsReadyForFallback
+      ? validateFallbackArms(exp.id, exp.arms)
+      : undefined;
+    const reportRes = await callFetchExperimentReport(token, config, exp.resourceName, {
+      targetClicks: 100,
+      fallbackCampaigns,
+    });
 
-    const mappedRemoteStatus = mapGoogleExperimentRemoteStatus(reportRes.status);
-    let targetLocalStatus = mappedRemoteStatus.local;
-    let isErrorState = false;
+    let targetLocalStatus = reportRes.status;
+    const remoteStatusRaw = reportRes.remoteStatusRaw;
+    let isErrorState = targetLocalStatus === 'ERROR';
 
-    if (reportRes.status === 'UNKNOWN' || reportRes.status === 'UNSPECIFIED' || targetLocalStatus === 'ERROR') {
+    if (isErrorState) {
       targetLocalStatus = 'ERROR';
-      isErrorState = true;
     }
 
-    let lastErrorMsg: string | null = isErrorState ? redactSensitive(`Status remoto desconhecido (${reportRes.status})`) : null;
+    let lastErrorMsg: string | null = isErrorState ? redactSensitive(`Status remoto desconhecido (${remoteStatusRaw})`) : null;
     if (isErrorState || !isMock) {
       const callListErrors = deps?.listExperimentAsyncErrors ?? listExperimentAsyncErrors;
       try {
@@ -1223,14 +1240,14 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     const decisionPolicyObj = (typeof exp.decisionPolicy === 'object' && exp.decisionPolicy !== null) ? (exp.decisionPolicy as any) : {};
     const updatedDecisionPolicy = {
       ...decisionPolicyObj,
-      lastRemoteStatusRaw: reportRes.status,
+      lastRemoteStatusRaw: remoteStatusRaw,
       lastSyncedAt: now.toISOString(),
     };
 
     // P1-D: se uma operação pendente acabou de falhar nesta chamada, o status/erro final ficam
     // travados em ERROR/operationFailureMessage — reporting não pode sobrescrever com RUNNING
     // nem limpar lastError.
-    if (operationJustFailed) {
+    if (operationTerminalFailed) {
       targetLocalStatus = 'ERROR';
       lastErrorMsg = operationFailureMessage;
     }
@@ -1248,23 +1265,26 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     });
 
     const warnings: string[] = [];
-    if (isErrorState) warnings.push(`Status remoto não mapeado: ${reportRes.status}`);
-    if (operationJustFailed) warnings.push('Operação assíncrona pendente falhou — status travado em ERROR');
+    if (isErrorState) warnings.push(`Status remoto não mapeado: ${remoteStatusRaw}`);
+    if (operationTerminalFailed) warnings.push('Operação assíncrona falhou — status travado em ERROR');
 
     return {
       success: true,
       experimentId: id,
       status: targetLocalStatus,
-      remoteStatusRaw: reportRes.status,
+      remoteStatusRaw,
       lastSyncedAt: now.toISOString(),
       changed,
       warnings,
     };
   } catch (err: any) {
     const sanitizedMsg = redactSensitive(err.message || 'Erro ao sincronizar experimento com Google Ads');
+    const persistedError = operationTerminalFailed
+      ? (operationFailureMessage || 'Operação assíncrona falhou')
+      : sanitizedMsg;
     await prismaClient.googleAdsExperiment.update({
       where: { id },
-      data: { lastError: sanitizedMsg },
+      data: { status: 'ERROR', lastError: persistedError },
     }).catch(() => {});
     throw { status: 502, message: sanitizedMsg };
   }
