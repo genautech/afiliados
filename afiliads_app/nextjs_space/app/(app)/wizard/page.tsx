@@ -923,6 +923,19 @@ export default function WizardPage() {
     await runAutofill({ productResearchId: id });
   };
 
+  const saveKeywords = async () => {
+    const cid = campaignId || (await saveCampaign());
+    if (!cid) return;
+    const kws = selectedKeywords.filter(k => k.selected);
+    if (kws.length > 0) {
+      await fetch('/api/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId: cid, isSelected: true })) }),
+      });
+    }
+  };
+
   // `fresh` (opcional): resultado recém-vindo de runChecklistVerify() — usa ele em vez do
   // estado local quando disponível (corrigido 2026-07-27, Fase 2: o estado só reflete a
   // verificação depois do próximo render, ver comentário em runChecklistVerify).
@@ -933,6 +946,12 @@ export default function WizardPage() {
       return ANTISTRIKE_ITEMS.filter(i => i.critical).every(i => checksFor(3, antistrikeChecks)[i.key]);
     }
     if (step === 4) return BRIDGE_CHECKLIST.filter(i => i.critical).every(i => checksFor(4, bridgeChecks)[i.key]);
+    if (step === 5) return selectedKeywords.filter(k => k.selected).length >= 1;
+    if (step === 7) return GOOGLE_ADS_CHECKLIST.filter(i => i.critical).every(i => checksFor(7, googleAdsChecks)[i.key]);
+    if (step === 8) {
+      const trackingItems = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
+      return trackingItems.filter(i => i.critical).every(i => checksFor(8, trackingChecks)[i.key]);
+    }
     if (step === 9) return GOLIVE_CHECKLIST.filter(i => i.critical).every(i => checksFor(9, goLiveChecks)[i.key]);
     return true;
   };
@@ -948,6 +967,7 @@ export default function WizardPage() {
     await saveCampaign();
     if (step === 3) await saveChecklists(3, ANTISTRIKE_ITEMS, antistrikeChecks);
     if (step === 4) await saveChecklists(4, BRIDGE_CHECKLIST, bridgeChecks);
+    if (step === 5) await saveKeywords();
     if (step === 7) await saveChecklists(7, GOOGLE_ADS_CHECKLIST, googleAdsChecks);
     if (step === 8) {
       const items = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
