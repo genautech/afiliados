@@ -26,6 +26,7 @@ import {
 } from '@/lib/wizard-data';
 import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
 import { ExperimentSetupCard } from '@/components/wizard/ExperimentSetupCard';
+import { ExperimentDashboardCard } from '@/components/wizard/ExperimentDashboardCard';
 
 const STEPS = [
   { num: 1, title: 'Oferta', icon: FileText },
@@ -405,6 +406,7 @@ export default function WizardPage() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [experimentId, setExperimentId] = useState<string | null>(null);
 
   const [autofilling, setAutofilling] = useState(false);
   const [autofillRationale, setAutofillRationale] = useState<Record<string, string>>({});
@@ -649,6 +651,7 @@ export default function WizardPage() {
     setLoopInterval(c?.loopInterval ?? '24h');
     setLoopAgents(c?.loopAgents ?? 'ads,compliance');
     setGoogleCampaignId(c?.googleCampaignId ?? null);
+    setExperimentId(c?.experimentId ?? null);
     // Snapshot inicial pra detecção de staleness (Fase 2): assume que os campos batiam com a
     // presell na última vez que essa campanha foi salva — só divergências feitas NESTA sessão
     // de edição (a partir daqui) vão acender o aviso, o que cobre o cenário real do pedido
@@ -1868,6 +1871,13 @@ export default function WizardPage() {
                   campaignId={campaignId}
                   controlPresellUrl={presellUrl}
                   onExperimentUpdated={runChecklistVerify}
+                />
+              )}
+              {experimentId && (
+                <ExperimentDashboardCard
+                  experimentId={experimentId}
+                  hasGoogleCampaignId={!!googleCampaignId}
+                  onActionComplete={runChecklistVerify}
                 />
               )}
               <div className="space-y-3">
