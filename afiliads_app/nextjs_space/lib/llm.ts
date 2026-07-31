@@ -101,6 +101,11 @@ export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | '
 export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama', 'kimi'];
 export type Tier = 'premium' | 'standard' | 'light';
 
+export const AGENT_MODEL_LOCKS: Record<string, { provider: Provider; model: string }> = {
+  'presell-builder': { provider: 'kimi', model: 'kimi-k3' },
+  'bridge-page-builder': { provider: 'kimi', model: 'kimi-k3' },
+};
+
 // Tier por agente: premium = raciocínio pesado (qualidade > custo);
 // standard = geração estruturada; light = chat/validações simples.
 export const AGENT_TIERS: Record<string, Tier> = {
@@ -582,6 +587,43 @@ export async function callAgent(
       : { kind: 'non-campaign' }
   );
   await assertCampaignLlmAllowed(userId, guardTarget);
+
+  const modelLock = AGENT_MODEL_LOCKS[opts.agent];
+  if (modelLock) {
+    const ctx = await getRoutingContext(userId, opts.fallbackKey);
+    const apiKey = ctx.keys[modelLock.provider];
+    if (!apiKey) {
+      throw new Error(`Agente "${opts.agent}" exige Kimi K3 (provider ${modelLock.provider}), mas a chave KIMI_API_KEY não está configurada.`);
+    }
+
+    const keySource: KeySource = ctx.keySources[modelLock.provider] ?? 'platform';
+    const start = Date.now();
+    try {
+      const { text, usage, model } = await callProvider(
+        modelLock.provider,
+        modelLock.model,
+        apiKey,
+        opts.systemPrompt,
+        opts.userPrompt
+      );
+      const durationMs = Date.now() - start;
+      const data = opts.json === false ? null : parseAgentJson(text);
+
+      const validationError = opts.validate ? opts.validate(data, text) : null;
+      if (validationError) {
+        logRun(userId, opts.agent, modelLock.provider, model, usage, durationMs, false, keySource, `validação: ${validationError}`);
+        throw new Error(`Resposta do agente reprovada na validação: ${validationError}`);
+      }
+
+      logRun(userId, opts.agent, modelLock.provider, model, usage, durationMs, true, keySource);
+      return { text, data, usage, durationMs, provider: modelLock.provider, model };
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      const message = err?.message ?? String(err);
+      logRun(userId, opts.agent, modelLock.provider, modelLock.model, { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, durationMs, false, keySource, message);
+      throw new Error(`Falha no modelo travado Kimi K3 para ${opts.agent}: ${message}`);
+    }
+  }
 
   const tier = AGENT_TIERS[opts.agent] ?? 'standard';
   const ctx = await getRoutingContext(userId, opts.fallbackKey);
