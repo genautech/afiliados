@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMutationCapability } from '@/lib/google-ads/client';
+import { createHash } from 'node:crypto';
+import type { MutationCapability } from '@/lib/google-ads/client';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 import { runExperimentAction, scheduleExperimentLifecycle } from '@/lib/google-ads-experiments/orchestration';
 
 const updatedAt = new Date('2030-01-15T00:00:00.000Z');
 const resourceName = 'customers/1234567890/experiments/999';
+const presellHtml = '<html><body>approved treatment</body></html>';
+const presellContentSha256 = createHash('sha256').update(presellHtml, 'utf8').digest('hex');
+
+function lifecycleCapability(operation: string): MutationCapability {
+  const result = assertMutationAllowed({
+    operation,
+    customerId: '1234567890',
+    resourceName,
+    isMock: true,
+    confirmed: true,
+  });
+  if (!result.allowed) throw new Error(result.reason);
+  return result.capability;
+}
 
 function authorization(overrides: Record<string, unknown> = {}) {
   return {
@@ -16,6 +32,13 @@ function authorization(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function scheduleAuthorization(overrides: Record<string, unknown> = {}) {
+  return authorization({
+    revision: `${updatedAt.toISOString()}:${presellContentSha256}`,
+    ...overrides,
+  });
+}
+
 function experiment(overrides: Record<string, unknown> = {}) {
   return {
     id: 'exp_1',
@@ -25,7 +48,12 @@ function experiment(overrides: Record<string, unknown> = {}) {
     status: 'SETUP',
     updatedAt,
     variationConfig: {
-      proof: { verified: true, finalUrl: 'https://example.com/treatment' },
+      proof: {
+        verified: true,
+        finalUrl: 'https://example.com/treatment',
+        presellId: 'presell_1',
+        presellContentSha256,
+      },
       saga: { experiment: 'COMPLETE', arms: 'COMPLETE', variation: 'COMPLETE' },
     },
     arms: [
@@ -33,6 +61,7 @@ function experiment(overrides: Record<string, unknown> = {}) {
       {
         isControl: false,
         finalUrl: 'https://example.com/treatment',
+        localPresellId: 'presell_1',
         inDesignCampaignResourceName: 'customers/1234567890/campaigns/222',
       },
     ],
@@ -54,10 +83,11 @@ function harness(exp = experiment()) {
     },
     $transaction: vi.fn().mockImplementation(async (fn: any) => fn(prisma)),
   };
-  const capability = createMutationCapability('scheduleExperiment');
+  const capability = lifecycleCapability('scheduleExperiment');
   const deps = {
     prisma,
     checkReadiness: vi.fn().mockResolvedValue({ ready: true, errors: [], warnings: ['fresh'] }),
+    findPresell: vi.fn().mockResolvedValue({ id: 'presell_1', userId: 'user_1', html: presellHtml }),
     readinessDeps: {},
     getAdsConfig: vi.fn().mockResolvedValue({
       customerId: '1234567890',
@@ -89,7 +119,7 @@ describe('scheduleExperimentLifecycle', () => {
     const result = await scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     });
 
@@ -102,6 +132,7 @@ describe('scheduleExperimentLifecycle', () => {
     expect(deps.assertMutationAllowed).toHaveBeenCalledWith({
       operation: 'scheduleExperiment',
       customerId: '1234567890',
+      resourceName,
       isMock: true,
       confirmed: true,
     });
@@ -127,7 +158,7 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 404 });
     expect(deps.checkReadiness).not.toHaveBeenCalled();
@@ -139,10 +170,30 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 422 });
     expect(deps.checkReadiness).not.toHaveBeenCalled();
+    expect(deps.scheduleExperiment).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia schedule se o HTML da presell mudar sem alterar a URL', async () => {
+    const { deps } = harness();
+    deps.findPresell.mockResolvedValue({
+      id: 'presell_1',
+      userId: 'user_1',
+      html: '<html><body>changed after approval</body></html>',
+    });
+
+    await expect(scheduleExperimentLifecycle({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: { authorization: scheduleAuthorization() },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+
+    expect(deps.checkReadiness).not.toHaveBeenCalled();
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
     expect(deps.scheduleExperiment).not.toHaveBeenCalled();
   });
 
@@ -152,10 +203,11 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 502 });
-    expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.googleAdsExperiment.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: 'exp_1', updatedAt, status: 'SETUP' }),
       data: expect.objectContaining({
         variationConfig: expect.objectContaining({
           saga: expect.objectContaining({ schedule: 'UNKNOWN' }),
@@ -171,7 +223,7 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 422 });
     expect(deps.verifyTreatmentFinalUrl).toHaveBeenCalledWith(
@@ -190,7 +242,7 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 502 });
     expect(prisma.googleAdsExperimentOperation.create).not.toHaveBeenCalled();
@@ -208,7 +260,7 @@ describe('scheduleExperimentLifecycle', () => {
     await expect(scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     })).rejects.toMatchObject({ status: 409 });
     expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
@@ -219,12 +271,17 @@ describe('scheduleExperimentLifecycle', () => {
     const operationName = 'customers/1234567890/operations/mock-schedule-999';
     const complete = experiment({
       variationConfig: {
-        proof: { verified: true, finalUrl: 'https://example.com/treatment' },
+        proof: {
+          verified: true,
+          finalUrl: 'https://example.com/treatment',
+          presellId: 'presell_1',
+          presellContentSha256,
+        },
         saga: { schedule: 'COMPLETE' },
         lifecycle: {
           schedule: {
             idempotencyKey: 'schedule-key-123',
-            authorizedRevision: updatedAt.toISOString(),
+            authorizedRevision: `${updatedAt.toISOString()}:${presellContentSha256}`,
             state: 'COMPLETE',
             operationName,
           },
@@ -236,7 +293,7 @@ describe('scheduleExperimentLifecycle', () => {
     const result = await scheduleExperimentLifecycle({
       id: 'exp_1',
       userId: 'user_1',
-      payload: { authorization: authorization() },
+      payload: { authorization: scheduleAuthorization() },
       deps: deps as any,
     });
     expect(result.operation.operationName).toBe(operationName);
@@ -248,6 +305,47 @@ describe('scheduleExperimentLifecycle', () => {
 });
 
 describe('runExperimentAction', () => {
+  it.each([
+    ['END', 'END_EXPERIMENT', 'end-conflict-key-123'],
+    ['GRADUATE', 'GRADUATE_EXPERIMENT', 'graduate-conflict-key-123'],
+  ])('bloqueia %s enquanto PROMOTE assíncrona está PENDING', async (action, operation, idempotencyKey) => {
+    const pendingPromotion = experiment({
+      status: 'RUNNING',
+      variationConfig: {
+        proof: { verified: true, finalUrl: 'https://example.com/treatment' },
+        saga: { promote: 'COMPLETE' },
+        lifecycle: {
+          promote: {
+            idempotencyKey: 'previous-promote-key',
+            authorizedRevision: updatedAt.toISOString(),
+            state: 'COMPLETE',
+            operationName: 'customers/1234567890/operations/pending-promote',
+          },
+        },
+      },
+      operations: [{
+        operationName: 'customers/1234567890/operations/pending-promote',
+        operationType: 'PROMOTE',
+        status: 'PENDING',
+      }],
+    });
+    const { deps } = harness(pendingPromotion);
+
+    await expect(runExperimentAction({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: {
+        action,
+        authorization: authorization({ operation, idempotencyKey }),
+      },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.endExperiment).not.toHaveBeenCalled();
+    expect(deps.graduateExperiment).not.toHaveBeenCalled();
+  });
+
   it('bloqueia registro legado com operação PROMOTE sem envelope lifecycle', async () => {
     const legacy = experiment({
       status: 'RUNNING',
@@ -275,7 +373,7 @@ describe('runExperimentAction', () => {
     const { prisma, deps } = harness(experiment({ status: 'RUNNING' }));
     deps.assertMutationAllowed.mockReturnValue({
       allowed: true,
-      capability: createMutationCapability('endExperiment'),
+      capability: lifecycleCapability('endExperiment'),
     });
     const result = await runExperimentAction({
       id: 'exp_1',
@@ -294,9 +392,10 @@ describe('runExperimentAction', () => {
       'RUNNING',
       expect.objectContaining({ operation: 'endExperiment' })
     );
-    expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.googleAdsExperiment.updateMany).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({ id: 'exp_1', updatedAt, status: 'RUNNING' }),
       data: expect.objectContaining({ status: 'ENDED', lastError: null }),
-    }));
+    });
     expect(result.experiment.status).toBe('ENDED');
   });
 
@@ -304,7 +403,7 @@ describe('runExperimentAction', () => {
     const { prisma, deps } = harness(experiment({ status: 'RUNNING' }));
     deps.assertMutationAllowed.mockReturnValue({
       allowed: true,
-      capability: createMutationCapability('promoteExperiment'),
+      capability: lifecycleCapability('promoteExperiment'),
     });
     const result = await runExperimentAction({
       id: 'exp_1',

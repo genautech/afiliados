@@ -10,6 +10,14 @@
 // 6+ — "gradualmente", como o plano pede, não tudo de uma vez).
 
 import { GoogleAdsApiError } from './errors';
+import {
+  assertMutationCapability,
+  isMutationCapability,
+  type MutationCapability,
+} from './mutation-guard';
+
+export { isMutationCapability };
+export type { MutationCapability };
 
 export const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || 'v25';
 const GOOGLE_ADS_BASE_URL = 'https://googleads.googleapis.com';
@@ -64,44 +72,24 @@ export function buildResourceMethodUrl(resourceName: string, method: string): st
   return `${GOOGLE_ADS_BASE_URL}/${GOOGLE_ADS_API_VERSION}/${resourceName}:${method}`;
 }
 
-// ---------------------------------------------------------------------------------------------
-// Capability de mutação (A5, checkpoint pós-Tarefa 8 / .hermes/handoffs/2026-07-29_task8-
-// cross-flow-quality-gate.md): antes desta correção, `googleAdsRequest`/`googleAdsResourceRequest`
-// aceitavam QUALQUER resourcePath/method e faziam rede sem passar pelo mutation guard — nada
-// impedia importar `googleAdsRequest(token, config, 'campaigns:mutate', {...})` direto,
-// ignorando `assertMutationAllowed`. Agora, qualquer mutação real só é possível de posse de um
-// `MutationCapability`, que só `assertMutationAllowed` (lib/google-ads/mutation-guard.ts) pode
-// emitir — e só quando `allowed: true`. Branding runtime (não só tipo TS) porque o guard
-// verdadeiro é o `isMutationCapability()` abaixo, checado em runtime pelas funções de mutate.
-// ---------------------------------------------------------------------------------------------
-
-const MUTATION_CAPABILITY_BRAND = 'GoogleAdsMutationCapability' as const;
-
-export interface MutationCapability {
-  readonly brand: typeof MUTATION_CAPABILITY_BRAND;
-  readonly operation: string;
-}
-
-// Só mutation-guard.ts deve chamar isto (é o único lugar com acesso a `assertMutationAllowed`
-// retornando allowed:true) — exportado pra permitir o teste unitário do guard sem duplicar a
-// string da marca aqui e lá.
-export function createMutationCapability(operation: string): MutationCapability {
-  return { brand: MUTATION_CAPABILITY_BRAND, operation };
-}
-
-export function isMutationCapability(value: unknown): value is MutationCapability {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as { brand?: unknown }).brand === MUTATION_CAPABILITY_BRAND
-  );
-}
-
-function assertCapability(capability: MutationCapability, resourcePath: string): void {
-  if (!isMutationCapability(capability)) {
-    throw new Error(
-      `Mutação em "${resourcePath}" bloqueada: nenhum MutationCapability válido foi fornecido (deve vir de assertMutationAllowed com allowed:true).`
+// Capability de mutação emitida exclusivamente por mutation-guard.ts. A validação runtime usa
+// identidade opaca (WeakSet), operação, customer e — para custom methods — resourceName exato.
+function assertCapability(
+  capability: MutationCapability,
+  resourcePath: string,
+  expectedOperation?: string,
+  expectedCustomerId?: string,
+  expectedResourceName?: string
+): void {
+  try {
+    assertMutationCapability(
+      capability,
+      expectedOperation,
+      expectedCustomerId,
+      expectedResourceName
     );
+  } catch (error: any) {
+    throw new Error(`Mutação em "${resourcePath}" bloqueada: ${error?.message || 'capability inválida'}`);
   }
 }
 
@@ -225,7 +213,7 @@ export async function googleAdsMutateRequest(
   capability: MutationCapability,
   options: Omit<GoogleAdsRequestOptions, 'retry'> = {}
 ): Promise<any> {
-  assertCapability(capability, resourcePath);
+  assertCapability(capability, resourcePath, undefined, config.customerId);
   const { method = 'POST', body } = options;
   return executeRequest(
     buildApiUrl(config, resourcePath),
@@ -249,7 +237,7 @@ export async function googleAdsResourceMutateRequest(
   body: unknown = {}
 ): Promise<any> {
   const label = `${resourceName}:${method}`;
-  assertCapability(capability, label);
+  assertCapability(capability, label, method, config.customerId, resourceName);
   return executeRequest(
     buildResourceMethodUrl(resourceName, method),
     buildApiHeaders(token, config),

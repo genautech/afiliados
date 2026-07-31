@@ -1,4 +1,5 @@
 import { expect, test, describe, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
 import { setupExperiment, getExperimentDetail, syncExperiment } from '../orchestration';
 
 vi.mock('../../prisma', () => ({
@@ -44,7 +45,12 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
   const baseDeps = {
     findCampaign: vi.fn().mockResolvedValue({ id: 'c1', googleCampaignId: '12345678', updatedAt: new Date(1700000000000), userId: 'u1' }),
-    findPresell: vi.fn().mockResolvedValue({ id: 'p1', campaignId: 'c1', userId: 'u1' }),
+    findPresell: vi.fn().mockResolvedValue({
+      id: 'p1',
+      campaignId: 'c1',
+      userId: 'u1',
+      html: '<html><body>approved treatment</body></html>',
+    }),
     readinessDeps: {},
     checkReadiness: vi.fn().mockResolvedValue({ ready: true, data: { finalUrl: 'https://control.com' }, warnings: [] }),
     getAdsConfig: vi.fn().mockResolvedValue(mockConfig),
@@ -190,6 +196,16 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
     }));
     expect(baseDeps.createExperimentArms).toHaveBeenCalledTimes(1);
     expect(baseDeps.applyFinalUrlVariation).toHaveBeenCalledTimes(1);
+    const expectedPresellHash = createHash('sha256')
+      .update('<html><body>approved treatment</body></html>', 'utf8')
+      .digest('hex');
+    expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        variationConfig: expect.objectContaining({
+          proof: expect.objectContaining({ presellContentSha256: expectedPresellHash }),
+        }),
+      }),
+    }));
 
     const armsOp = (baseDeps.createExperimentArms as any).mock.calls[0][2];
     const splitSum = armsOp.arms[0].trafficSplit + armsOp.arms[1].trafficSplit;
@@ -789,7 +805,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
         message: expect.not.stringContaining('secret_token_xyz_123'),
       });
 
-      expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith(expect.objectContaining({
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ lastError: expect.not.stringContaining('secret_token_xyz_123') }),
       }));
     });
@@ -836,14 +852,14 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       const res = await syncExperiment('exp1', 'u1', deps);
 
       expect(res.status).toBe('ERROR');
-      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith(expect.objectContaining({
-        where: { id: 'exp1' },
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1' }),
         data: expect.objectContaining({
           status: 'ERROR',
           lastError: expect.not.stringContaining('null'),
         }),
       }));
-      const lastCall = (prisma.googleAdsExperiment.update as any).mock.calls[(prisma.googleAdsExperiment.update as any).mock.calls.length - 1][0];
+      const lastCall = (prisma.googleAdsExperiment.updateMany as any).mock.calls[(prisma.googleAdsExperiment.updateMany as any).mock.calls.length - 1][0];
       expect(lastCall.data.lastError).not.toBeNull();
       expect(lastCall.data.status).toBe('ERROR');
     });
@@ -871,8 +887,8 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       expect(pollExperimentOperation).not.toHaveBeenCalled();
       expect(res.status).toBe('ERROR');
       expect(res.warnings).toContain('Operação assíncrona falhou — status travado em ERROR');
-      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith(expect.objectContaining({
-        where: { id: 'exp1' },
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1' }),
         data: expect.objectContaining({ status: 'ERROR', lastError: 'falha terminal persistida' }),
       }));
     });
@@ -891,10 +907,10 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
         ...baseDeps, fetchExperimentReport,
       })).rejects.toMatchObject({ status: 502, message: 'reporting indisponível' });
 
-      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith({
-        where: { id: 'exp1' },
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1' }),
         data: { status: 'ERROR', lastError: 'falha terminal persistida' },
-      });
+      }));
     });
 
     test('preserva remoteStatusRaw em decisionPolicy e no retorno', async () => {
@@ -904,12 +920,74 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
       const res = await syncExperiment('exp1', 'u1', baseDeps);
       expect(res.remoteStatusRaw).toBe('ENABLED');
-      expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith({
-        where: { id: 'exp1' },
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1' }),
         data: expect.objectContaining({
           decisionPolicy: expect.objectContaining({ lastRemoteStatusRaw: 'ENABLED', initialParam: 'value' }),
         }),
+      }));
+    });
+
+    test('descarta snapshot remoto obsoleto quando END vence o CAS durante o sync', async () => {
+      const staleRevision = new Date('2030-01-01T00:00:00.000Z');
+      const terminalRevision = new Date('2030-01-01T00:00:01.000Z');
+      const stale = {
+        id: 'exp1', userId: 'u1', resourceName: 'res1', status: 'RUNNING',
+        updatedAt: staleRevision, variationConfig: { lifecycle: {} }, arms: [], operations: [],
+      };
+      const ended = {
+        ...stale,
+        status: 'ENDED',
+        updatedAt: terminalRevision,
+        variationConfig: { lifecycle: { end: { state: 'COMPLETE' } } },
+      };
+      (prisma.googleAdsExperiment.findFirst as any)
+        .mockResolvedValueOnce(stale)
+        .mockResolvedValueOnce(ended);
+      (prisma.googleAdsExperiment.updateMany as any).mockResolvedValueOnce({ count: 0 });
+
+      const result = await syncExperiment('exp1', 'u1', baseDeps);
+
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1', updatedAt: staleRevision, status: 'RUNNING' }),
+      }));
+      expect(result.status).toBe('ENDED');
+      expect(result.warnings).toContain('Observação remota obsoleta descartada por concorrência');
+    });
+
+    test('reconcilia lifecycle UNKNOWN somente quando o status remoto comprova SCHEDULE', async () => {
+      const revision = new Date('2030-01-01T00:00:00.000Z');
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'exp1', userId: 'u1', resourceName: 'res1', status: 'SETUP',
+        updatedAt: revision, arms: [], operations: [],
+        variationConfig: {
+          lifecycle: {
+            schedule: {
+              state: 'UNKNOWN',
+              idempotencyKey: 'schedule-reconcile-key',
+              authorizedRevision: 'approved-revision',
+            },
+          },
+          saga: { schedule: 'UNKNOWN' },
+        },
       });
+
+      const result = await syncExperiment('exp1', 'u1', baseDeps);
+
+      expect(result.status).toBe('RUNNING');
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          variationConfig: expect.objectContaining({
+            lifecycle: expect.objectContaining({
+              schedule: expect.objectContaining({
+                state: 'COMPLETE',
+                reconciledFromRemoteStatus: 'RUNNING',
+              }),
+            }),
+            saga: expect.objectContaining({ schedule: 'COMPLETE' }),
+          }),
+        }),
+      }));
     });
 
     test('deriva fallback somente dos arms persistidos e validados', async () => {
@@ -955,8 +1033,8 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       await expect(syncExperiment('exp1', 'u1', { ...baseDeps, fetchExperimentReport, upsertMetricSnapshot }))
         .rejects.toMatchObject({ status: 502, message: expect.stringMatching(/métricas cumulativas inválidas/) });
       expect(upsertMetricSnapshot).not.toHaveBeenCalled();
-      expect(prisma.googleAdsExperiment.update).toHaveBeenLastCalledWith(expect.objectContaining({
-        where: { id: 'exp1' },
+      expect(prisma.googleAdsExperiment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'exp1' }),
         data: expect.objectContaining({ status: 'ERROR', lastError: expect.stringMatching(/métricas cumulativas inválidas/) }),
       }));
     });

@@ -559,7 +559,12 @@ function requireLifecycleCapability(
   operation: 'scheduleExperiment' | 'endExperiment' | 'promoteExperiment' | 'graduateExperiment',
   provided?: MutationCapability
 ): MutationCapability {
-  if (provided) return provided;
+  if (provided) {
+    if (provided.operation !== operation) {
+      throw new Error(`Capability inválida para ${operation}`);
+    }
+    return provided;
+  }
   const guard = assertMutationAllowed({
     operation,
     customerId: config.customerId,
@@ -612,11 +617,26 @@ export interface PollOperationResult {
 
 // Parsing puro do shape padrão de google.longrunning.Operation ({done, error, response}).
 export function parsePollOperationResponse(data: any): PollOperationResult {
-  if (!data?.done) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Resposta da operação assíncrona inválida');
+  }
+  if (data.done === false) {
     return { status: 'PENDING', errors: [] };
   }
-  if (data?.error) {
-    const message = data.error?.message ?? JSON.stringify(data.error);
+  if (data.done !== true) {
+    throw new Error('Resposta da operação assíncrona inválida: done deve ser boolean');
+  }
+  if (data.error !== undefined && data.error !== null) {
+    if (
+      typeof data.error !== 'object'
+      || Array.isArray(data.error)
+      || typeof data.error.message !== 'string'
+      || data.error.message.length < 1
+      || data.error.message.length > 2_000
+    ) {
+      throw new Error('Resposta da operação assíncrona inválida: error malformado');
+    }
+    const message = data.error.message;
     return { status: 'FAILED', errors: [message] };
   }
   return { status: 'DONE', errors: [] };

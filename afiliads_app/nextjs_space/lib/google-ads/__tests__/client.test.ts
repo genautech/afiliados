@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildApiHeaders,
   buildApiUrl,
-  createMutationCapability,
   getAccessToken,
   googleAdsMutateRequest,
   googleAdsRequest,
@@ -13,8 +12,10 @@ import {
   toAmountMicros,
   GOOGLE_ADS_API_VERSION,
   type GoogleAdsCredentials,
+  type MutationCapability,
 } from '@/lib/google-ads/client';
 import { GoogleAdsApiError } from '@/lib/google-ads/errors';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 
 function credentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -25,6 +26,18 @@ function credentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCr
     refreshToken: 'real-refresh',
     ...overrides,
   };
+}
+
+function capability(operation: string, resourceName?: string, customerId = '1234567890'): MutationCapability {
+  const result = assertMutationAllowed({
+    operation,
+    customerId,
+    resourceName,
+    isMock: true,
+    confirmed: true,
+  });
+  if (!result.allowed) throw new Error(result.reason);
+  return result.capability;
 }
 
 function jsonResponse(body: unknown, init: { status?: number } = {}) {
@@ -234,7 +247,7 @@ describe('googleAdsMutateRequest (A5)', () => {
       'tok',
       credentials(),
       'campaigns:mutate',
-      createMutationCapability('createGoogleCampaign'),
+      capability('createGoogleCampaign'),
       { body: { operations: [] } }
     );
     expect(data).toEqual({ results: [] });
@@ -248,7 +261,7 @@ describe('googleAdsMutateRequest (A5)', () => {
         'tok',
         credentials(),
         'campaigns:mutate',
-        createMutationCapability('createGoogleCampaign'),
+        capability('createGoogleCampaign'),
         { body: {} }
       )
     ).rejects.toThrow(GoogleAdsApiError);
@@ -280,11 +293,28 @@ describe('googleAdsResourceMutateRequest (A5)', () => {
       credentials(),
       'customers/1234567890/experiments/999',
       'scheduleExperiment',
-      createMutationCapability('scheduleExperiment')
+      capability('scheduleExperiment', 'customers/1234567890/experiments/999')
     );
     const [url, requestInit] = fetchSpy.mock.calls[0];
     expect(url).toContain('experiments/999:scheduleExperiment');
     expect(requestInit.method).toBe('POST');
+  });
+
+  it.each([
+    ['operação', capability('endExperiment', 'customers/1234567890/experiments/999')],
+    ['recurso', capability('scheduleExperiment', 'customers/1234567890/experiments/998')],
+    ['customer', capability('scheduleExperiment', 'customers/9999999999/experiments/999', '9999999999')],
+  ])('22B. rejeita capability vinculada a outro(a) %s sem fetch', async (_label, wrongCapability) => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(googleAdsResourceMutateRequest(
+      'tok',
+      credentials(),
+      'customers/1234567890/experiments/999',
+      'scheduleExperiment',
+      wrongCapability
+    )).rejects.toThrow(/MutationCapability|outro|outra/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -321,9 +351,9 @@ describe('googleAdsResourceGetRequest (A1)', () => {
 });
 
 describe('isMutationCapability', () => {
-  it('25. reconhece só objetos emitidos por createMutationCapability', () => {
-    expect(isMutationCapability(createMutationCapability('createGoogleCampaign'))).toBe(true);
-    expect(isMutationCapability({ brand: 'forjado' })).toBe(false);
+  it('25. reconhece só objetos emitidos pelo mutation guard', () => {
+    expect(isMutationCapability(capability('createGoogleCampaign'))).toBe(true);
+    expect(isMutationCapability({ operation: 'createGoogleCampaign', customerId: '1234567890' })).toBe(false);
     expect(isMutationCapability(undefined)).toBe(false);
     expect(isMutationCapability(null)).toBe(false);
   });

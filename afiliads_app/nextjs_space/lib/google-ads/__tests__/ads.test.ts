@@ -6,7 +6,8 @@ import {
   parseUpdateAdFinalUrlsBatchResponse,
   updateAdFinalUrlsBatch,
 } from '@/lib/google-ads/ads';
-import { createMutationCapability, type GoogleAdsCredentials } from '@/lib/google-ads/client';
+import type { GoogleAdsCredentials, MutationCapability } from '@/lib/google-ads/client';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -38,6 +39,17 @@ afterEach(() => {
 });
 
 const CAMPAIGN = 'customers/1234567890/campaigns/999';
+
+function mutationCapability(): MutationCapability {
+  const result = assertMutationAllowed({
+    operation: 'updateAdFinalUrls',
+    customerId: '1234567890',
+    isMock: true,
+    confirmed: true,
+  });
+  if (!result.allowed) throw new Error(result.reason);
+  return result.capability;
+}
 
 describe('findAdGroupAdsInCampaign', () => {
   it('1. modo mock não chama fetch e devolve 1 ad determinístico com resource name flat (A7)', async () => {
@@ -104,7 +116,7 @@ describe('updateAdFinalUrlsBatch', () => {
   it('5. modo mock não chama fetch e ecoa a URL pedida pra todos os anúncios', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    const capability = createMutationCapability('updateAdFinalUrls');
+    const capability = mutationCapability();
     const result = await updateAdFinalUrlsBatch(
       'tok',
       mockCredentials(),
@@ -127,7 +139,7 @@ describe('updateAdFinalUrlsBatch', () => {
       realCredentials(),
       [],
       ['https://example.com/nova'],
-      createMutationCapability('updateAdFinalUrls')
+      mutationCapability()
     );
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(result).toEqual([]);
@@ -159,7 +171,7 @@ describe('updateAdFinalUrlsBatch', () => {
       realCredentials(),
       ['ad/1', 'ad/2'],
       ['https://example.com/nova'],
-      createMutationCapability('updateAdFinalUrls')
+      mutationCapability()
     );
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);

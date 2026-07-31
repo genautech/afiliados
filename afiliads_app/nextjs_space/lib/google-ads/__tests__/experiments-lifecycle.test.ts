@@ -12,7 +12,8 @@ import {
   promoteExperiment,
   scheduleExperiment,
 } from '@/lib/google-ads/experiments';
-import { createMutationCapability, type GoogleAdsCredentials } from '@/lib/google-ads/client';
+import type { GoogleAdsCredentials, MutationCapability } from '@/lib/google-ads/client';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -47,6 +48,18 @@ const EXPERIMENT = 'customers/1234567890/experiments/999';
 // Resource name de operation é FLAT (A7) — customers/{cid}/operations/{id}, nunca aninhado
 // sob o experiment.
 const OPERATION = 'customers/1234567890/operations/op-1';
+
+function lifecycleCapability(operation: string): MutationCapability {
+  const result = assertMutationAllowed({
+    operation,
+    customerId: '1234567890',
+    resourceName: EXPERIMENT,
+    isMock: true,
+    confirmed: true,
+  });
+  if (!result.allowed) throw new Error(result.reason);
+  return result.capability;
+}
 
 describe('assertActionAllowedFromStatus', () => {
   it('1. END permitido a partir de SCHEDULED e RUNNING', () => {
@@ -109,10 +122,25 @@ describe('scheduleExperiment', () => {
         realCredentials(),
         EXPERIMENT,
         'SETUP',
-        createMutationCapability('scheduleExperiment')
+        lifecycleCapability('scheduleExperiment')
       )
     ).resolves.toEqual({ operationName: OPERATION });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('7B. rejeita capability válida emitida para outra operação antes do fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      scheduleExperiment(
+        'tok',
+        realCredentials(),
+        EXPERIMENT,
+        'SETUP',
+        lifecycleCapability('endExperiment')
+      )
+    ).rejects.toThrow(/capability.*scheduleExperiment/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -146,6 +174,18 @@ describe('parsePollOperationResponse', () => {
     });
     expect(result.status).toBe('FAILED');
     expect(result.errors).toEqual(['algo deu errado']);
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { done: 'false' },
+    { done: 1 },
+    { done: true, error: 'hostil' },
+    { done: true, error: {} },
+  ])('12B. rejeita payload LRO ambíguo/hostil: %j', (payload) => {
+    expect(() => parsePollOperationResponse(payload)).toThrow(/operação assíncrona.*inválid/i);
   });
 });
 

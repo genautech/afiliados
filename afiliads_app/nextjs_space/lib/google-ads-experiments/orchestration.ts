@@ -9,6 +9,7 @@ import { findAdGroupAdsInCampaign } from '../google-ads/ads';
 import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot, validateFallbackArms } from '../google-ads/experiment-reporting';
 import { SetupExperimentPayloadSchema, ScheduleExperimentRoutePayloadSchema, ExperimentActionRoutePayloadSchema, type SetupExperimentPayload } from './schemas';
 import { redactSensitive } from '../google-ads/errors';
+import { createHash } from 'node:crypto';
 
 export interface SetupExperimentInput {
   userId: string;
@@ -48,7 +49,19 @@ function safeISO(val: any): string | null {
   }
 }
 
+function hashPresellHtml(html: unknown): string | null {
+  return typeof html === 'string'
+    ? createHash('sha256').update(html, 'utf8').digest('hex')
+    : null;
+}
+
 export function toExperimentDTO(exp: any) {
+  const config = asConfigObject(exp.variationConfig);
+  const proof = asConfigObject(config?.proof);
+  const updatedAt = safeISO(exp.updatedAt);
+  const scheduleRevision = updatedAt && typeof proof?.presellContentSha256 === 'string'
+    ? `${updatedAt}:${proof.presellContentSha256}`
+    : null;
   return {
     id: exp.id,
     userId: exp.userId,
@@ -64,6 +77,7 @@ export function toExperimentDTO(exp: any) {
     endDate: safeISO(exp.endDate),
     variationType: exp.variationType,
     variationConfig: exp.variationConfig ?? null,
+    mutationRevisions: { schedule: scheduleRevision },
     budgetRecommendation: exp.budgetRecommendation ?? null,
     decisionPolicy: exp.decisionPolicy ?? null,
     lastSyncedAt: safeISO(exp.lastSyncedAt),
@@ -536,6 +550,10 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
   if (presell.campaignId !== campaign.id) {
     throw { status: 400, message: 'Presell não pertence à campanha informada' };
+  }
+  const presellContentSha256 = hashPresellHtml(presell.html);
+  if (!presellContentSha256) {
+    throw { status: 422, message: 'Conteúdo HTML da presell indisponível para aprovação imutável' };
   }
 
   if (!campaign.googleCampaignId) {
@@ -1034,6 +1052,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
         verifiedAt: new Date().toISOString(),
         finalUrl: validated.treatmentFinalUrl,
         presellId: validated.presellId,
+        presellContentSha256,
         trafficSplitTreatment: validated.trafficSplitTreatment || 50,
         adsModifiedCount: applyRes.adsModified?.length ?? 1,
       };
@@ -1116,6 +1135,7 @@ interface ScheduleLifecycleInput {
     getAccessToken?: typeof getAccessToken;
     token?: string;
     isMock?: boolean;
+    findPresell?: (id: string, uid: string) => Promise<any>;
     assertMutationAllowed?: typeof assertMutationAllowed;
     scheduleExperiment?: typeof scheduleExperiment;
     verifyTreatmentFinalUrl?: (
@@ -1166,11 +1186,27 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
   if (!experiment) throw { status: 404, message: 'Experimento não encontrado' };
 
   const configBefore = asConfigObject(experiment.variationConfig) ?? {};
+  const proof = asConfigObject(configBefore.proof);
+  const treatmentArm = (experiment.arms || []).find((arm: any) => !arm.isControl);
+  if (
+    proof?.verified !== true
+    || !treatmentArm
+    || typeof treatmentArm.finalUrl !== 'string'
+    || proof.finalUrl !== treatmentArm.finalUrl
+    || typeof proof.presellId !== 'string'
+    || proof.presellId !== treatmentArm.localPresellId
+    || typeof proof.presellContentSha256 !== 'string'
+    || !/^[a-f0-9]{64}$/.test(proof.presellContentSha256)
+  ) {
+    throw { status: 422, message: 'Variação de tratamento não possui prova persistida e consistente' };
+  }
   const existingLifecycle = asConfigObject(configBefore.lifecycle)?.schedule as any;
+  const currentRevision = safeISO(experiment.updatedAt);
+  if (!currentRevision) throw { status: 409, message: 'Revisão do experimento indisponível' };
+  const currentScheduleRevision = `${currentRevision}:${proof.presellContentSha256}`;
   const authorizationRevision = existingLifecycle?.idempotencyKey === parsed.data.authorization.idempotencyKey && typeof existingLifecycle?.authorizedRevision === 'string'
     ? existingLifecycle.authorizedRevision
-    : safeISO(experiment.updatedAt);
-  if (!authorizationRevision) throw { status: 409, message: 'Revisão do experimento indisponível' };
+    : currentScheduleRevision;
   try {
     authorizeMutation(parsed.data.authorization, 'SCHEDULE_EXPERIMENT', experiment.id, authorizationRevision, userId, experiment.userId);
   } catch (error: any) {
@@ -1194,10 +1230,13 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
   }
 
   if (experiment.status !== 'SETUP') throw { status: 409, message: `Experimento não pode ser agendado a partir de ${experiment.status}` };
-  const proof = asConfigObject(configBefore.proof);
-  const treatmentArm = (experiment.arms || []).find((arm: any) => !arm.isControl);
-  if (proof?.verified !== true || !treatmentArm || typeof treatmentArm.finalUrl !== 'string' || proof.finalUrl !== treatmentArm.finalUrl) {
-    throw { status: 422, message: 'Variação de tratamento não possui prova persistida e consistente' };
+
+  const findPresell = deps?.findPresell
+    ?? ((presellId: string, uid: string) => prismaClient.presell.findFirst({ where: { id: presellId, userId: uid } }));
+  const currentPresell = await findPresell(proof.presellId, userId);
+  const currentContentSha256 = hashPresellHtml(currentPresell?.html);
+  if (!currentContentSha256 || currentContentSha256 !== proof.presellContentSha256) {
+    throw { status: 409, message: 'Conteúdo da presell diverge da revisão aprovada; nova aprovação obrigatória' };
   }
 
   const adsConfig = await (deps?.getAdsConfig ?? getGoogleAdsConfig)(userId);
@@ -1241,7 +1280,13 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
   const readiness = await checkReadiness(experiment.campaignId, userId, 'SCHEDULE', readinessDeps);
   if (!readiness.ready) throw { status: 422, message: redactSensitive(readiness.errors?.[0] || 'Readiness de agendamento falhou') };
 
-  const guard = (deps?.assertMutationAllowed ?? assertMutationAllowed)({ operation: 'scheduleExperiment', customerId: adsConfig.customerId, isMock: mock, confirmed: true });
+  const guard = (deps?.assertMutationAllowed ?? assertMutationAllowed)({
+    operation: 'scheduleExperiment',
+    customerId: adsConfig.customerId,
+    resourceName: experiment.resourceName,
+    isMock: mock,
+    confirmed: true,
+  });
   if (!guard.allowed || !(guard as any).capability || (guard as any).capability.operation !== 'scheduleExperiment') {
     throw { status: 502, message: redactSensitive(`Mutação bloqueada (schedule): ${(guard as any).reason || 'capability inválida'}`) };
   }
@@ -1266,7 +1311,10 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
       lifecycle: { ...(asConfigObject(claimedConfig.lifecycle) ?? {}), schedule: { ...lifecycle.schedule, state: 'UNKNOWN' } },
       saga: { ...(asConfigObject(claimedConfig.saga) ?? {}), schedule: 'UNKNOWN' },
     };
-    await prismaClient.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: failedConfig, lastError: message } });
+    await prismaClient.googleAdsExperiment.updateMany({
+      where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
+      data: { variationConfig: failedConfig, lastError: message },
+    });
     throw { status: 502, message };
   }
 
@@ -1276,11 +1324,24 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
     lifecycle: { ...(asConfigObject(claimedConfig.lifecycle) ?? {}), schedule: { ...lifecycle.schedule, state: 'COMPLETE', operationName: handle.operationName } },
     saga: { ...(asConfigObject(claimedConfig.saga) ?? {}), schedule: 'COMPLETE' },
   };
-  const persisted = await prismaClient.$transaction(async (tx: any) => {
-    const operation = await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'SCHEDULE', operationName: handle.operationName, status: 'PENDING' } });
-    const updated = await tx.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: completedConfig, lastError: null } });
-    return { operation, updated };
-  });
+  let persisted: { operation: any; updated: any };
+  try {
+    persisted = await prismaClient.$transaction(async (tx: any) => {
+      const operation = await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'SCHEDULE', operationName: handle.operationName, status: 'PENDING' } });
+      const updateData = { variationConfig: completedConfig, lastError: null };
+      const cas = await tx.googleAdsExperiment.updateMany({
+        where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
+        data: updateData,
+      });
+      if (cas.count !== 1) throw new Error('SCHEDULE_COMMIT_CAS_CONFLICT');
+      return { operation, updated: { ...experiment, ...updateData } };
+    });
+  } catch (error: any) {
+    if (error?.message === 'SCHEDULE_COMMIT_CAS_CONFLICT') {
+      throw { status: 409, message: 'SCHEDULE remoto aceito, mas o estado local mudou; sincronização obrigatória' };
+    }
+    throw error;
+  }
   return { success: true, mock, experiment: toExperimentDTO({ ...experiment, ...persisted.updated }), operation: persisted.operation, warnings: readiness.warnings || [] };
 }
 
@@ -1310,6 +1371,49 @@ const ACTION_CONTRACT = {
   PROMOTE: { authorization: 'PROMOTE_EXPERIMENT', transport: 'promoteExperiment', saga: 'promote', terminalStatus: null },
   GRADUATE: { authorization: 'GRADUATE_EXPERIMENT', transport: 'graduateExperiment', saga: 'graduate', terminalStatus: 'GRADUATED' },
 } as const;
+
+const LIFECYCLE_REMOTE_PROOF: Record<string, ReadonlySet<string>> = {
+  schedule: new Set(['SCHEDULED', 'RUNNING', 'ENDED', 'PROMOTED', 'GRADUATED']),
+  promote: new Set(['PROMOTED']),
+  end: new Set(['ENDED']),
+  graduate: new Set(['GRADUATED']),
+};
+
+function reconcileLifecycleFromRemoteStatus(
+  variationConfig: unknown,
+  remoteLocalStatus: string,
+  reconciledAt: Date
+): { variationConfig: any; reconciled: string[] } | null {
+  const cfg = asConfigObject(variationConfig);
+  const lifecycle = asConfigObject(cfg?.lifecycle);
+  if (!cfg || !lifecycle) return null;
+
+  const nextLifecycle = { ...lifecycle };
+  const nextSaga = { ...(asConfigObject(cfg.saga) ?? {}) };
+  const reconciled: string[] = [];
+  for (const [step, allowedStatuses] of Object.entries(LIFECYCLE_REMOTE_PROOF)) {
+    const envelope = asConfigObject(lifecycle[step]);
+    if (
+      envelope
+      && (envelope.state === 'IN_FLIGHT' || envelope.state === 'UNKNOWN')
+      && allowedStatuses.has(remoteLocalStatus)
+    ) {
+      nextLifecycle[step] = {
+        ...envelope,
+        state: 'COMPLETE',
+        reconciledAt: reconciledAt.toISOString(),
+        reconciledFromRemoteStatus: remoteLocalStatus,
+      };
+      nextSaga[step] = 'COMPLETE';
+      reconciled.push(step);
+    }
+  }
+  if (reconciled.length === 0) return null;
+  return {
+    variationConfig: { ...cfg, lifecycle: nextLifecycle, saga: nextSaga },
+    reconciled,
+  };
+}
 
 export async function runExperimentAction({ id, userId, payload, deps }: ExperimentActionLifecycleInput) {
   const parsed = ExperimentActionRoutePayloadSchema.safeParse(payload);
@@ -1354,6 +1458,22 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
     throw { status: 409, message: 'Operação PROMOTE legada sem envelope de idempotência; sincronização manual obrigatória' };
   }
 
+  const pendingLifecycleOperation = (experiment.operations || []).find(
+    (operation: any) => operation.status === 'PENDING'
+      && (operation.operationType === 'SCHEDULE' || operation.operationType === 'PROMOTE')
+  );
+  const unresolvedLifecycle = Object.entries(lifecycleRoot).find(([key, value]) => {
+    if (key === contract.saga || !value || typeof value !== 'object') return false;
+    const state = (value as any).state;
+    return state === 'IN_FLIGHT' || state === 'UNKNOWN';
+  });
+  if (pendingLifecycleOperation || unresolvedLifecycle) {
+    throw {
+      status: 409,
+      message: 'Outra operação lifecycle está pendente ou inconclusiva; sincronização obrigatória antes de nova ação',
+    };
+  }
+
   try {
     assertActionAllowedFromStatus(action, experiment.status);
   } catch (error: any) {
@@ -1385,6 +1505,7 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
   const guard = (deps?.assertMutationAllowed ?? assertMutationAllowed)({
     operation: contract.transport,
     customerId: adsConfig.customerId,
+    resourceName: experiment.resourceName,
     isMock: mock,
     confirmed: true,
   });
@@ -1427,7 +1548,10 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
       lifecycle: { ...(asConfigObject(claimedCfg.lifecycle) ?? {}), [contract.saga]: { ...lifecycle[contract.saga], state: 'UNKNOWN' } },
       saga: { ...(asConfigObject(claimedCfg.saga) ?? {}), [contract.saga]: 'UNKNOWN' },
     };
-    await prismaClient.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: failedCfg, lastError: message } });
+    await prismaClient.googleAdsExperiment.updateMany({
+      where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
+      data: { variationConfig: failedCfg, lastError: message },
+    });
     throw { status: 502, message };
   }
 
@@ -1437,16 +1561,30 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
     lifecycle: { ...(asConfigObject(claimedCfg.lifecycle) ?? {}), [contract.saga]: { ...lifecycle[contract.saga], state: 'COMPLETE', ...(operationName ? { operationName } : {}) } },
     saga: { ...(asConfigObject(claimedCfg.saga) ?? {}), [contract.saga]: 'COMPLETE' },
   };
-  const persisted = await prismaClient.$transaction(async (tx: any) => {
-    const operation = operationName
-      ? await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'PROMOTE', operationName, status: 'PENDING' } })
-      : undefined;
-    const updated = await tx.googleAdsExperiment.update({
-      where: { id: experiment.id },
-      data: { variationConfig: completedCfg, lastError: null, ...(contract.terminalStatus ? { status: contract.terminalStatus } : {}) },
+  const updateData = {
+    variationConfig: completedCfg,
+    lastError: null,
+    ...(contract.terminalStatus ? { status: contract.terminalStatus } : {}),
+  };
+  let persisted: { operation?: any; updated: any };
+  try {
+    persisted = await prismaClient.$transaction(async (tx: any) => {
+      const operation = operationName
+        ? await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'PROMOTE', operationName, status: 'PENDING' } })
+        : undefined;
+      const cas = await tx.googleAdsExperiment.updateMany({
+        where: { id: experiment.id, updatedAt: experiment.updatedAt, status: experiment.status },
+        data: updateData,
+      });
+      if (cas.count !== 1) throw new Error('LIFECYCLE_COMMIT_CAS_CONFLICT');
+      return { operation, updated: { ...experiment, ...updateData } };
     });
-    return { operation, updated };
-  });
+  } catch (error: any) {
+    if (error?.message === 'LIFECYCLE_COMMIT_CAS_CONFLICT') {
+      throw { status: 409, message: `${action} remoto aceito, mas o estado local mudou; sincronização obrigatória` };
+    }
+    throw error;
+  }
   return { success: true, mock, experiment: toExperimentDTO({ ...experiment, ...persisted.updated }), ...(persisted.operation ? { operation: persisted.operation } : {}), warnings: [] };
 }
 
@@ -1531,10 +1669,6 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
         operationTerminalFailed = true;
         operationFailureMessage = firstErrorMsg;
 
-        await prismaClient.googleAdsExperiment.update({
-          where: { id: exp.id },
-          data: { lastError: firstErrorMsg, status: 'ERROR' },
-        });
       }
     }
 
@@ -1599,21 +1733,50 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
       lastErrorMsg = operationFailureMessage;
     }
 
+    const lifecycleReconciliation = operationTerminalFailed
+      ? null
+      : reconcileLifecycleFromRemoteStatus(exp.variationConfig, targetLocalStatus, now);
+
     const changed = exp.status !== targetLocalStatus;
 
-    await prismaClient.googleAdsExperiment.update({
-      where: { id },
+    const syncCas = await prismaClient.googleAdsExperiment.updateMany({
+      where: { id, updatedAt: exp.updatedAt, status: exp.status },
       data: {
         status: targetLocalStatus,
         lastSyncedAt: now,
         lastError: lastErrorMsg,
         decisionPolicy: updatedDecisionPolicy,
+        ...(lifecycleReconciliation ? { variationConfig: lifecycleReconciliation.variationConfig } : {}),
       },
     });
 
     const warnings: string[] = [];
     if (isErrorState) warnings.push(`Status remoto não mapeado: ${remoteStatusRaw}`);
     if (operationTerminalFailed) warnings.push('Operação assíncrona falhou — status travado em ERROR');
+    if (lifecycleReconciliation) {
+      warnings.push(`Lifecycle reconciliado por status remoto: ${lifecycleReconciliation.reconciled.join(', ')}`);
+    }
+
+    if (syncCas.count !== 1) {
+      const fresh = await prismaClient.googleAdsExperiment.findFirst({
+        where: { id, userId },
+        include: {
+          arms: { orderBy: { isControl: 'desc' } },
+          operations: { orderBy: { startedAt: 'desc' }, take: 1 },
+        },
+      });
+      if (!fresh) throw { status: 409, message: 'Estado do experimento mudou durante a sincronização' };
+      warnings.push('Observação remota obsoleta descartada por concorrência');
+      return {
+        success: true,
+        experimentId: id,
+        status: fresh.status,
+        remoteStatusRaw,
+        lastSyncedAt: safeISO(fresh.lastSyncedAt),
+        changed: exp.status !== fresh.status,
+        warnings,
+      };
+    }
 
     return {
       success: true,
@@ -1629,8 +1792,8 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     const persistedError = operationTerminalFailed
       ? (operationFailureMessage || 'Operação assíncrona falhou')
       : sanitizedMsg;
-    await prismaClient.googleAdsExperiment.update({
-      where: { id },
+    await prismaClient.googleAdsExperiment.updateMany({
+      where: { id, updatedAt: exp.updatedAt, status: exp.status },
       data: { status: 'ERROR', lastError: persistedError },
     }).catch(() => {});
     throw { status: 502, message: sanitizedMsg };
