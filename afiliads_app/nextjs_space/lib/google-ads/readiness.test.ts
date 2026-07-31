@@ -72,6 +72,17 @@ describe('checkGoogleAdsReadiness', () => {
     expect(res.errors).toContain('Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).');
   });
 
+  it('permite SCHEDULE quando o verificador server-side confirma a URL aprovada', async () => {
+    const verifyApprovedUrlUnchanged = vi.fn().mockResolvedValue(true);
+    const res = await checkGoogleAdsReadiness('c1', 'u1', 'SCHEDULE', {
+      ...defaultDeps,
+      verifyApprovedUrlUnchanged,
+    });
+    expect(res.ready).toBe(true);
+    expect(res.errors).toHaveLength(0);
+    expect(verifyApprovedUrlUnchanged).toHaveBeenCalledTimes(1);
+  });
+
   it('fails if missing config', async () => {
     const res = await checkGoogleAdsReadiness('c1', 'u1', 'PREPARE', {
       ...defaultDeps,

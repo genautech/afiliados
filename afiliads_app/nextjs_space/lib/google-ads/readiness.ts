@@ -38,6 +38,7 @@ export type ReadinessDependencies = {
   findChecklists: (campaignId: string) => Promise<ReadinessChecklist[]>;
   getAdsConfig: (userId: string) => Promise<ReadinessAdsConfig | null>;
   findProduct: (productId: string) => Promise<Parameters<typeof getForbiddenAdTerms>[0] | null>;
+  verifyApprovedUrlUnchanged?: () => Promise<boolean>;
 };
 
 export type ReadinessResult = {
@@ -101,7 +102,15 @@ export async function checkGoogleAdsReadiness(
 
     const msg = 'Não é possível garantir que a URL atual (modificada) foi a mesma aprovada no checklist. Revalidação estrutural necessária (lacuna técnica documentada para a Tarefa 10B).';
     if (mode === 'SCHEDULE') {
-      errors.push(msg);
+      let unchanged = false;
+      try {
+        unchanged = deps.verifyApprovedUrlUnchanged
+          ? await deps.verifyApprovedUrlUnchanged()
+          : false;
+      } catch {
+        unchanged = false;
+      }
+      if (!unchanged) errors.push(msg);
     } else {
       warnings.push(msg);
     }

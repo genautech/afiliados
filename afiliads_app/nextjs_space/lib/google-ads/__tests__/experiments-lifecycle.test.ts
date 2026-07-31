@@ -12,7 +12,7 @@ import {
   promoteExperiment,
   scheduleExperiment,
 } from '@/lib/google-ads/experiments';
-import type { GoogleAdsCredentials } from '@/lib/google-ads/client';
+import { createMutationCapability, type GoogleAdsCredentials } from '@/lib/google-ads/client';
 
 function realCredentials(overrides: Partial<GoogleAdsCredentials> = {}): GoogleAdsCredentials {
   return {
@@ -98,6 +98,21 @@ describe('scheduleExperiment', () => {
       scheduleExperiment('tok', realCredentials(), EXPERIMENT, 'SETUP')
     ).rejects.toThrow(/Mutação bloqueada pelo guard/);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('7A. modo real aceita capability SCHEDULE já emitida pelo orquestrador autorizado', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ name: OPERATION }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(
+      scheduleExperiment(
+        'tok',
+        realCredentials(),
+        EXPERIMENT,
+        'SETUP',
+        createMutationCapability('scheduleExperiment')
+      )
+    ).resolves.toEqual({ operationName: OPERATION });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 

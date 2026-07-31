@@ -4,13 +4,23 @@ import {
   CreateExperimentArmsInputSchema,
   CreateExperimentDraftInputSchema,
   ExperimentActionInputSchema,
+  ExperimentActionRoutePayloadSchema,
   ExperimentReportSchema,
   ExperimentSyncResultSchema,
   ScheduleExperimentInputSchema,
+  ScheduleExperimentRoutePayloadSchema,
   assertStartDateIsFuture,
   experimentUrlSchema,
   trafficSplitSchema,
 } from '@/lib/google-ads-experiments/schemas';
+
+const lifecycleAuthorization = (operation: string) => ({
+  confirmed: true,
+  operation,
+  resourceId: 'exp_1',
+  revision: '2030-01-15T00:00:00.000Z',
+  idempotencyKey: 'lifecycle-key-123',
+});
 
 describe('trafficSplitSchema', () => {
   it('1. aceita inteiros de 1 a 99', () => {
@@ -195,6 +205,56 @@ describe('ExperimentActionInputSchema', () => {
         confirmRealMutation: true,
       }).success
     ).toBe(false);
+  });
+});
+
+describe('payloads HTTP de lifecycle (Tarefa 10C)', () => {
+  it('22. schedule aceita somente autorização vinculada a SCHEDULE_EXPERIMENT', () => {
+    expect(ScheduleExperimentRoutePayloadSchema.safeParse({
+      authorization: lifecycleAuthorization('SCHEDULE_EXPERIMENT'),
+    }).success).toBe(true);
+    expect(ScheduleExperimentRoutePayloadSchema.safeParse({
+      authorization: lifecycleAuthorization('END_EXPERIMENT'),
+    }).success).toBe(false);
+  });
+
+  it('23. schedule rejeita campos client-side que fingem prova de variação ou identidade', () => {
+    for (const extra of [
+      { experimentId: 'exp_1' },
+      { treatmentModified: true },
+      { confirmRealMutation: true },
+    ]) {
+      expect(ScheduleExperimentRoutePayloadSchema.safeParse({
+        authorization: lifecycleAuthorization('SCHEDULE_EXPERIMENT'),
+        ...extra,
+      }).success).toBe(false);
+    }
+  });
+
+  it('24. actions vincula cada ação à operação autorizada exata', () => {
+    const expected = {
+      END: 'END_EXPERIMENT',
+      PROMOTE: 'PROMOTE_EXPERIMENT',
+      GRADUATE: 'GRADUATE_EXPERIMENT',
+    } as const;
+    for (const [action, operation] of Object.entries(expected)) {
+      expect(ExperimentActionRoutePayloadSchema.safeParse({
+        action,
+        authorization: lifecycleAuthorization(operation),
+      }).success).toBe(true);
+      expect(ExperimentActionRoutePayloadSchema.safeParse({
+        action,
+        authorization: lifecycleAuthorization('SCHEDULE_EXPERIMENT'),
+      }).success).toBe(false);
+    }
+  });
+
+  it('25. actions rejeita budget mapping e identidade enviados pelo cliente', () => {
+    expect(ExperimentActionRoutePayloadSchema.safeParse({
+      action: 'GRADUATE',
+      authorization: lifecycleAuthorization('GRADUATE_EXPERIMENT'),
+      graduatedCampaignBudgetResourceName: 'customers/1/campaignBudgets/2',
+    }).success).toBe(false);
   });
 });
 

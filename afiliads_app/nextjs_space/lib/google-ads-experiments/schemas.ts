@@ -131,6 +131,42 @@ export const ExperimentActionInputSchema = z.object({
 });
 export type ExperimentActionInput = z.infer<typeof ExperimentActionInputSchema>;
 
+// Payloads HTTP da Tarefa 10C. A identidade do experimento vem do path; provas de variação,
+// confirmação booleana solta e resource names não são aceitos do cliente. A intenção humana é
+// representada somente pelo contrato de autorização vinculado à operação/revisão corrente.
+export const ScheduleExperimentRoutePayloadSchema = z
+  .object({
+    authorization: MutationAuthorizationSchema,
+  })
+  .strict()
+  .refine((value) => value.authorization.operation === 'SCHEDULE_EXPERIMENT', {
+    message: 'Autorização precisa estar vinculada a SCHEDULE_EXPERIMENT',
+    path: ['authorization', 'operation'],
+  });
+export type ScheduleExperimentRoutePayload = z.infer<typeof ScheduleExperimentRoutePayloadSchema>;
+
+const ACTION_AUTHORIZATION_OPERATION = {
+  END: 'END_EXPERIMENT',
+  PROMOTE: 'PROMOTE_EXPERIMENT',
+  GRADUATE: 'GRADUATE_EXPERIMENT',
+} as const;
+
+export const ExperimentActionRoutePayloadSchema = z
+  .object({
+    action: ExperimentActionSchema,
+    reason: z.string().trim().min(1).max(500).optional(),
+    authorization: MutationAuthorizationSchema,
+  })
+  .strict()
+  .refine(
+    (value) => value.authorization.operation === ACTION_AUTHORIZATION_OPERATION[value.action],
+    {
+      message: 'Autorização não corresponde à ação solicitada',
+      path: ['authorization', 'operation'],
+    }
+  );
+export type ExperimentActionRoutePayload = z.infer<typeof ExperimentActionRoutePayloadSchema>;
+
 const ExperimentMetricPointSchema = z.object({
   impressions: z.number().int().min(0),
   clicks: z.number().int().min(0),

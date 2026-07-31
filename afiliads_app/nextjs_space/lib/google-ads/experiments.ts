@@ -554,6 +554,25 @@ function mockOperationName(config: GoogleAdsCredentials, experimentResourceName:
   return `customers/${config.customerId}/operations/mock-${label}-${googleExperimentId}`;
 }
 
+function requireLifecycleCapability(
+  config: GoogleAdsCredentials,
+  operation: 'scheduleExperiment' | 'endExperiment' | 'promoteExperiment' | 'graduateExperiment',
+  provided?: MutationCapability
+): MutationCapability {
+  if (provided) return provided;
+  const guard = assertMutationAllowed({
+    operation,
+    customerId: config.customerId,
+    isMock: false,
+    confirmed: false,
+  });
+  if (!guard.allowed) {
+    const reason = 'reason' in guard ? guard.reason : 'capability não emitida';
+    throw new Error(`Mutação bloqueada pelo guard: ${reason}`);
+  }
+  return guard.capability;
+}
+
 // Materializa a campanha de tratamento e pode começar a servir/gastar a partir de startDate —
 // é aqui que a distinção "preparar (não veicula)" vs "agendar (pode gastar)" do plano vira
 // realidade. Só permitido a partir de SETUP.
@@ -561,7 +580,8 @@ export async function scheduleExperiment(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
-  currentStatus: ExperimentStatus
+  currentStatus: ExperimentStatus,
+  capability?: MutationCapability
 ): Promise<OperationHandle> {
   if (currentStatus !== 'SETUP') {
     throw new Error(`Só é possível agendar um experimento em SETUP (status atual: ${currentStatus}).`);
@@ -571,22 +591,14 @@ export async function scheduleExperiment(
     return { operationName: mockOperationName(config, experimentResourceName, 'schedule') };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'scheduleExperiment',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
+  const mutationCapability = requireLifecycleCapability(config, 'scheduleExperiment', capability);
 
   const data = await googleAdsResourceMutateRequest(
     token,
     config,
     experimentResourceName,
     'scheduleExperiment',
-    guard.capability
+    mutationCapability
   );
   return parseOperationHandleResponse(data, 'scheduleExperiment');
 }
@@ -690,7 +702,8 @@ export async function endExperiment(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
-  currentStatus: ExperimentStatus
+  currentStatus: ExperimentStatus,
+  capability?: MutationCapability
 ): Promise<{ success: true }> {
   assertActionAllowedFromStatus('END', currentStatus);
 
@@ -698,17 +711,8 @@ export async function endExperiment(
     return { success: true };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'endExperiment',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
-
-  await googleAdsResourceMutateRequest(token, config, experimentResourceName, 'endExperiment', guard.capability);
+  const mutationCapability = requireLifecycleCapability(config, 'endExperiment', capability);
+  await googleAdsResourceMutateRequest(token, config, experimentResourceName, 'endExperiment', mutationCapability);
   return { success: true };
 }
 
@@ -719,7 +723,8 @@ export async function promoteExperiment(
   token: string,
   config: GoogleAdsCredentials,
   experimentResourceName: string,
-  currentStatus: ExperimentStatus
+  currentStatus: ExperimentStatus,
+  capability?: MutationCapability
 ): Promise<OperationHandle> {
   assertActionAllowedFromStatus('PROMOTE', currentStatus);
 
@@ -727,22 +732,14 @@ export async function promoteExperiment(
     return { operationName: mockOperationName(config, experimentResourceName, 'promote') };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'promoteExperiment',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
+  const mutationCapability = requireLifecycleCapability(config, 'promoteExperiment', capability);
 
   const data = await googleAdsResourceMutateRequest(
     token,
     config,
     experimentResourceName,
     'promoteExperiment',
-    guard.capability
+    mutationCapability
   );
   return parseOperationHandleResponse(data, 'promoteExperiment');
 }
@@ -782,7 +779,8 @@ export async function graduateExperiment(
   experimentResourceName: string,
   currentStatus: ExperimentStatus,
   experimentCampaignResourceName: string,
-  graduatedCampaignBudgetResourceName: string
+  graduatedCampaignBudgetResourceName: string,
+  capability?: MutationCapability
 ): Promise<{ success: true }> {
   assertActionAllowedFromStatus('GRADUATE', currentStatus);
 
@@ -790,22 +788,14 @@ export async function graduateExperiment(
     return { success: true };
   }
 
-  const guard = assertMutationAllowed({
-    operation: 'graduateExperiment',
-    customerId: config.customerId,
-    isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
-  });
-  if (!guard.allowed) {
-    throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
-  }
+  const mutationCapability = requireLifecycleCapability(config, 'graduateExperiment', capability);
 
   await googleAdsResourceMutateRequest(
     token,
     config,
     experimentResourceName,
     'graduateExperiment',
-    guard.capability,
+    mutationCapability,
     buildGraduateExperimentRequest(experimentResourceName, {
       experimentCampaign: experimentCampaignResourceName,
       campaignBudget: graduatedCampaignBudgetResourceName,

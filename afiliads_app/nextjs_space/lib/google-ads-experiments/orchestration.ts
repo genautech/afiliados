@@ -4,9 +4,10 @@ import { authorizeMutation, type AuthorizationContext } from '../google-ads/rout
 import { getGoogleAdsConfig } from '../google-ads';
 import { getAccessToken, isMockMode, googleAdsRequest } from '../google-ads/client';
 import { assertMutationAllowed } from '../google-ads/mutation-guard';
-import { createExperiment, createExperimentArms, applyFinalUrlVariation, pollExperimentOperation, listExperimentAsyncErrors } from '../google-ads/experiments';
+import { createExperiment, createExperimentArms, applyFinalUrlVariation, assertActionAllowedFromStatus, scheduleExperiment, endExperiment, promoteExperiment, graduateExperiment, pollExperimentOperation, listExperimentAsyncErrors } from '../google-ads/experiments';
+import { findAdGroupAdsInCampaign } from '../google-ads/ads';
 import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot, validateFallbackArms } from '../google-ads/experiment-reporting';
-import { SetupExperimentPayloadSchema, type SetupExperimentPayload } from './schemas';
+import { SetupExperimentPayloadSchema, ScheduleExperimentRoutePayloadSchema, ExperimentActionRoutePayloadSchema, type SetupExperimentPayload } from './schemas';
 import { redactSensitive } from '../google-ads/errors';
 
 export interface SetupExperimentInput {
@@ -466,7 +467,7 @@ function resolveCanonicalPayloadOrThrow(
 // COMPLETE = checkpoint local confirma sucesso; UNKNOWN = mutate lançou ou o checkpoint de
 // sucesso falhou — retry nunca pode tratar isso como "nunca tentado".
 type SagaStepState = 'PENDING' | 'IN_FLIGHT' | 'COMPLETE' | 'UNKNOWN';
-type SagaStep = 'experiment' | 'arms' | 'variation';
+type SagaStep = 'experiment' | 'arms' | 'variation' | 'schedule' | 'promote' | 'end' | 'graduate';
 
 function getSagaState(cfg: Record<string, any> | null, step: SagaStep): SagaStepState | undefined {
   return cfg?.saga?.[step];
@@ -1101,6 +1102,344 @@ export async function getExperimentDetail(id: string, userId: string, deps?: any
   }
 
   return toExperimentDetailDTO(exp);
+}
+
+interface ScheduleLifecycleInput {
+  id: string;
+  userId: string;
+  payload: unknown;
+  deps?: {
+    prisma?: any;
+    checkReadiness?: typeof checkGoogleAdsReadiness;
+    readinessDeps?: any;
+    getAdsConfig?: typeof getGoogleAdsConfig;
+    getAccessToken?: typeof getAccessToken;
+    token?: string;
+    isMock?: boolean;
+    assertMutationAllowed?: typeof assertMutationAllowed;
+    scheduleExperiment?: typeof scheduleExperiment;
+    verifyTreatmentFinalUrl?: (
+      token: string,
+      config: any,
+      campaignResourceName: string,
+      expectedFinalUrl: string
+    ) => Promise<boolean>;
+  };
+}
+
+function defaultReadinessDependencies(prismaClient: any, userId: string) {
+  return {
+    findCampaign: (id: string, uid: string) => prismaClient.campaign.findFirst({ where: { id, userId: uid }, include: { keywords: true } }),
+    findChecklists: (campaignId: string) => prismaClient.campaignChecklist.findMany({ where: { campaignId, step: { not: 9 } } }),
+    getAdsConfig: (uid: string) => getGoogleAdsConfig(uid),
+    findProduct: (id: string) => prismaClient.productResearch.findFirst({ where: { id, userId } }),
+  };
+}
+
+function assertExperimentResourceForCustomer(resourceName: unknown, customerId: string): asserts resourceName is string {
+  const match = typeof resourceName === 'string' ? /^customers\/(\d+)\/experiments\/(\d+)$/.exec(resourceName) : null;
+  if (!match || match[1] !== customerId) {
+    throw { status: 422, message: 'Identidade remota do experimento inválida ou divergente do customer' };
+  }
+}
+
+function assertOperationResourceForCustomer(operationName: unknown, customerId: string): asserts operationName is string {
+  const match = typeof operationName === 'string'
+    ? /^customers\/(\d+)\/operations\/([A-Za-z0-9._~-]+)$/.exec(operationName)
+    : null;
+  if (!match || match[1] !== customerId) {
+    throw new Error('Operation resource name inválido ou divergente do customer');
+  }
+}
+
+export async function scheduleExperimentLifecycle({ id, userId, payload, deps }: ScheduleLifecycleInput) {
+  const parsed = ScheduleExperimentRoutePayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw { status: 400, message: redactSensitive(`Payload inválido: ${parsed.error.errors[0]?.message || 'schema'}`) };
+  }
+
+  const prismaClient = deps?.prisma ?? prisma;
+  let experiment = await prismaClient.googleAdsExperiment.findFirst({
+    where: { id, userId },
+    include: { arms: { orderBy: { isControl: 'desc' } }, operations: { orderBy: { startedAt: 'desc' } } },
+  });
+  if (!experiment) throw { status: 404, message: 'Experimento não encontrado' };
+
+  const configBefore = asConfigObject(experiment.variationConfig) ?? {};
+  const existingLifecycle = asConfigObject(configBefore.lifecycle)?.schedule as any;
+  const authorizationRevision = existingLifecycle?.idempotencyKey === parsed.data.authorization.idempotencyKey && typeof existingLifecycle?.authorizedRevision === 'string'
+    ? existingLifecycle.authorizedRevision
+    : safeISO(experiment.updatedAt);
+  if (!authorizationRevision) throw { status: 409, message: 'Revisão do experimento indisponível' };
+  try {
+    authorizeMutation(parsed.data.authorization, 'SCHEDULE_EXPERIMENT', experiment.id, authorizationRevision, userId, experiment.userId);
+  } catch (error: any) {
+    throw { status: 400, message: redactSensitive(error?.message || 'Falha de autorização') };
+  }
+
+  if (existingLifecycle) {
+    if (existingLifecycle.idempotencyKey !== parsed.data.authorization.idempotencyKey) throw { status: 409, message: 'Conflito de idempotência no agendamento' };
+    if (existingLifecycle.state === 'COMPLETE' && typeof existingLifecycle.operationName === 'string') {
+      const operation = (experiment.operations || []).find((item: any) => item.operationName === existingLifecycle.operationName)
+        ?? { operationName: existingLifecycle.operationName, status: 'PENDING', operationType: 'SCHEDULE' };
+      return { success: true, mock: deps?.isMock ?? false, experiment: toExperimentDTO(experiment), operation, warnings: [] };
+    }
+    if (existingLifecycle.state === 'IN_FLIGHT' || existingLifecycle.state === 'UNKNOWN') {
+      throw { status: 409, message: 'Agendamento anterior possui resultado remoto inconclusivo; sincronize antes de repetir' };
+    }
+  }
+
+  if (experiment.status !== 'SETUP') throw { status: 409, message: `Experimento não pode ser agendado a partir de ${experiment.status}` };
+  const proof = asConfigObject(configBefore.proof);
+  const treatmentArm = (experiment.arms || []).find((arm: any) => !arm.isControl);
+  if (proof?.verified !== true || !treatmentArm || typeof treatmentArm.finalUrl !== 'string' || proof.finalUrl !== treatmentArm.finalUrl) {
+    throw { status: 422, message: 'Variação de tratamento não possui prova persistida e consistente' };
+  }
+
+  const adsConfig = await (deps?.getAdsConfig ?? getGoogleAdsConfig)(userId);
+  if (!adsConfig) throw { status: 422, message: 'Configuração do Google Ads não encontrada' };
+  const mock = deps?.isMock ?? isMockMode(adsConfig);
+  const token = deps?.token ?? (mock ? 'mock_access_token_123' : await (deps?.getAccessToken ?? getAccessToken)(adsConfig));
+  assertExperimentResourceForCustomer(experiment.resourceName, adsConfig.customerId);
+
+  const treatmentCampaignResourceName = treatmentArm.inDesignCampaignResourceName;
+  const treatmentCampaignMatch = typeof treatmentCampaignResourceName === 'string'
+    ? /^customers\/(\d+)\/campaigns\/(\d+)$/.exec(treatmentCampaignResourceName)
+    : null;
+  if (!treatmentCampaignMatch || treatmentCampaignMatch[1] !== adsConfig.customerId) {
+    throw { status: 422, message: 'Identidade da campanha treatment inválida ou divergente do customer' };
+  }
+  const verifyTreatmentFinalUrl = deps?.verifyTreatmentFinalUrl ?? (async (
+    accessToken: string,
+    config: any,
+    campaignResourceName: string,
+    expectedFinalUrl: string
+  ) => {
+    const ads = await findAdGroupAdsInCampaign(accessToken, config, campaignResourceName);
+    return ads.length > 0 && ads.every((ad) =>
+      Array.isArray(ad.finalUrls) &&
+      ad.finalUrls.length > 0 &&
+      ad.finalUrls.every((url) => url === expectedFinalUrl)
+    );
+  });
+  const approvedUrlUnchanged = mock
+    ? true
+    : await verifyTreatmentFinalUrl(token, adsConfig, treatmentCampaignResourceName, treatmentArm.finalUrl);
+  if (!approvedUrlUnchanged) {
+    throw { status: 422, message: 'A URL remota da campanha treatment diverge da variação aprovada' };
+  }
+
+  const checkReadiness = deps?.checkReadiness ?? checkGoogleAdsReadiness;
+  const readinessDeps = {
+    ...(deps?.readinessDeps ?? defaultReadinessDependencies(prismaClient, userId)),
+    verifyApprovedUrlUnchanged: async () => approvedUrlUnchanged,
+  };
+  const readiness = await checkReadiness(experiment.campaignId, userId, 'SCHEDULE', readinessDeps);
+  if (!readiness.ready) throw { status: 422, message: redactSensitive(readiness.errors?.[0] || 'Readiness de agendamento falhou') };
+
+  const guard = (deps?.assertMutationAllowed ?? assertMutationAllowed)({ operation: 'scheduleExperiment', customerId: adsConfig.customerId, isMock: mock, confirmed: true });
+  if (!guard.allowed || !(guard as any).capability || (guard as any).capability.operation !== 'scheduleExperiment') {
+    throw { status: 502, message: redactSensitive(`Mutação bloqueada (schedule): ${(guard as any).reason || 'capability inválida'}`) };
+  }
+
+  const lifecycle = {
+    ...(asConfigObject(configBefore.lifecycle) ?? {}),
+    schedule: { idempotencyKey: parsed.data.authorization.idempotencyKey, authorizedRevision: authorizationRevision, state: 'IN_FLIGHT' },
+  };
+  const claim = await claimSagaStep(prismaClient, experiment, 'schedule', { lifecycle });
+  if (!claim.claimed) throw { status: 409, message: 'Agendamento já foi reivindicado por outra requisição' };
+  experiment = claim.experiment;
+
+  let handle: Awaited<ReturnType<typeof scheduleExperiment>>;
+  try {
+    handle = await (deps?.scheduleExperiment ?? scheduleExperiment)(token, adsConfig, experiment.resourceName, 'SETUP', (guard as any).capability);
+    assertOperationResourceForCustomer(handle.operationName, adsConfig.customerId);
+  } catch (error: any) {
+    const message = redactSensitive(error?.message || 'Falha externa ao agendar experimento');
+    const claimedConfig = asConfigObject(experiment.variationConfig) ?? {};
+    const failedConfig = {
+      ...claimedConfig,
+      lifecycle: { ...(asConfigObject(claimedConfig.lifecycle) ?? {}), schedule: { ...lifecycle.schedule, state: 'UNKNOWN' } },
+      saga: { ...(asConfigObject(claimedConfig.saga) ?? {}), schedule: 'UNKNOWN' },
+    };
+    await prismaClient.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: failedConfig, lastError: message } });
+    throw { status: 502, message };
+  }
+
+  const claimedConfig = asConfigObject(experiment.variationConfig) ?? {};
+  const completedConfig = {
+    ...claimedConfig,
+    lifecycle: { ...(asConfigObject(claimedConfig.lifecycle) ?? {}), schedule: { ...lifecycle.schedule, state: 'COMPLETE', operationName: handle.operationName } },
+    saga: { ...(asConfigObject(claimedConfig.saga) ?? {}), schedule: 'COMPLETE' },
+  };
+  const persisted = await prismaClient.$transaction(async (tx: any) => {
+    const operation = await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'SCHEDULE', operationName: handle.operationName, status: 'PENDING' } });
+    const updated = await tx.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: completedConfig, lastError: null } });
+    return { operation, updated };
+  });
+  return { success: true, mock, experiment: toExperimentDTO({ ...experiment, ...persisted.updated }), operation: persisted.operation, warnings: readiness.warnings || [] };
+}
+
+interface ExperimentActionLifecycleInput {
+  id: string;
+  userId: string;
+  payload: unknown;
+  deps?: {
+    prisma?: any;
+    getAdsConfig?: typeof getGoogleAdsConfig;
+    getAccessToken?: typeof getAccessToken;
+    token?: string;
+    isMock?: boolean;
+    assertMutationAllowed?: typeof assertMutationAllowed;
+    endExperiment?: typeof endExperiment;
+    promoteExperiment?: typeof promoteExperiment;
+    graduateExperiment?: typeof graduateExperiment;
+    resolveGraduateBudgetMapping?: (experiment: any) => Promise<{
+      experimentCampaignResourceName: string;
+      campaignBudgetResourceName: string;
+    } | null>;
+  };
+}
+
+const ACTION_CONTRACT = {
+  END: { authorization: 'END_EXPERIMENT', transport: 'endExperiment', saga: 'end', terminalStatus: 'ENDED' },
+  PROMOTE: { authorization: 'PROMOTE_EXPERIMENT', transport: 'promoteExperiment', saga: 'promote', terminalStatus: null },
+  GRADUATE: { authorization: 'GRADUATE_EXPERIMENT', transport: 'graduateExperiment', saga: 'graduate', terminalStatus: 'GRADUATED' },
+} as const;
+
+export async function runExperimentAction({ id, userId, payload, deps }: ExperimentActionLifecycleInput) {
+  const parsed = ExperimentActionRoutePayloadSchema.safeParse(payload);
+  if (!parsed.success) throw { status: 400, message: redactSensitive(`Payload inválido: ${parsed.error.errors[0]?.message || 'schema'}`) };
+  const { action, authorization } = parsed.data;
+  const contract = ACTION_CONTRACT[action];
+  const prismaClient = deps?.prisma ?? prisma;
+  let experiment = await prismaClient.googleAdsExperiment.findFirst({
+    where: { id, userId },
+    include: { arms: { orderBy: { isControl: 'desc' } }, operations: { orderBy: { startedAt: 'desc' } } },
+  });
+  if (!experiment) throw { status: 404, message: 'Experimento não encontrado' };
+
+  const cfg = asConfigObject(experiment.variationConfig) ?? {};
+  const lifecycleRoot = asConfigObject(cfg.lifecycle) ?? {};
+  const existing = lifecycleRoot[contract.saga] as any;
+  const revision = existing?.idempotencyKey === authorization.idempotencyKey && typeof existing?.authorizedRevision === 'string'
+    ? existing.authorizedRevision
+    : safeISO(experiment.updatedAt);
+  if (!revision) throw { status: 409, message: 'Revisão do experimento indisponível' };
+  try {
+    authorizeMutation(authorization, contract.authorization, experiment.id, revision, userId, experiment.userId);
+  } catch (error: any) {
+    throw { status: 400, message: redactSensitive(error?.message || 'Falha de autorização') };
+  }
+
+  if (existing) {
+    if (existing.idempotencyKey !== authorization.idempotencyKey) throw { status: 409, message: `Conflito de idempotência em ${action}` };
+    if (existing.state === 'COMPLETE') {
+      const operation = existing.operationName
+        ? (experiment.operations || []).find((item: any) => item.operationName === existing.operationName)
+          ?? { operationName: existing.operationName, status: 'PENDING', operationType: action }
+        : undefined;
+      return { success: true, mock: deps?.isMock ?? false, experiment: toExperimentDTO(experiment), ...(operation ? { operation } : {}), warnings: [] };
+    }
+    if (existing.state === 'IN_FLIGHT' || existing.state === 'UNKNOWN') {
+      throw { status: 409, message: `${action} anterior possui resultado remoto inconclusivo; sincronize antes de repetir` };
+    }
+  }
+
+  try {
+    assertActionAllowedFromStatus(action, experiment.status);
+  } catch (error: any) {
+    throw { status: 409, message: redactSensitive(error?.message || 'Ação incompatível com o estado atual') };
+  }
+
+  let graduateMapping: { experimentCampaignResourceName: string; campaignBudgetResourceName: string } | null = null;
+  if (action === 'GRADUATE') {
+    if (!deps?.resolveGraduateBudgetMapping) {
+      throw { status: 422, message: 'GRADUATE bloqueado: budget mapping server-side não está disponível' };
+    }
+    graduateMapping = await deps.resolveGraduateBudgetMapping(experiment);
+    if (!graduateMapping) throw { status: 422, message: 'GRADUATE bloqueado: budget mapping não pôde ser comprovado' };
+  }
+
+  const adsConfig = await (deps?.getAdsConfig ?? getGoogleAdsConfig)(userId);
+  if (!adsConfig) throw { status: 422, message: 'Configuração do Google Ads não encontrada' };
+  const mock = deps?.isMock ?? isMockMode(adsConfig);
+  const token = deps?.token ?? (mock ? 'mock_access_token_123' : await (deps?.getAccessToken ?? getAccessToken)(adsConfig));
+  assertExperimentResourceForCustomer(experiment.resourceName, adsConfig.customerId);
+  if (graduateMapping) {
+    const campaignMatch = /^customers\/(\d+)\/campaigns\/(\d+)$/.exec(graduateMapping.experimentCampaignResourceName);
+    const budgetMatch = /^customers\/(\d+)\/campaignBudgets\/(\d+)$/.exec(graduateMapping.campaignBudgetResourceName);
+    if (!campaignMatch || !budgetMatch || campaignMatch[1] !== adsConfig.customerId || budgetMatch[1] !== adsConfig.customerId) {
+      throw { status: 422, message: 'Budget mapping de GRADUATE possui identidade inválida' };
+    }
+  }
+
+  const guard = (deps?.assertMutationAllowed ?? assertMutationAllowed)({
+    operation: contract.transport,
+    customerId: adsConfig.customerId,
+    isMock: mock,
+    confirmed: true,
+  });
+  if (!guard.allowed || !(guard as any).capability || (guard as any).capability.operation !== contract.transport) {
+    throw { status: 502, message: redactSensitive(`Mutação bloqueada (${action}): ${(guard as any).reason || 'capability inválida'}`) };
+  }
+
+  const lifecycle = {
+    ...lifecycleRoot,
+    [contract.saga]: { idempotencyKey: authorization.idempotencyKey, authorizedRevision: revision, state: 'IN_FLIGHT', reason: parsed.data.reason },
+  };
+  const claim = await claimSagaStep(prismaClient, experiment, contract.saga, { lifecycle });
+  if (!claim.claimed) throw { status: 409, message: `${action} já foi reivindicada por outra requisição` };
+  experiment = claim.experiment;
+
+  let operationName: string | undefined;
+  try {
+    if (action === 'END') {
+      await (deps?.endExperiment ?? endExperiment)(token, adsConfig, experiment.resourceName, experiment.status, (guard as any).capability);
+    } else if (action === 'PROMOTE') {
+      const handle = await (deps?.promoteExperiment ?? promoteExperiment)(token, adsConfig, experiment.resourceName, experiment.status, (guard as any).capability);
+      assertOperationResourceForCustomer(handle.operationName, adsConfig.customerId);
+      operationName = handle.operationName;
+    } else {
+      await (deps?.graduateExperiment ?? graduateExperiment)(
+        token,
+        adsConfig,
+        experiment.resourceName,
+        experiment.status,
+        graduateMapping!.experimentCampaignResourceName,
+        graduateMapping!.campaignBudgetResourceName,
+        (guard as any).capability
+      );
+    }
+  } catch (error: any) {
+    const message = redactSensitive(error?.message || `Falha externa em ${action}`);
+    const claimedCfg = asConfigObject(experiment.variationConfig) ?? {};
+    const failedCfg = {
+      ...claimedCfg,
+      lifecycle: { ...(asConfigObject(claimedCfg.lifecycle) ?? {}), [contract.saga]: { ...lifecycle[contract.saga], state: 'UNKNOWN' } },
+      saga: { ...(asConfigObject(claimedCfg.saga) ?? {}), [contract.saga]: 'UNKNOWN' },
+    };
+    await prismaClient.googleAdsExperiment.update({ where: { id: experiment.id }, data: { variationConfig: failedCfg, lastError: message } });
+    throw { status: 502, message };
+  }
+
+  const claimedCfg = asConfigObject(experiment.variationConfig) ?? {};
+  const completedCfg = {
+    ...claimedCfg,
+    lifecycle: { ...(asConfigObject(claimedCfg.lifecycle) ?? {}), [contract.saga]: { ...lifecycle[contract.saga], state: 'COMPLETE', ...(operationName ? { operationName } : {}) } },
+    saga: { ...(asConfigObject(claimedCfg.saga) ?? {}), [contract.saga]: 'COMPLETE' },
+  };
+  const persisted = await prismaClient.$transaction(async (tx: any) => {
+    const operation = operationName
+      ? await tx.googleAdsExperimentOperation.create({ data: { experimentId: experiment.id, operationType: 'PROMOTE', operationName, status: 'PENDING' } })
+      : undefined;
+    const updated = await tx.googleAdsExperiment.update({
+      where: { id: experiment.id },
+      data: { variationConfig: completedCfg, lastError: null, ...(contract.terminalStatus ? { status: contract.terminalStatus } : {}) },
+    });
+    return { operation, updated };
+  });
+  return { success: true, mock, experiment: toExperimentDTO({ ...experiment, ...persisted.updated }), ...(persisted.operation ? { operation: persisted.operation } : {}), warnings: [] };
 }
 
 export async function syncExperiment(id: string, userId: string, deps?: any) {
