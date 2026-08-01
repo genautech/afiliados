@@ -7,7 +7,7 @@ const nextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   experimental: {
-    outputFileTracingRoot: path.join(__dirname, '../'),
+    outputFileTracingRoot: path.join(__dirname, './'),
     instrumentationHook: true,
     serverComponentsExternalPackages: ['google-auth-library', 'gaxios', 'agent-base', 'https-proxy-agent', 'basic-ftp'],
   },

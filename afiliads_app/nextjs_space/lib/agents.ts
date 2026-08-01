@@ -196,6 +196,21 @@ export const AGENT_REGISTRY: AgentDef[] = [
     },
   },
   {
+    id: 'bridge-page-validator',
+    name: 'Bridge Page Validator',
+    role: 'Validação independente de bridge pages',
+    description: 'Revisa o artefato gerado por outro agente: continuidade anúncio→bridge→sales page, CTA único, compliance, divulgação de afiliado e completude estrutural. Usa um modelo independente do gerador para reduzir aprovação enviesada.',
+    route: '/api/orchestrate-agent-task',
+    page: '/estrategia',
+    pageLabel: 'Estratégia de Bridge Page',
+    skills: ['Revisão Independente', 'Compliance Google Ads', 'Continuidade da Jornada'],
+    testTask: {
+      describe: 'Valida uma bridge page com claim absoluto e CTA confuso',
+      systemPrompt: 'Você é o Bridge Page Validator do AfiliAds. Reprove claims absolutos e jornadas com múltiplos CTAs. Responda APENAS JSON válido.',
+      userPrompt: 'Artefato: "Cure seu problema agora! Clique para comprar ou assine nossa newsletter". Retorne JSON: {"approved":true|false,"score":0-100,"issues":["..."],"recommendations":["..."]}',
+    },
+  },
+  {
     id: 'wizard-validator',
     name: 'Wizard Validator',
     role: 'Validação de campos da nova campanha',

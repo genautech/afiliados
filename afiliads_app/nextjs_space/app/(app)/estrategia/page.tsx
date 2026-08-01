@@ -103,6 +103,7 @@ export default function EstrategiaPage() {
       setError('É necessário um Product ID para despachar tarefas do agente.');
       return;
     }
+    const artifact = taskType === 'validate' ? agentTaskResult?.draft : undefined;
     setLoadingAgentTask(true);
     setAgentTaskResult(null);
     setError(null);
@@ -112,7 +113,9 @@ export default function EstrategiaPage() {
         bridgePageType,
         `${taskType === 'generate' ? 'Gerar' : 'Validar'} ${bridgePageType} para o produto. Contexto: ${context}`,
         productId,
-        // campaignId, // campaignId opcional se disponível
+        taskType,
+        undefined, // campaignId opcional se disponível
+        artifact,
       );
       setAgentTaskResult(result);
     } catch (err: any) {
@@ -164,13 +167,25 @@ export default function EstrategiaPage() {
         <div className="bg-white p-6 rounded-lg shadow-md mb-6">
           <h2 className="text-xl font-semibold mb-3">Resultados da Análise da Página de Vendas</h2>
           <p><strong>URL:</strong> {analysisResult.url}</p>
-          <p><strong>Tipo Detectado:</strong> {analysisResult.salesPageType}</p>
-          <h3 className="text-lg font-medium mt-3">Características:</h3>
-          <ul className="list-disc pl-5">
+          <p className="text-lg mb-2">
+            <strong>Tipo Detectado:</strong> <span className="font-bold text-blue-600">{analysisResult.salesPageType}</span>
+          </p>
+          <h3 className="text-lg font-medium mt-3 mb-2">Características:</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {Object.entries(analysisResult.characteristics).map(([key, value]) => (
-              <li key={key}><strong>{key}:</strong> {String(value)}</li>
+              <div
+                key={key}
+                className={`p-3 rounded-lg flex items-center justify-between text-sm ${
+                  value
+                    ? 'bg-green-100 text-green-800 border border-green-200'
+                    : 'bg-red-100 text-red-800 border border-red-200'
+                }`}
+              >
+                <span className="font-medium">{key}:</span>
+                <span className="font-bold">{String(value).toUpperCase()}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
@@ -215,6 +230,11 @@ export default function EstrategiaPage() {
               {agentTaskResult.draft && (
                 <pre className="mt-2 bg-white border border-gray-300 rounded p-3 text-xs overflow-auto max-h-96">
                   {JSON.stringify(agentTaskResult.draft, null, 2)}
+                </pre>
+              )}
+              {agentTaskResult.validation && (
+                <pre className="mt-2 bg-white border border-gray-300 rounded p-3 text-xs overflow-auto max-h-96">
+                  {JSON.stringify(agentTaskResult.validation, null, 2)}
                 </pre>
               )}
             </div>

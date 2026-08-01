@@ -1,5 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { SalesPageType } from '@/lib/salesPageAnalyzer';
 
 const prisma = new PrismaClient();
 
@@ -66,7 +67,93 @@ async function main() {
       create: { ...o, userId },
     });
   }
-  console.log('Offers seeded:', offers.length);
+  console.log("Offers seeded:", offers.length);
+
+  // ==================== PRODUCT RESEARCH ====================
+  const productResearchData = [
+    {
+      name: "FemiCore - Healthy Weight Loss",
+      network: "ClickBank",
+      vertical: "Weight Loss",
+      gravity: 250.0,
+      avgPayout: 65.0,
+      commissionPct: "75%",
+      conversionRate: "2.5%",
+      rebill: true,
+      score: 85,
+      riskLevel: "baixo",
+      source: "manual",
+      summary: "FemiCore é um suplemento natural para perda de peso focado em mulheres acima dos 40.",
+      hopLink: "https://hop.clickbank.net/?affiliate=YOURID&vendor=FEMICORE",
+      affiliatePageUrl: "https://femicore.com/affiliates",
+      salesPageType: 'VSL', // Definido para teste
+      avgConversionRate: 2.5,
+      avgEpc: 1.20,
+      confirmedAt: new Date(),
+      status: 'novo', // Adicionado campo status com default para testes
+      chosenKeyword: '', // Adicionado campo chosenKeyword com default para testes
+    },
+    {
+      name: 'BioEnergy - Suplemento para Vitalidade',
+      network: 'ClickBank',
+      vertical: 'Energy & Vitality',
+      gravity: 180.0,
+      avgPayout: 45.0,
+      commissionPct: '60%',
+      conversionRate: '1.8%',
+      rebill: false,
+      score: 70,
+      riskLevel: 'medio',
+      source: 'ia',
+      summary: 'BioEnergy é um suplemento que promete aumentar a energia e o bem-estar geral.',
+      hopLink: 'https://hop.clickbank.net/?affiliate=YOURID&vendor=BIOENERGY',
+      affiliatePageUrl: 'https://bioenergy.com/affiliates',
+      salesPageType: 'DIRECT', // Definido para teste
+      avgConversionRate: 1.8,
+      avgEpc: 0.80,
+      confirmedAt: new Date(),
+      status: 'novo', // Adicionado campo status com default para testes
+      chosenKeyword: '', // Adicionado campo chosenKeyword com default para testes
+    },
+  ];
+
+  const productResearchMap: Record<string, string> = {};
+  for (const p of productResearchData) {
+    const data: Prisma.ProductResearchCreateInput = {
+      user: { connect: { id: userId } },
+      name: p.name,
+      network: p.network,
+      vertical: p.vertical,
+      gravity: p.gravity,
+      avgPayout: p.avgPayout,
+      commissionPct: p.commissionPct,
+      conversionRate: p.conversionRate,
+      rebill: p.rebill,
+      score: p.score,
+      riskLevel: p.riskLevel,
+      source: p.source,
+      summary: p.summary,
+      hopLink: p.hopLink,
+      affiliatePageUrl: p.affiliatePageUrl,
+      salesPageType: p.salesPageType as SalesPageType,
+      avgConversionRate: p.avgConversionRate,
+      avgEpc: p.avgEpc,
+      confirmedAt: p.confirmedAt,
+      status: p.status,
+      chosenKeyword: p.chosenKeyword,
+    };
+
+    const existing = await prisma.productResearch.findFirst({ where: { userId, name: p.name } });
+    if (existing) {
+      // For update, the data can be partial, but here we provide all fields
+      await prisma.productResearch.update({ where: { id: existing.id }, data: data });
+      productResearchMap[p.name] = existing.id;
+    } else {
+      const created = await prisma.productResearch.create({ data: data });
+      productResearchMap[p.name] = created.id;
+    }
+  }
+  console.log("ProductResearch seeded:", productResearchData.length);
 
   // ==================== CAMPANHAS ====================
   const campaignsData = [

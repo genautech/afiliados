@@ -4,7 +4,9 @@ export async function dispatchAgentTask(
   bridgePageType: BridgePageType,
   context: string,
   productId: string,
+  taskType: 'generate' | 'validate' = 'generate',
   campaignId?: string,
+  artifact?: unknown,
 ): Promise<any> {
   console.log(`Dispatching agent task for Bridge Page Type: ${bridgePageType}`);
   console.log(`Context: ${context}`);
@@ -21,10 +23,12 @@ export async function dispatchAgentTask(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        taskType,
         bridgePageType,
         context,
         productId,
         campaignId,
+        artifact,
       }),
     });
 

@@ -200,11 +200,14 @@ export const ExperimentReportSchema = z.object({
   metricsValid: z.boolean(),
   control: ExperimentMetricPointSchema,
   treatment: ExperimentMetricPointSchema,
-  statistics: z.record(ExperimentStatisticSchema),
+  statistics: z.record(ExperimentStatisticSchema), // Adicionado
   hasSignificantResult: z.boolean(),
   feasibility: ExperimentFeasibilitySchema,
   summary: z.string(),
-});
+  campaignId: z.string().min(1), // Adicionado (Assumindo que viria um campaignId no Report)
+  startDate: z.string().regex(ISO_DATE, 'startDate precisa ser YYYY-MM-DD'), // Adicionado
+  endDate: z.string().regex(ISO_DATE, 'endDate precisa ser YYYY-MM-DD'),   // Adicionado
+}).describe('Canonical schema for Google Ads API Experiment resource report (v25) - developers.google.com/google-ads/api/fields/v25/experiment_query_builder');
 export type ExperimentReport = z.infer<typeof ExperimentReportSchema>;
 
 // startDate precisa ser futura — depende de relógio, por isso fica fora do Zod acima (schema

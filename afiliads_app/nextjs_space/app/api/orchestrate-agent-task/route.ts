@@ -28,15 +28,39 @@ Responda APENAS JSON:
 }
 Preencha "perguntas"+"pagina_resultado" para QUIZ_FUNNEL, ou "lead_magnet" para LEAD_GEN_PAGE — deixe o outro bloco como array/objeto vazio.`;
 
+const VALIDATOR_PROMPT = `Você é o Bridge Page Validator do AfiliAds. Você é independente do agente gerador e deve reprovar artefatos inseguros ou incoerentes.
+
+Avalie obrigatoriamente:
+- continuidade lógica anúncio → bridge page → sales page;
+- CTA único, claro e compatível com o tipo de página;
+- claims de saúde/renda, garantias, urgência falsa e linguagem manipulativa;
+- divulgação de afiliado, contexto editorial e adequação ao Google Ads;
+- completude estrutural para o tipo informado.
+
+Responda APENAS JSON:
+{"approved":true|false,"score":0-100,"issues":["..."],"recommendations":["..."]}`;
+
+function validateBridgeReview(data: any): string | null {
+  if (!data || typeof data !== 'object') return 'JSON de validação ausente';
+  if (typeof data.approved !== 'boolean') return 'approved deve ser boolean';
+  if (typeof data.score !== 'number' || data.score < 0 || data.score > 100) return 'score deve estar entre 0 e 100';
+  if (!Array.isArray(data.issues)) return 'issues deve ser array';
+  if (!Array.isArray(data.recommendations)) return 'recommendations deve ser array';
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const userId = (session.user as any)?.id as string;
 
-    const { bridgePageType, context, productId, campaignId } = await req.json();
+    const { taskType = 'generate', bridgePageType, context, productId, campaignId, artifact } = await req.json();
     if (!bridgePageType || !context || !productId) {
       return NextResponse.json({ error: 'bridgePageType, context, and productId are required' }, { status: 400 });
+    }
+    if (taskType !== 'generate' && taskType !== 'validate') {
+      return NextResponse.json({ error: 'taskType deve ser generate ou validate' }, { status: 400 });
     }
 
     const product = await prisma.productResearch.findFirst({ where: { id: productId, userId } });
@@ -48,6 +72,43 @@ export async function POST(req: NextRequest) {
       const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId } });
       trackingId = campaign?.utmCampaign ?? undefined;
       channel = campaign?.channel ?? undefined;
+    }
+
+    if (taskType === 'validate') {
+      let contentToValidate = artifact;
+      if (!contentToValidate) {
+        contentToValidate = await prisma.presell.findFirst({
+          where: {
+            userId,
+            productId,
+            ...(campaignId ? { campaignId } : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, title: true, pageType: true, html: true, content: true },
+        });
+      }
+      if (!contentToValidate) {
+        return NextResponse.json({ error: 'Nenhum artefato ou rascunho encontrado para validar' }, { status: 422 });
+      }
+
+      const serializedArtifact = JSON.stringify(contentToValidate).slice(0, 30_000);
+      const res = await callAgent(userId, {
+        agent: 'bridge-page-validator',
+        campaignId,
+        systemPrompt: VALIDATOR_PROMPT,
+        userPrompt: `Produto: ${product.name} | Vertical: ${product.vertical}\nTipo: ${bridgePageType}\nContexto: ${context}\nArtefato:\n${serializedArtifact}`,
+        json: true,
+        validate: validateBridgeReview,
+      });
+      return NextResponse.json({
+        success: true,
+        message: `Validação independente concluída com score ${res.data.score}/100.`,
+        dispatchedAgent: 'bridge-page-validator',
+        validation: res.data,
+        usage: res.usage,
+        provider: res.provider,
+        model: res.model,
+      });
     }
 
     if (bridgePageType === BridgePageType.POGO || bridgePageType === BridgePageType.ADVERTORIAL) {

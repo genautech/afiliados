@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { recommendBridgePage, BridgePageType } from '@/lib/bridgePageRecommender';
 import { SalesPageType } from '@/lib/salesPageAnalyzer';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    const userId = (session.user as any)?.id;
+
     const { productId, campaignId, salesPageType: salesPageTypeString } = await req.json();
 
     if (!productId || !salesPageTypeString) {
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
     let campaign = null;
     if (campaignId) {
       campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
+        where: { id: campaignId, userId },
       });
     }
 
@@ -38,6 +44,7 @@ export async function POST(req: NextRequest) {
     // Salvar a recomendação no banco de dados
     const savedRecommendation = await prisma.bridgePageStrategyRecommendation.create({
       data: {
+
         productId: product.id,
         campaignId: campaign?.id,
         recommendedType: recommendation.recommendedType,

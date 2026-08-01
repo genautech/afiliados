@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: 'Parâmetros step e itemKey são obrigatórios' }, { status: 400 });
     }
 
-    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, include: { keywords: true } });
+    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, include: { productResearch: true, keywords: true } });
     if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
 
     const checklistRow = await prisma.campaignChecklist.findUnique({
@@ -62,9 +62,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const scope = STEP_SCOPE[step] ?? 'outro';
-    const linkedPresell = await prisma.presell.findFirst({ where: { campaignId }, orderBy: { createdAt: 'desc' }, select: { slug: true } });
+    const linkedPresell = await prisma.presell.findFirst({ where: { productId: campaign.productResearchId }, orderBy: { createdAt: 'desc' }, select: { slug: true } });
     const context = {
-      vertical: campaign.vertical, channel: campaign.channel, platform: campaign.platform, pageType: campaign.pageType,
+      vertical: campaign.vertical, channel: campaign.channel, platform: campaign.platform, pageType: campaign.productResearch?.salesPageType,
       // Infra REAL do usuário — o diagnóstico nunca deve sugerir hospedagem de terceiro
       // (Netlify, Vercel, Wix etc.) que não é o que o usuário de fato usa; ver instrução no
       // systemPrompt do ramo genérico abaixo.
@@ -110,7 +110,7 @@ JSON puro.`;
           await prisma.checklistLearning.create({
             data: {
               userId, itemKey, scope, vertical: campaign.vertical, channel: campaign.channel,
-              platform: campaign.platform, pageType: campaign.pageType,
+              platform: campaign.platform, pageType: campaign.productResearch?.salesPageType,
               problem: failureNote,
               correction: `Campo "${fieldMapping.field}" corrigido para: ${suggested}`,
               appliesGlobally: true,
@@ -152,7 +152,7 @@ JSON puro.`;
       await prisma.checklistLearning.create({
         data: {
           userId, itemKey, scope, vertical: campaign.vertical, channel: campaign.channel,
-          platform: campaign.platform, pageType: campaign.pageType,
+          platform: campaign.platform, pageType: campaign.productResearch?.salesPageType,
           problem: failureNote,
           correction,
           appliesGlobally: true,

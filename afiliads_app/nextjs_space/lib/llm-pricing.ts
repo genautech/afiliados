@@ -29,6 +29,9 @@ const MODEL_PRICES: Array<{ match: string; price: ModelPrice }> = [
   { match: 'grok-4.20-reasoning', price: { inputPer1M: 1.25, outputPer1M: 2.5 } },
   { match: 'grok-4.1-fast', price: { inputPer1M: 0.2, outputPer1M: 0.5 } },
   { match: 'grok', price: { inputPer1M: 0.2, outputPer1M: 0.5 } },
+  // Kimi/Moonshot — preços sem cache da documentação oficial (2026-07)
+  { match: 'kimi-k2.5', price: { inputPer1M: 0.6, outputPer1M: 3 } },
+  { match: 'kimi-k3', price: { inputPer1M: 3, outputPer1M: 15 } },
   // Ollama (local ou cloud) — sem custo por token
   { match: 'gpt-oss', price: { inputPer1M: 0, outputPer1M: 0 } },
 ];
@@ -41,6 +44,7 @@ const PROVIDER_DEFAULTS: Record<string, ModelPrice> = {
   grok: { inputPer1M: 0.2, outputPer1M: 0.5 },
   ollama: { inputPer1M: 0, outputPer1M: 0 },
   abacusai: { inputPer1M: 0.15, outputPer1M: 0.6 },
+  kimi: { inputPer1M: 0.6, outputPer1M: 3 },
 };
 
 export function getModelPrice(provider: string, model: string): ModelPrice {

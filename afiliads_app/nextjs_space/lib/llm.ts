@@ -96,14 +96,29 @@ interface LlmOptions {
 
 export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
 // Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade).
-// 'kimi' fica de fora dos TIER_CHAINS de propósito (nunca é escolhido automaticamente pelo
-// roteador) — só entra quando selecionado manualmente via Integration llm/provider='kimi'.
+// Kimi participa do roteamento automático com preferências por agente e fallback;
+// isso evita que uma credencial expirada derrube toda a geração.
 export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama', 'kimi'];
 export type Tier = 'premium' | 'standard' | 'light';
 
-export const AGENT_MODEL_LOCKS: Record<string, { provider: Provider; model: string }> = {
-  'presell-builder': { provider: 'kimi', model: 'kimi-k3' },
-  'bridge-page-builder': { provider: 'kimi', model: 'kimi-k3' },
+type AgentRoutingPreference = {
+  providers: Provider[];
+  modelOverrides?: Partial<Record<Provider, string>>;
+};
+
+export const AGENT_ROUTING_PREFERENCES: Record<string, AgentRoutingPreference> = {
+  'presell-builder': {
+    providers: ['kimi', 'grok', 'google', 'ollama', 'openai', 'anthropic'],
+    modelOverrides: { kimi: 'kimi-k3' },
+  },
+  'bridge-page-builder': {
+    providers: ['kimi', 'grok', 'google', 'ollama', 'openai', 'anthropic'],
+    modelOverrides: { kimi: 'kimi-k2.5' },
+  },
+  'bridge-page-validator': {
+    providers: ['google', 'grok', 'kimi', 'ollama', 'openai', 'anthropic'],
+    modelOverrides: { kimi: 'kimi-k2.5' },
+  },
 };
 
 // Tier por agente: premium = raciocínio pesado (qualidade > custo);
@@ -124,6 +139,7 @@ export const AGENT_TIERS: Record<string, Tier> = {
   'campaign-strategist': 'standard',
   'presell-builder': 'standard',
   'bridge-page-builder': 'standard',
+  'bridge-page-validator': 'standard',
 };
 
 // Ordem de preferência por tier, otimizada por custo real no Vertex (2026-07):
@@ -137,9 +153,9 @@ export const AGENT_TIERS: Record<string, Tier> = {
 // - light (chat, validação simples): Ollama grátis lidera; Grok non-reasoning (barato, baixa
 //   latência) como fallback pago antes de subir pra Gemini/Claude.
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'grok', 'google', 'openai', 'ollama'],
-  standard: ['grok', 'google', 'ollama', 'openai', 'anthropic'],
-  light: ['ollama', 'grok', 'google', 'openai', 'anthropic'],
+  premium: ['anthropic', 'grok', 'google', 'kimi', 'openai', 'ollama'],
+  standard: ['grok', 'google', 'kimi', 'ollama', 'openai', 'anthropic'],
+  light: ['ollama', 'grok', 'google', 'kimi', 'openai', 'anthropic'],
 };
 
 const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
@@ -588,47 +604,20 @@ export async function callAgent(
   );
   await assertCampaignLlmAllowed(userId, guardTarget);
 
-  const modelLock = AGENT_MODEL_LOCKS[opts.agent];
-  if (modelLock) {
-    const ctx = await getRoutingContext(userId, opts.fallbackKey);
-    const apiKey = ctx.keys[modelLock.provider];
-    if (!apiKey) {
-      throw new Error(`Agente "${opts.agent}" exige Kimi K3 (provider ${modelLock.provider}), mas a chave KIMI_API_KEY não está configurada.`);
-    }
-
-    const keySource: KeySource = ctx.keySources[modelLock.provider] ?? 'platform';
-    const start = Date.now();
-    try {
-      const { text, usage, model } = await callProvider(
-        modelLock.provider,
-        modelLock.model,
-        apiKey,
-        opts.systemPrompt,
-        opts.userPrompt
-      );
-      const durationMs = Date.now() - start;
-      const data = opts.json === false ? null : parseAgentJson(text);
-
-      const validationError = opts.validate ? opts.validate(data, text) : null;
-      if (validationError) {
-        logRun(userId, opts.agent, modelLock.provider, model, usage, durationMs, false, keySource, `validação: ${validationError}`);
-        throw new Error(`Resposta do agente reprovada na validação: ${validationError}`);
-      }
-
-      logRun(userId, opts.agent, modelLock.provider, model, usage, durationMs, true, keySource);
-      return { text, data, usage, durationMs, provider: modelLock.provider, model };
-    } catch (err: any) {
-      const durationMs = Date.now() - start;
-      const message = err?.message ?? String(err);
-      logRun(userId, opts.agent, modelLock.provider, modelLock.model, { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, durationMs, false, keySource, message);
-      throw new Error(`Falha no modelo travado Kimi K3 para ${opts.agent}: ${message}`);
-    }
-  }
-
   const tier = AGENT_TIERS[opts.agent] ?? 'standard';
   const ctx = await getRoutingContext(userId, opts.fallbackKey);
-  const chain = buildChain(ctx, tier);
-  if (chain.length === 0) throw new Error('Nenhuma API key de LLM configurada (Anthropic, OpenAI, Google ou Abacus).');
+  const preference = AGENT_ROUTING_PREFERENCES[opts.agent];
+  let chain = buildChain(ctx, tier);
+  if (preference) {
+    const rank = new Map(preference.providers.map((provider, index) => [provider, index]));
+    chain = chain
+      .sort((a, b) => (rank.get(a.provider) ?? 999) - (rank.get(b.provider) ?? 999))
+      .map((step) => ({
+        ...step,
+        model: preference.modelOverrides?.[step.provider] ?? step.model,
+      }));
+  }
+  if (chain.length === 0) throw new Error('Nenhuma API key de LLM configurada (Anthropic, OpenAI, Google, Grok, Kimi ou Ollama).');
 
   const emptyUsage: LlmUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let lastError: any = null;
