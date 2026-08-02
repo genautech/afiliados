@@ -130,11 +130,33 @@ merece revisão antes de começar).
 O módulo não é "100% leitura": `fetchExperimentReport` cuida da extração GAQL, mas a função `upsertMetricSnapshot` é um **writer** pro Prisma, responsável por normalizar timestamps pra meia-noite UTC e realizar upserts idempotentes.
 Tarefas 9/9R/9R2/9F totalmente encerradas com 200/200 testes, `tsc` e `build` limpos (zero any implícito). A persistência real com rotas de API, ownership validado e queries de transação iniciam na Tarefa 10. Nenhuma migração ou backfill foi executada contra o banco real do Railway, e a conta Google Ads permanece intocada neste passo.
 
-**Estado em 2026-07-28 (~03:45h) — Sessão Anti-Gravity (Pair Programming & Multi-Agent Protocol):**
+## Estratégia de Orquestração de LLMs e Kimi Code
+
+A orquestração de Large Language Models (LLMs) é central para as operações dos agentes no AfiliAds. Utilizamos um sistema de roteamento inteligente que considera o provedor, o tier do agente (premium, standard, light) e modelos específicos para otimizar custo, latência e qualidade, com mecanismos robustos de fallback.
+
+**Provedores no roteamento ativo:** Anthropic, OpenAI, Google (Gemini), Grok (xAI), Ollama (local/cloud) e Kimi (Moonshot AI). AbacusAI permanece apenas como compatibilidade legada no chamador e não participa do roteamento automático.
+
+**Tiering de Agentes:**
+- **Premium:** Para raciocínio pesado, auditorias críticas e compliance (prioriza qualidade e baixa alucinação).
+- **Standard:** Para geração estruturada (keywords, score de produto, RSA).
+- **Light:** Para validações simples e interações de baixo custo.
+
+**Roteamento Kimi Code:**
+Somente IDs confirmados na documentação oficial são aceitos. O roteamento atual usa:
+- **`presell-builder`:** `kimi-k3` para geração de conteúdo de presells.
+- **`bridge-page-builder`:** `kimi-k2.7-code` para construção de páginas ponte.
+- **`bridge-page-validator`:** Google/Gemini primeiro para independência do gerador; Kimi é apenas fallback.
+
+Não inventar variantes por sufixo, como `kimi-k3-256k`, nem derivar IDs por concatenação.
+
+**Mecanismos de Fallback e Resiliência:**
+O sistema é projetado para tentar provedores e modelos em cadeia, seguindo a ordem de preferência definida por tier. Em caso de falha de um provedor (ex: quota esgotada, chave inválida), o próximo provedor na cadeia é automaticamente tentado, garantindo resiliência e minimizando interrupções. As chaves de API (`KIMI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) devem vir de variáveis de ambiente, secret manager ou armazenamento criptografado em repouso; nunca persistir texto puro, registrar o valor em logs ou usar a credencial como `keySource`. A lógica de roteamento é configurável via `AGENT_ROUTING_PREFERENCES` e `AGENT_TIERS` em `lib/llm.ts`.
+
+## Coordenação entre sessões simultâneas (leia antes de começar)
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.
 Integrações mapeadas e ativas: (1) **Obsidian Sync** via `lib/obsidianSync.ts` (escrevendo notas de execução em `~/Vaults/notes/Conhecimento/Execucoes/afiliados/`); (2) **Hermes / Airmines Ops** em `hermes/REGISTRY.md` e `hermes/knowledge/insights/`.
-Regras de isolamento ativas para o Anti-Gravity: checar `git status --short` e `git log` antes de editar arquivos de app, realizar commits atômicos, validar se o `.env` local aponta para Postgres local ou Railway (Produção) antes de `prisma db push`, e registrar lições no Obsidian ao final da sessão. Insight registrado em `hermes/knowledge/insights/2026-07-28-antigravity-sessao-e-compatibilidade-agentes.md`.
+Regras de isolamento ativas para o Anti-Gravity: checar `git status --short` e `git log` antes de editar arquivos de app, realizar commits atômicos e registrar lições no Obsidian ao final da sessão. `prisma db push` é proibido sem autorização explícita do usuário; antes de qualquer execução autorizada, confirmar o destino com host mascarado, sem imprimir a connection string. Insight registrado em `hermes/knowledge/insights/2026-07-28-antigravity-sessao-e-compatibilidade-agentes.md`.
 
 **Estado em 2026-07-27 (~15h) — presell da FemiCore publicada de verdade em
 orangepeelmorning.com + fix de falso-positivo em compliance:** durante o teste do
@@ -374,11 +396,11 @@ Todos os comandos abaixo rodam dentro de `afiliads_app/nextjs_space`, salvo indi
 - PostgreSQL instalado localmente (v16), mas não sobe sozinho no boot. Inicie a cada sessão:
   `sudo pg_ctlcluster 16 main start`
 - Servidor dev (porta 3000): `npm run dev` (definido no `package.json`; roda `rm -rf .next && next dev`).
-- O banco de dev local é `afiliads` em `localhost:5432` (user/senha `postgres`/`postgres`). Connection string e secrets de auth ficam em `afiliads_app/nextjs_space/.env` (git-ignored, persistido no snapshot da VM, não commitado). Se sumir, recrie com `DATABASE_URL`, `NEXTAUTH_URL=http://localhost:3000` e qualquer `NEXTAUTH_SECRET` não vazio.
+- O banco de dev local é `afiliads` em `localhost:5432`. Usuário, senha, connection string e secrets de auth devem ser definidos em `afiliads_app/nextjs_space/.env` (git-ignored), usando valores locais não compartilhados; nunca documentar ou commitar valores concretos. Se o arquivo sumir, recrie as variáveis necessárias com segredos aleatórios.
 
 ### Banco de dados
 - Schema gerenciado via Prisma com `npx prisma db push` (não há migration files no repo).
-- Seed com `npx prisma db seed` (autocontido, não precisa de APIs externas). Login seedado: `john@doe.com` / `johndoe123` (dados de demo completos). Existe também `demo@afiliads.dev` / `demo1234`.
+- Seed com `npx prisma db seed` (autocontido, não precisa de APIs externas). O seed legado ainda contém uma credencial demo fixa: não executar fora de um banco local descartável até que usuário e senha sejam parametrizados por ambiente e a senha seja gerada aleatoriamente.
 - O seed passa por `scripts/safe-seed.ts`, que recusa rodar se `scripts/seed.ts` contiver `delete`/`deleteMany` (proteção contra apagar dados compartilhados de produção) — não adicione deletes lá.
 - **Atenção:** o `.env` usado nas sessões de Claude Code neste Mac aponta para o banco de **produção** no Railway, não para o Postgres local acima — `npx prisma db push` ali aplica direto em produção (mudanças aditivas, sempre com confirmação do usuário antes de rodar). Confirme qual `DATABASE_URL` está ativo antes de rodar qualquer comando de schema.
 

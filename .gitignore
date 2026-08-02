@@ -21,6 +21,9 @@ web_modules/
 # Claude Code local settings (may contain secrets/env vars)
 .claude/settings.local.json
 
+# SkillClaw local provider config (contains API credentials)
+hermes_skillclaw_config.yaml
+
 # OS files
 .DS_Store
 Thumbs.db
