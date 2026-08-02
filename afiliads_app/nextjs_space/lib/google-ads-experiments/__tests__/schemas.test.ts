@@ -288,9 +288,6 @@ describe('ExperimentSyncResultSchema / ExperimentReportSchema', () => {
         hasSignificantResult: false,
         feasibility: 'UNDERPOWERED',
         summary: 'Amostra insuficiente até agora.',
-        campaignId: 'campaign_test_id', // ADICIONADO AQUI
-        startDate: '2030-01-01',          // ADICIONADO AQUI
-        endDate: '2030-01-05',            // ADICIONADO AQUI
       }).success
     ).toBe(true);
   });

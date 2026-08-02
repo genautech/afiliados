@@ -205,9 +205,6 @@ function decideOutcome(
 export function parseExperimentReportRow(
   row: RawExperimentReportRow,
   targetClicks: number,
-  campaignId: string, // NOVO PARAMETRO
-  startDate: string,  // NOVO PARAMETRO
-  endDate: string,    // NOVO PARAMETRO
   expectedResourceName?: string
 ): ExperimentReport {
   validateTargetClicks(targetClicks);
@@ -320,9 +317,6 @@ export function parseExperimentReportRow(
     treatment,
     statistics,
     ...outcome,
-    campaignId, // ADICIONADO AQUI
-    startDate,  // ADICIONADO AQUI
-    endDate,    // ADICIONADO AQUI
   };
 }
 
@@ -355,9 +349,6 @@ function buildInconclusiveReport(experimentResourceName: string, reason: string)
     hasSignificantResult: false,
     feasibility: 'UNDERPOWERED',
     summary: reason,
-    campaignId: 'TEMP_CAMPAIGN_ID_INCONCLUSIVE', // ADICIONADO AQUI
-    startDate: '1970-01-01',                  // ADICIONADO AQUI
-    endDate: '1970-01-01',                    // ADICIONADO AQUI
   };
 }
 
@@ -441,10 +432,7 @@ async function buildFallbackReport(
   config: GoogleAdsCredentials,
   experimentResourceName: string,
   fallback: ValidatedFallbackArms,
-  targetClicks: number,
-  campaignId: string, 
-  startDate: string,  
-  endDate: string     
+  targetClicks: number
 ): Promise<ExperimentReport> {
   if (fallback[VALIDATED_FALLBACK_ARMS] !== true) {
     throw new Error('Fallback arms não validados.');
@@ -474,9 +462,6 @@ async function buildFallbackReport(
     hasSignificantResult: false,
     feasibility: 'UNDERPOWERED',
     summary: `Fallback de diagnóstico: recurso 'experiment' sem linha; métricas lidas direto das campanhas (sem uplift/p-value). Amostra: ${sampleSize} cliques.`,
-    campaignId,
-    startDate,
-    endDate,
   };
 }
 
@@ -541,14 +526,7 @@ export async function fetchExperimentReport(
     throw new Error('Experiment resource name não pertence ao customer da configuração.');
   }
   if (isMockMode(config)) {
-    return parseExperimentReportRow(
-      buildMockRawRow(experimentResourceName),
-      options.targetClicks,
-      'TEMP_CAMPAIGN_ID_MOCK', // Placeholder
-      '1970-01-01',           // Placeholder
-      '1970-01-01',           // Placeholder
-      experimentResourceName
-    );
+    return parseExperimentReportRow(buildMockRawRow(experimentResourceName), options.targetClicks, experimentResourceName);
   }
 
   const query = buildExperimentReportQuery(experimentResourceName);
@@ -566,11 +544,7 @@ export async function fetchExperimentReport(
 
   if (rows.length === 0) {
     if (options.fallbackCampaigns) {
-      // Temporariamente passando placeholders. Certa forma de obter esses dados virá de GoogleAdsExperiment do BD local.
-      return buildFallbackReport(token, config, experimentResourceName, options.fallbackCampaigns, options.targetClicks, 
-      'TEMP_CAMPAIGN_ID', 
-      '1970-01-01', 
-      '1970-01-01' );
+      return buildFallbackReport(token, config, experimentResourceName, options.fallbackCampaigns, options.targetClicks);
     }
     return buildInconclusiveReport(
       experimentResourceName,
@@ -578,14 +552,7 @@ export async function fetchExperimentReport(
     );
   }
 
-  return parseExperimentReportRow(
-    rows[0],
-    options.targetClicks,
-    'TEMP_CAMPAIGN_ID_API', // Placeholder
-    '1970-01-01',         // Placeholder
-    '1970-01-01',         // Placeholder
-    experimentResourceName
-  );
+  return parseExperimentReportRow(rows[0], options.targetClicks, experimentResourceName);
 }
 
 export interface MetricSnapshotUpsertInput {
