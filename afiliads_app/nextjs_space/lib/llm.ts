@@ -95,6 +95,12 @@ interface LlmOptions {
 }
 
 export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
+export const KIMI_MODELS = {
+  K3: 'kimi-k3',
+  K2_7_CODE: 'kimi-k2.7-code',
+  K2_6: 'kimi-k2.6',
+  K2_5: 'kimi-k2.5',
+} as const;
 // Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade).
 // Kimi participa do roteamento automático com preferências por agente e fallback;
 // isso evita que uma credencial expirada derrube toda a geração.
@@ -109,17 +115,65 @@ type AgentRoutingPreference = {
 export const AGENT_ROUTING_PREFERENCES: Record<string, AgentRoutingPreference> = {
   'presell-builder': {
     providers: ['kimi', 'grok', 'google', 'ollama', 'openai', 'anthropic'],
-    modelOverrides: { kimi: 'kimi-k3' },
+    modelOverrides: { kimi: KIMI_MODELS.K3 },
   },
   'bridge-page-builder': {
     providers: ['kimi', 'grok', 'google', 'ollama', 'openai', 'anthropic'],
-    modelOverrides: { kimi: 'kimi-k2.5' },
+    modelOverrides: { kimi: KIMI_MODELS.K2_7_CODE },
   },
   'bridge-page-validator': {
     providers: ['google', 'grok', 'kimi', 'ollama', 'openai', 'anthropic'],
-    modelOverrides: { kimi: 'kimi-k2.5' },
+    modelOverrides: { kimi: KIMI_MODELS.K2_5 },
   },
 };
+
+export function selectKimiModel({
+  agent,
+  requestedModel,
+  fallbackModel,
+}: {
+  agent: string;
+  requestedModel?: string;
+  fallbackModel: string;
+}): string {
+  return requestedModel?.trim()
+    || AGENT_ROUTING_PREFERENCES[agent]?.modelOverrides?.kimi
+    || fallbackModel;
+}
+
+const KIMI_OFFICIAL_API_HOSTS = new Set(['api.moonshot.ai', 'api.kimi.com']);
+
+export function resolveKimiApiBaseUrl(
+  rawBaseUrl = process.env.KIMI_API_BASE_URL || 'https://api.moonshot.ai/v1',
+  additionalHosts = process.env.KIMI_API_ALLOWED_HOSTS || ''
+): string {
+  let url: URL;
+  try {
+    url = new URL(rawBaseUrl);
+  } catch {
+    throw new Error('KIMI_API_BASE_URL inválida');
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('KIMI_API_BASE_URL deve usar HTTPS');
+  }
+  if (url.username || url.password) {
+    throw new Error('KIMI_API_BASE_URL não pode conter credenciais');
+  }
+  if (url.search || url.hash) {
+    throw new Error('KIMI_API_BASE_URL não pode conter query string ou fragmento');
+  }
+
+  const allowedHosts = new Set([
+    ...KIMI_OFFICIAL_API_HOSTS,
+    ...additionalHosts.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean),
+  ]);
+  if (!allowedHosts.has(url.host.toLowerCase())) {
+    throw new Error('Host de KIMI_API_BASE_URL não autorizado');
+  }
+
+  return url.toString().replace(/\/+$/, '');
+}
 
 // Tier por agente: premium = raciocínio pesado (qualidade > custo);
 // standard = geração estruturada; light = chat/validações simples.
@@ -165,7 +219,7 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   grok: { premium: 'grok-4.20-reasoning', standard: 'grok-4.1-fast-reasoning', light: 'grok-4.1-fast-non-reasoning' },
   ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
-  kimi: { premium: 'kimi-k3', standard: 'kimi-k3', light: 'kimi-k2.5' },
+  kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_5 },
 };
 
 // Modelos Claude alternativos por tier, tentados em ordem dentro do mesmo passo
@@ -504,10 +558,15 @@ async function callProvider(
     }
 
     case 'kimi': {
-      // Kimi K3 pensa por padrão (reasoning_effort 'max') e consome o orçamento de tokens com
-      // reasoning_content antes de emitir a resposta final — 'low' evita truncar o JSON de saída
-      // em max_tokens baixo (visto em teste manual: content vazio, reasoning_tokens só).
-      const response = await fetch('https://api.moonshot.ai/v1/chat/completions', {
+      // K3 usa reasoning_effort; K2.7 Code mantém thinking habilitado por contrato.
+      // max_completion_tokens substitui o parâmetro max_tokens depreciado.
+      const baseUrl = resolveKimiApiBaseUrl();
+      const modelOptions = model === KIMI_MODELS.K3
+        ? { reasoning_effort: 'low' }
+        : model === KIMI_MODELS.K2_7_CODE
+          ? { thinking: { type: 'enabled', keep: 'all' } }
+          : {};
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
@@ -516,8 +575,8 @@ async function callProvider(
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          max_tokens: 4096,
-          reasoning_effort: 'low',
+          max_completion_tokens: 4096,
+          ...modelOptions,
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Kimi/Moonshot: ${await response.text()}`);
@@ -614,7 +673,13 @@ export async function callAgent(
       .sort((a, b) => (rank.get(a.provider) ?? 999) - (rank.get(b.provider) ?? 999))
       .map((step) => ({
         ...step,
-        model: preference.modelOverrides?.[step.provider] ?? step.model,
+        model: step.provider === 'kimi'
+          ? selectKimiModel({
+              agent: opts.agent,
+              requestedModel: ctx.models.kimi,
+              fallbackModel: step.model,
+            })
+          : ctx.models[step.provider] ?? preference.modelOverrides?.[step.provider] ?? step.model,
       }));
   }
   if (chain.length === 0) throw new Error('Nenhuma API key de LLM configurada (Anthropic, OpenAI, Google, Grok, Kimi ou Ollama).');

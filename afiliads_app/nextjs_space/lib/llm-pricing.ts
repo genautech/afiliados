@@ -30,6 +30,9 @@ const MODEL_PRICES: Array<{ match: string; price: ModelPrice }> = [
   { match: 'grok-4.1-fast', price: { inputPer1M: 0.2, outputPer1M: 0.5 } },
   { match: 'grok', price: { inputPer1M: 0.2, outputPer1M: 0.5 } },
   // Kimi/Moonshot — preços sem cache da documentação oficial (2026-07)
+  { match: 'kimi-k2.7-code-highspeed', price: { inputPer1M: 1.9, outputPer1M: 8 } },
+  { match: 'kimi-k2.7-code', price: { inputPer1M: 0.95, outputPer1M: 4 } },
+  { match: 'kimi-k2.6', price: { inputPer1M: 0.95, outputPer1M: 4 } },
   { match: 'kimi-k2.5', price: { inputPer1M: 0.6, outputPer1M: 3 } },
   { match: 'kimi-k3', price: { inputPer1M: 3, outputPer1M: 15 } },
   // Ollama (local ou cloud) — sem custo por token
