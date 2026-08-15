@@ -44,6 +44,7 @@ Se o usuário pedir algo que exige pesquisa ATP paga, avise que a busca deve ser
 
   const fullText = await callLLM(userId, {
     agent: 'analysis-assistant',
+    campaignTarget: { kind: 'non-campaign' },
     systemPrompt,
     userPrompt: `Conversa até aqui:\n${history}\n\nResponda à última mensagem do usuário.`,
   });
@@ -51,7 +52,7 @@ Se o usuário pedir algo que exige pesquisa ATP paga, avise que a busca deve ser
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const words = fullText.split(/(\s+)/);
+      const words = fullText.text.split(/(\s+)/);
       const chunkSize = 6;
       for (let i = 0; i < words.length; i += chunkSize) {
         const chunk = words.slice(i, i + chunkSize).join('');

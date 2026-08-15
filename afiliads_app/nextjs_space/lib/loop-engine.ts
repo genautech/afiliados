@@ -47,16 +47,12 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
         const res = await callAgent(userId, {
           agent: 'ads-auditor',
           campaignId: campaign.id,
-          systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi "${rules.decision}". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
-          userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).
-[INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances ("${campaign.bidStrategy || 'não configurada'}") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.
-Economia calculada (últimos ${econ.logCount} registros): gasto $${econ.spend.toFixed(2)}, receita $${econ.revenue.toFixed(2)}, lucro $${econ.profit.toFixed(2)}, ${econ.clicks} cliques, ${econ.hops} hops (passagem presell→oferta ${econ.hopRatePct.toFixed(0)}%), ${econ.conversions} conversões, EPC real $${econ.epcReal.toFixed(2)}, CPC real $${econ.cpcReal.toFixed(2)}, CVR ${econ.cvrRealPct.toFixed(2)}%, burn ${econ.budgetBurnPct.toFixed(0)}% do budget de teste.
-Referência da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.
-Decisão das regras: ${rules.decision} — gatilhos: ${rules.triggers.join(' | ')}
-Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSAR|KILL|CONTINUAR", "diagnostico": "2-3 frases", "ajustes": ["até 4 ações concretas priorizadas"]}`,
+          campaignTarget: { kind: 'campaign', campaignId: campaign.id },
+          systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi \"${rules.decision}\". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
+          userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).\n[INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances (\"${campaign.bidStrategy || 'não configurada'}\") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.\nEconomia calculada (últimos ${econ.logCount} registros): gasto $${econ.spend.toFixed(2)}, receita $${econ.revenue.toFixed(2)}, lucro $${econ.profit.toFixed(2)}, ${econ.clicks} cliques, ${econ.hops} hops (passagem presell→oferta ${econ.hopRatePct.toFixed(0)}%), ${econ.conversions} conversões, EPC real $${econ.epcReal.toFixed(2)}, CPC real $${econ.cpcReal.toFixed(2)}, CVR ${econ.cvrRealPct.toFixed(2)}%, burn ${econ.budgetBurnPct.toFixed(0)}% do budget de teste.\nReferência da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.\nDecisão das regras: ${rules.decision} — gatilhos: ${rules.triggers.join(' | ')}\nRetorne JSON: {\"concorda\": true|false, \"decisao_sugerida\": \"SCALE|OTIMIZAR|PAUSAR|KILL|CONTINUAR\", \"diagnostico\": \"2-3 frases\", \"ajustes\": [\"até 4 ações concretas priorizadas\"]}`,
         });
         agentsRun.push('ads-auditor');
-        totalTokens += res.usage.totalTokens;
+        totalTokens += (res.usage.totalTokens ?? 0);
         if (res.data) {
           llmSummary = `${res.data.diagnostico ?? ''}${Array.isArray(res.data.ajustes) ? '\nAjustes: ' + res.data.ajustes.join('; ') : ''}`.trim();
           if (res.data.concorda === false && typeof res.data.decisao_sugerida === 'string') {
@@ -81,11 +77,12 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
           const res = await callAgent(userId, {
             agent: 'compliance-sentinel',
             campaignId: campaign.id,
+            campaignTarget: { kind: 'campaign', campaignId: campaign.id },
             systemPrompt: 'Você é o Compliance Sentinel do AfiliAds no loop de auto-correção. Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
-            userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}):\n"""${html}"""\nRetorne JSON: {"aprovado": true|false, "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
+            userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}):\n\"\"\"${html}\"\"\"\nRetorne JSON: {\"aprovado\": true|false, \"alertas\": [{\"nivel\": \"critico|atencao\", \"texto\": \"...\"}]}`,
           });
           agentsRun.push('compliance-sentinel');
-          totalTokens += res.usage.totalTokens;
+          totalTokens += (res.usage.totalTokens ?? 0);
           const criticos = (res.data?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
           if (criticos.length > 0) {
             allTriggers.push(`Compliance: ${criticos.length} alerta(s) crítico(s) na presell — ${criticos.map((a: any) => a.texto).join(' | ')}`);
@@ -226,7 +223,7 @@ Retorne JSON: {"concorda": true|false, "decisao_sugerida": "SCALE|OTIMIZAR|PAUSA
     decision: finalDecision,
     triggers: allTriggers,
     agentsRun,
-    totalTokens,
+    totalTokens: (totalTokens ?? 0),
     llmSummary,
     error,
     loopRunId: loopRun.id,
@@ -260,11 +257,12 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
         const res = await callAgent(userId, {
           agent: 'compliance-sentinel',
           campaignId: campaign.id,
+          campaignTarget: { kind: 'campaign', campaignId: campaign.id, purpose: 'paused-compliance' },
           systemPrompt: 'Você é o Compliance Sentinel do AfiliAds verificando uma campanha PAUSADA (sem gasto de ads ativo, mas a presell pode continuar publicada e acessível). Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
-          userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}) — campanha está PAUSADA, este é um check de compliance de rotina, não uma auditoria de ads:\n"""${html}"""\nRetorne JSON: {"aprovado": true|false, "alertas": [{"nivel": "critico|atencao", "texto": "..."}]}`,
+          userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}) — campanha está PAUSADA, este é um check de compliance de rotina, não uma auditoria de ads:\n\"\"\"${html}\"\"\"\nRetorne JSON: {\"aprovado\": true|false, \"alertas\": [{\"nivel\": \"critico|atencao\", \"texto\": \"...\"}]}`,
         });
         agentsRun.push('compliance-sentinel');
-        totalTokens += res.usage.totalTokens;
+        totalTokens += (res.usage.totalTokens ?? 0);
         const criticos = (res.data?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
         if (criticos.length > 0) {
           allTriggers.push(`Compliance (campanha pausada): ${criticos.length} alerta(s) crítico(s) na presell — ${criticos.map((a: any) => a.texto).join(' | ')}`);
@@ -302,7 +300,7 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
       agentsRun,
       economics: {} as any,
       llmSummary: null,
-      totalTokens,
+      totalTokens: (totalTokens ?? 0),
       error,
     },
   });
@@ -313,7 +311,7 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
     decision: finalDecision,
     triggers: allTriggers,
     agentsRun,
-    totalTokens,
+    totalTokens: (totalTokens ?? 0),
     llmSummary: null,
     error,
     loopRunId: loopRun.id,

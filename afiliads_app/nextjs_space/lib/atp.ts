@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { readIntegrationFieldValue } from './integration-secrets';
 
 const ATP_BASE = 'https://api.answerthepublic.com/api/public/v1';
 
@@ -18,7 +19,9 @@ export async function getAtpKey(userId: string): Promise<string> {
   const integration = await prisma.integration.findFirst({
     where: { userId, serviceName: 'answerthepublic', fieldName: 'api_key' },
   });
-  const key = integration?.fieldValue || process.env.ANSWERTHEPUBLIC_API_KEY || '';
+  const key = integration?.fieldValue
+    ? readIntegrationFieldValue(integration.fieldName, integration.fieldValue)
+    : process.env.ANSWERTHEPUBLIC_API_KEY || '';
   if (!key) {
     throw new AtpError('API key do AnswerThePublic não configurada. Adicione em Configurações.', 400);
   }

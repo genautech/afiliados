@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
       const res = await callAgent(userId, {
         agent: 'bridge-page-validator',
         campaignId,
+        campaignTarget: campaignId ? { kind: 'campaign', campaignId } : { kind: 'non-campaign' },
         systemPrompt: VALIDATOR_PROMPT,
         userPrompt: `Produto: ${product.name} | Vertical: ${product.vertical}\nTipo: ${bridgePageType}\nContexto: ${context}\nArtefato:\n${serializedArtifact}`,
         json: true,
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
       const res = await callAgent(userId, {
         agent: 'bridge-page-builder',
         campaignId,
+        campaignTarget: campaignId ? { kind: 'campaign', campaignId } : { kind: 'non-campaign' },
         systemPrompt: QUIZ_LEAD_PROMPT,
         userPrompt: `Produto: ${product.name} | Vertical: ${product.vertical} | Resumo: ${product.summary}\nTipo pedido: ${bridgePageType}\nContexto/recomendação: ${context}\nJSON puro.`,
       });

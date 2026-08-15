@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
 
     const result = await callAgent(userId, {
       agent: agentDef.id,
+      campaignTarget: { kind: 'non-campaign' },
       systemPrompt: agentDef.testTask.systemPrompt,
       userPrompt: agentDef.testTask.userPrompt,
     });

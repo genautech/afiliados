@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { callLLM } from '@/lib/llm';
+import { fetchPageContent } from '@/lib/salesPageAnalyzer';
 
 function htmlToText(html: string): string {
   return html
@@ -33,20 +34,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     if (!pageText) {
       if (!url) return NextResponse.json({ error: 'Informe a URL da página de afiliado do produtor' }, { status: 422 });
-      try {
-        const res = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-          redirect: 'follow',
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        pageText = htmlToText(await res.text());
-      } catch (e: any) {
+      const html = await fetchPageContent(String(url));
+      if (!html) {
         return NextResponse.json(
-          { error: `Não consegui acessar a página (${e?.message}). Cole o texto da página no campo pageText e tente de novo.` },
+          { error: 'Não consegui acessar uma página HTTPS pública. Cole o texto da página no campo pageText e tente de novo.' },
           { status: 422 }
         );
       }
+      pageText = htmlToText(html);
     }
     pageText = pageText.slice(0, 15000);
     if (pageText.length < 200) {
@@ -80,10 +75,10 @@ Retorne JSON exatamente neste formato:
   }
 }`;
 
-    const raw = await callLLM(userId, { agent: 'affiliate-page-analyst', systemPrompt, userPrompt });
+    const raw = await callLLM(userId, { agent: 'affiliate-page-analyst', systemPrompt, userPrompt, campaignTarget: { kind: 'non-campaign' } });
     let insights: any;
     try {
-      insights = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      insights = JSON.parse(raw.text.replace(/```json|```/g, '').trim());
     } catch {
       return NextResponse.json({ error: 'A IA não retornou JSON válido. Tente novamente.' }, { status: 502 });
     }

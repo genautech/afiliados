@@ -1,0 +1,66 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Workbench · theme: Cobalt · enrichment: tier-A CSS product surface · nav: N13 · footer: Ft5 */
+html:has(.afiliadsLanding),
+body:has(.afiliadsLanding) {
+  overflow-x: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.afiliadsLanding) {
+    scroll-behavior: auto;
+  }
+}
+
+.afiliadsLanding {
+  --af-paper: oklch(98.5% 0.004 250);
+  --af-paper-2: oklch(95.5% 0.008 250);
+  --af-paper-3: oklch(91.5% 0.012 250);
+  --af-ink: oklch(22% 0.022 258);
+  --af-ink-2: oklch(34% 0.018 257);
+  --af-muted: oklch(45% 0.018 257);
+  --af-rule: oklch(84% 0.012 250);
+  --af-rule-2: oklch(74% 0.018 252);
+  --af-accent: oklch(49% 0.205 256);
+  --af-accent-hover: oklch(43% 0.19 256);
+  --af-accent-ink: oklch(98.5% 0.004 250);
+  --af-focus: oklch(12% 0.08 256);
+  --af-graphite: oklch(20% 0.018 260);
+  --af-graphite-2: oklch(25% 0.022 258);
+  --af-on-graphite: oklch(94% 0.009 250);
+  --af-on-graphite-muted: oklch(74% 0.018 250);
+  --af-success: oklch(48% 0.135 151);
+  --af-error: oklch(52% 0.18 27);
+  --af-error-paper: oklch(96% 0.025 27);
+
+  --af-font-display: var(--af-space-grotesk), ui-sans-serif, sans-serif;
+  --af-font-body: var(--af-inter), ui-sans-serif, sans-serif;
+  --af-font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --af-space-3xs: 0.125rem;
+  --af-space-2xs: 0.25rem;
+  --af-space-xs: 0.5rem;
+  --af-space-sm: 0.75rem;
+  --af-space-md: 1rem;
+  --af-space-lg: 1.5rem;
+  --af-space-xl: 2.5rem;
+  --af-space-2xl: 4rem;
+  --af-space-3xl: 6rem;
+  --af-space-4xl: 9rem;
+
+  --af-page-gutter: clamp(1rem, 4vw, 4rem);
+  --af-page-max: 84rem;
+  --af-radius-sm: 0.375rem;
+  --af-radius-md: 0.625rem;
+
+  --af-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --af-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --af-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --af-duration-micro: 120ms;
+  --af-duration-short: 220ms;
+  --af-duration-long: 420ms;
+
+  --af-z-base: 1;
+  --af-z-raised: 10;
+  --af-z-dropdown: 100;
+  --af-z-sticky: 200;
+  --af-z-modal: 400;
+}

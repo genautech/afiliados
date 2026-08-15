@@ -9,6 +9,7 @@ import { Settings, Save, ExternalLink, CheckCircle2, XCircle, Eye, EyeOff, Alert
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { requireOk } from '@/lib/wizard-persistence';
 
 // wired=false: chaves apenas ARMAZENADAS — nenhum código do app as consome ainda
 const SERVICES = [
@@ -130,11 +131,12 @@ export default function ConfiguracoesPage() {
     if (!value || value?.startsWith?.('•')) return;
     setSaving(prev => ({ ...prev, [key]: true }));
     try {
-      await fetch('/api/integrations', {
+      const response = await fetch('/api/integrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serviceName, fieldName, fieldValue: value }),
       });
+      await requireOk(response, 'Erro ao salvar integração');
       toast.success(`${fieldName} salvo!`);
       setFormData(prev => ({ ...prev, [key]: '••••' + value?.slice?.(-4) }));
     } catch { toast.error('Erro ao salvar'); } finally {
@@ -215,11 +217,12 @@ export default function ConfiguracoesPage() {
                           onValueChange={async (val) => {
                             setFormData(prev => ({ ...prev, [key]: val }));
                             try {
-                              await fetch('/api/integrations', {
+                              const response = await fetch('/api/integrations', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ serviceName: service.key, fieldName: field.name, fieldValue: val }),
                               });
+                              await requireOk(response, 'Erro ao atualizar modelo');
                               toast.success('Modelo Anthropic atualizado!');
                             } catch {
                               toast.error('Erro ao atualizar modelo');
@@ -231,9 +234,8 @@ export default function ConfiguracoesPage() {
                           </SelectTrigger>
                           <SelectContent className="bg-[#1e293b] border-[#334155]">
                             <SelectItem value="claude-opus-4-7" className="text-white">Claude Opus 4.7 (.7)</SelectItem>
-                            <SelectItem value="claude-sonnet-5" className="text-white">Claude Sonnet 5</SelectItem>
+                            <SelectItem value="claude-fable-5" className="text-white">Claude Fable 5</SelectItem>
                             <SelectItem value="claude-opus-4-8" className="text-white">Claude Opus 4.8</SelectItem>
-                            <SelectItem value="claude-sonnet-4-6" className="text-white">Claude Sonnet 4.6</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (

@@ -1344,6 +1344,9 @@ export async function generatePresell(userId: string, args: {
   const res = await callAgent(userId, {
     agent: 'presell-builder',
     campaignId: args.campaignId,
+    campaignTarget: args.campaignId
+      ? { kind: 'campaign', campaignId: args.campaignId }
+      : { kind: 'non-campaign' },
     systemPrompt: BUILDER_PROMPT,
     userPrompt: `Produto: ${productName} (ClickBank). Ângulo: ${angle}. Geo: ${geo}. Idioma: ${language}. Tipo de página: ${pageType}.${productCtx}\nJSON puro.`,
   });

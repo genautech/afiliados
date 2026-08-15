@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PATCH } from '../route';
+import { GET, PATCH } from '../route';
 import { NextRequest } from 'next/server';
 
 const { mockPrisma } = vi.hoisted(() => ({
@@ -89,5 +89,35 @@ describe('PATCH /api/campaigns/[id]', () => {
         productResearch: { connect: { id: 'p1' } }
       }
     });
+  });
+});
+
+describe('GET /api/campaigns/[id]', () => {
+  beforeEach(() => { vi.resetAllMocks(); });
+
+  it('carrega somente a presell mais recente dentro do ownership da campanha', async () => {
+    vi.mocked(getServerSession).mockResolvedValueOnce({ user: { id: 'u1' } } as any);
+    mockPrisma.campaign.findFirst.mockResolvedValueOnce({
+      id: 'c1',
+      userId: 'u1',
+      presells: [{ id: 'presell-latest' }],
+    });
+
+    const request = new NextRequest('http://localhost/api/campaigns/c1');
+    const response = await GET(request, { params: { id: 'c1' } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ presells: [{ id: 'presell-latest' }] }));
+    expect(mockPrisma.campaign.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'c1', userId: 'u1' },
+      include: expect.objectContaining({
+        presells: {
+          where: { userId: 'u1' },
+          select: { id: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      }),
+    }));
   });
 });

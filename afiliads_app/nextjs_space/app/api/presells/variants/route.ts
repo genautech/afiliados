@@ -29,6 +29,20 @@ export async function POST(request: NextRequest) {
     if (!hopLink || !/^https?:\/\//.test(hopLink)) {
       return NextResponse.json({ error: 'hopLink válido (https://...) é obrigatório — pegue na página de afiliado do produtor' }, { status: 422 });
     }
+    const productId = typeof body?.productId === 'string' ? body.productId : undefined;
+    const campaignId = typeof body?.campaignId === 'string' ? body.campaignId : undefined;
+    if (productId) {
+      const product = await prisma.productResearch.findFirst({
+        where: { id: productId, userId }, select: { id: true },
+      });
+      if (!product) return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
+    }
+    if (campaignId) {
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: campaignId, userId }, select: { id: true },
+      });
+      if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    }
 
     const videoUrl = typeof body?.videoUrl === 'string' ? body.videoUrl.trim() : '';
     const baseAngle = body?.angle || 'review';
@@ -65,14 +79,14 @@ export async function POST(request: NextRequest) {
       trackingId: body?.trackingId,
       geo: body?.geo,
       language: body?.language,
-      productId: body?.productId,
+      productId,
       googleAdsId: body?.googleAdsId,
       context: body?.context,
       popupGate: !!body?.popupGate,
       publicar: false as const,
       variantGroupId,
       channel,
-      campaignId: typeof body?.campaignId === 'string' ? body.campaignId : undefined,
+      campaignId,
       customCode: typeof body?.customCode === 'string' ? body.customCode : undefined,
     };
 

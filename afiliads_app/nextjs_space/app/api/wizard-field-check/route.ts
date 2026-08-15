@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
     const userId = (session.user as any)?.id;
 
-    const { fieldKey, fieldValue, context } = await request.json();
+    const { fieldKey, fieldValue, context, campaignId } = await request.json();
 
     if (!fieldKey || fieldValue === undefined || fieldValue === null) {
       return NextResponse.json({ error: 'Parâmetros fieldKey e fieldValue são obrigatórios' }, { status: 400 });
@@ -212,7 +212,13 @@ ${learningContext ? `\n${learningContext}\n` : ''}
 JSON puro.`;
 
     try {
-      const res = await callAgent(userId, { agent: 'wizard-validator', systemPrompt, userPrompt });
+      const res = await callAgent(userId, {
+        agent: 'wizard-validator', systemPrompt, userPrompt,
+        campaignId: typeof campaignId === 'string' && campaignId.length > 0 ? campaignId : undefined,
+        campaignTarget: typeof campaignId === 'string' && campaignId.length > 0
+          ? { kind: 'campaign', campaignId }
+          : { kind: 'non-campaign' },
+      });
       const data = res.data;
       if (!data?.diagnostico) {
         return NextResponse.json({ success: false, error: 'O agente não retornou uma análise válida.' });

@@ -68,10 +68,10 @@ Responda APENAS com JSON válido:
 
     content += `\n\nContexto:\n- Keyword principal: ${keyword ?? 'não informada'}\n- Vertical: ${vertical ?? 'não informada'}\n- Plataforma: ${platform ?? 'não informada'}\n- URL da oferta: ${offerUrl ?? 'não informada'}`;
 
-    const content_text = await callLLM(userId, { agent: 'compliance-sentinel', systemPrompt, userPrompt: content });
+    const content_text = await callLLM(userId, { agent: 'compliance-sentinel', systemPrompt, userPrompt: content, campaignTarget: { kind: 'non-campaign' } });
     let result;
     try {
-      result = JSON.parse(content_text);
+      result = JSON.parse(content_text.text);
     } catch {
       result = { overall_score: 0, error: 'Falha ao parsear resposta da IA' };
     }

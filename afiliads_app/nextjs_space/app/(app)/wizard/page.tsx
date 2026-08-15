@@ -27,6 +27,8 @@ import {
 import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
 import { ExperimentSetupCard } from '@/components/wizard/ExperimentSetupCard';
 import { ExperimentDashboardCard } from '@/components/wizard/ExperimentDashboardCard';
+import { requireOk, requireOkJson } from '@/lib/wizard-persistence';
+import { getCampaignPresellId } from '@/lib/wizard-campaign-hydration';
 
 const STEPS = [
   { num: 1, title: 'Oferta', icon: FileText },
@@ -207,6 +209,7 @@ const AgentHelp = ({
   const [result, setResult] = useState<string | null>(null);
   const [suggestedValue, setSuggestedValue] = useState<string | null>(null);
   const autofillRationale = React.useContext(AutofillContext);
+  const campaignId = useSearchParams()?.get('campaignId') ?? undefined;
   const autoSuggestion = autofillRationale?.[fieldKey];
 
   if (!help) return null;
@@ -223,7 +226,7 @@ const AgentHelp = ({
       const res = await fetch('/api/wizard-field-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldKey, fieldValue, context }),
+        body: JSON.stringify({ fieldKey, fieldValue, context, campaignId }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -585,11 +588,12 @@ export default function WizardPage() {
         pageType, popupGate, videoUrl,
       };
       if (campaignId) {
-        await fetch(`/api/campaigns/${campaignId}`, {
+        const response = await fetch(`/api/campaigns/${campaignId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        await requireOk(response, 'Erro ao salvar campanha');
         return campaignId;
       } else {
         const res = await fetch('/api/campaigns', {
@@ -597,8 +601,9 @@ export default function WizardPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        const data = await res.json();
-        const newId = data?.id ?? null;
+        const data = await requireOkJson<{ id?: unknown }>(res, 'Erro ao criar campanha');
+        const newId = typeof data?.id === 'string' && data.id.length > 0 ? data.id : null;
+        if (!newId) throw new Error('A API não retornou o ID da campanha criada');
         setCampaignId(newId);
         return newId;
       }
@@ -611,19 +616,19 @@ export default function WizardPage() {
     }
   };
 
-  const saveChecklists = async (stepNum: number, items: Array<{key:string;label:string;critical:boolean}>, checks: Record<string,boolean>) => {
-    if (!campaignId) return;
-    try {
-      await fetch(`/api/campaigns/${campaignId}/checklists`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: items.map(i => ({ step: stepNum, itemKey: i.key, itemLabel: i.label, isCritical: i.critical, isChecked: checks[i.key] ?? false })) }),
-      });
-    } catch (err) { console.error(err); }
+  const saveChecklists = async (stepNum: number, items: Array<{key:string;label:string;critical:boolean}>, checks: Record<string,boolean>, targetCampaignId = campaignId) => {
+    if (!targetCampaignId) throw new Error('Campanha ainda não foi salva');
+    const response = await fetch(`/api/campaigns/${targetCampaignId}/checklists`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items.map(i => ({ step: stepNum, itemKey: i.key, itemLabel: i.label, isCritical: i.critical, isChecked: checks[i.key] ?? false })) }),
+    });
+    await requireOk(response, 'Erro ao salvar checklist');
   };
 
   const hydrateFromCampaign = (c: any) => {
     setCampaignId(c?.id ?? null);
+    setPresellId(getCampaignPresellId(c));
     setSourceProductResearchId(c?.productResearchId ?? c?.productResearch?.id ?? null);
     setName(c?.name ?? '');
     setPlatform(c?.platform ?? 'ClickBank');
@@ -691,11 +696,11 @@ export default function WizardPage() {
   // estados setAntistrikeChecks/setBridgeChecks/etc. — são assíncronos, só valem no próximo
   // render, então o valor lido ali seria sempre o antigo (mesma classe de bug de
   // generatePresellHtml/saveCampaign, ver commit c90bafc).
-  const runChecklistVerify = async (): Promise<Record<number, Record<string, boolean>> | null> => {
-    if (!campaignId) { toast.error('Salve a campanha (avance um passo) antes de verificar o checklist.'); return null; }
+  const runChecklistVerify = async (targetCampaignId = campaignId): Promise<Record<number, Record<string, boolean>> | null> => {
+    if (!targetCampaignId) { toast.error('Salve a campanha (avance um passo) antes de verificar o checklist.'); return null; }
     setVerifyingChecklist(true);
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/checklists/verify`, { method: 'POST' });
+      const res = await fetch(`/api/campaigns/${targetCampaignId}/checklists/verify`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) { toast.error(data?.error ?? 'Erro ao verificar checklist'); return null; }
       const meta = { ...checklistMeta };
@@ -928,16 +933,17 @@ export default function WizardPage() {
     await runAutofill({ productResearchId: id });
   };
 
-  const saveKeywords = async () => {
-    const cid = campaignId || (await saveCampaign());
-    if (!cid) return;
+  const saveKeywords = async (targetCampaignId?: string) => {
+    const cid = targetCampaignId || campaignId || (await saveCampaign());
+    if (!cid) throw new Error('Campanha ainda não foi salva');
     const kws = selectedKeywords.filter(k => k.selected);
     if (kws.length > 0) {
-      await fetch('/api/keywords', {
+      const response = await fetch('/api/keywords', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId: cid, isSelected: true })) }),
       });
+      await requireOk(response, 'Erro ao salvar keywords');
     }
   };
 
@@ -969,23 +975,30 @@ export default function WizardPage() {
   const STEPS_COM_VERIFICACAO_AUTO = new Set([3, 4, 7, 8, 9]);
 
   const next = async () => {
-    await saveCampaign();
-    if (step === 3) await saveChecklists(3, ANTISTRIKE_ITEMS, antistrikeChecks);
-    if (step === 4) await saveChecklists(4, BRIDGE_CHECKLIST, bridgeChecks);
-    if (step === 5) await saveKeywords();
-    if (step === 7) await saveChecklists(7, GOOGLE_ADS_CHECKLIST, googleAdsChecks);
-    if (step === 8) {
-      const items = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
-      await saveChecklists(8, items, trackingChecks);
+    const savedId = await saveCampaign();
+    if (!savedId) return;
+    try {
+      if (step === 3) await saveChecklists(3, ANTISTRIKE_ITEMS, antistrikeChecks, savedId);
+      if (step === 4) await saveChecklists(4, BRIDGE_CHECKLIST, bridgeChecks, savedId);
+      if (step === 5) await saveKeywords(savedId);
+      if (step === 7) await saveChecklists(7, GOOGLE_ADS_CHECKLIST, googleAdsChecks, savedId);
+      if (step === 8) {
+        const items = platform === 'MaxWeb' ? TRACKING_CHECKLIST_MAXWEB : TRACKING_CHECKLIST_CB;
+        await saveChecklists(8, items, trackingChecks, savedId);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao persistir este passo');
+      return;
     }
     let freshChecks: Record<number, Record<string, boolean>> | null = null;
-    if (STEPS_COM_VERIFICACAO_AUTO.has(step) && campaignId) {
+    if (STEPS_COM_VERIFICACAO_AUTO.has(step)) {
       setAdvancing(true);
       try {
-        freshChecks = await runChecklistVerify();
+        freshChecks = await runChecklistVerify(savedId);
       } finally {
         setAdvancing(false);
       }
+      if (!freshChecks) return;
     }
     // Trava real: não avança com item crítico pendente (auto ou autoatestado) — antes disso só
     // mostrava um aviso e deixava passar mesmo assim. Use "Verificar automaticamente" pra
@@ -1001,44 +1014,48 @@ export default function WizardPage() {
   const prev = () => { if (step > 1) setStep(step - 1); };
 
   const launch = async () => {
-    await saveCampaign();
-    await saveChecklists(9, GOLIVE_CHECKLIST, goLiveChecks);
+    const savedId = await saveCampaign();
+    if (!savedId) return;
+    try {
+      await saveChecklists(9, GOLIVE_CHECKLIST, goLiveChecks, savedId);
     // Última validação fresca antes de lançar de verdade (Fase 2, 2026-07-27) — nunca lança em
     // cima de goLiveChecks potencialmente velho (ex.: usuário ficou um tempo no Passo 9 e algo
     // mudou nesse meio tempo, como o status da presell vinculada ou da campanha no Google Ads).
-    if (campaignId) {
       setAdvancing(true);
       let freshChecks: Record<number, Record<string, boolean>> | null = null;
       try {
-        freshChecks = await runChecklistVerify();
+        freshChecks = await runChecklistVerify(savedId);
       } finally {
         setAdvancing(false);
       }
+      if (!freshChecks) return;
       if (!canAdvance(freshChecks)) {
         toast.error('A verificação final encontrou item(ns) crítico(s) pendente(s) — confira o checklist antes de lançar.');
         return;
       }
-    }
-    if (campaignId) {
-      await fetch(`/api/campaigns/${campaignId}`, {
+      const kws = selectedKeywords.filter(k => k.selected);
+      if (kws.length > 0) {
+        const keywordResponse = await fetch('/api/keywords', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId: savedId, isSelected: true })) }),
+        });
+        await requireOk(keywordResponse, 'Erro ao salvar keywords do lançamento');
+      }
+      const launchResponse = await fetch(`/api/campaigns/${savedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'EM_TESTE', wizardCompleted: true, launchedAt: new Date().toISOString(), wizardStep: 9 }),
       });
-      const kws = selectedKeywords.filter(k => k.selected);
-      if (kws.length > 0) {
-        await fetch('/api/keywords', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId, isSelected: true })) }),
-        });
+      await requireOk(launchResponse, 'Erro ao concluir lançamento');
+      toast.success('Campanha lançada com sucesso! 🚀');
+      if (sourceProductResearchId) {
+        router.push(`/trend-lab?campaignId=${savedId}&productResearchId=${sourceProductResearchId}`);
+      } else {
+        router.push('/campanhas');
       }
-    }
-    toast.success('Campanha lançada com sucesso! 🚀');
-    if (sourceProductResearchId && campaignId) {
-      router.push(`/trend-lab?campaignId=${campaignId}&productResearchId=${sourceProductResearchId}`);
-    } else {
-      router.push('/campanhas');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao lançar campanha');
     }
   };
 
@@ -1474,7 +1491,7 @@ export default function WizardPage() {
                 <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-green-400" /> Anti-strike Checklist {platform === 'ClickBank' ? '(ClickBank)' : ''}
                 </h2>
-                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
                   {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
                 </Button>
               </div>
@@ -1534,7 +1551,7 @@ export default function WizardPage() {
                   <p className="text-sm text-white">Checklist da Bridge</p>
                   <p className="text-xs text-slate-500">{BRIDGE_CHECKLIST.filter(i => i.critical && !bridgeChecks[i.key]).length} itens críticos pendentes</p>
                 </div>
-                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5 shrink-0">
+                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5 shrink-0">
                   {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar
                 </Button>
               </div>
@@ -1888,7 +1905,7 @@ export default function WizardPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-lg font-semibold text-white">Setup Google Ads</h2>
-                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
                   {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
                 </Button>
               </div>
@@ -1909,8 +1926,12 @@ export default function WizardPage() {
               {campaignId && (
                 <ExperimentSetupCard
                   campaignId={campaignId}
+                  presellId={presellId}
                   controlPresellUrl={presellUrl}
-                  onExperimentUpdated={runChecklistVerify}
+                  onExperimentUpdated={(updatedExperimentId) => {
+                    if (updatedExperimentId) setExperimentId(updatedExperimentId);
+                    void runChecklistVerify();
+                  }}
                 />
               )}
               {experimentId && (
@@ -1965,7 +1986,7 @@ export default function WizardPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-lg font-semibold text-white">Tracking & Tags</h2>
-                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
                   {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar automaticamente
                 </Button>
               </div>
@@ -2002,7 +2023,7 @@ export default function WizardPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Rocket className="h-5 w-5 text-green-400" /> Go-live</h2>
-                <Button size="sm" variant="outline" onClick={runChecklistVerify} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
                   {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar tudo automaticamente
                 </Button>
               </div>

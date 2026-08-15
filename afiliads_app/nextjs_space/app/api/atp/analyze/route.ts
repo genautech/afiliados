@@ -137,8 +137,14 @@ Keywords (com volume, cpc, intent, score econômico):
 ${top.map((r) => `- "${r.keyword}" vol=${r.volume ?? '?'} cpc=${r.cpc ?? '?'} intent=${r.intent} score=${r.score}${r.viable === false ? ' INVIÁVEL(cpc>teto)' : ''}`).join('\n')}
 
 Retorne JSON: {"best": {"keyword": "...", "layer": "A|B|C|D", "matchType": "exact|phrase", "rationale": "1-2 frases em pt-BR do porquê é a melhor keyword para campanha de afiliado"}, "keywords": [{"keyword": "...", "layer": "A|B|C|D", "matchType": "exact|phrase"}]} para TODAS as keywords listadas.`;
-      const raw = await callLLM(userId, { agent: 'atp-keyword-analyst', systemPrompt, userPrompt });
-      llmResult = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      const raw = await callLLM(userId, {
+        agent: 'atp-keyword-analyst', systemPrompt, userPrompt,
+        campaignId: campaign?.id,
+        campaignTarget: campaign
+          ? { kind: 'campaign', campaignId: campaign.id }
+          : { kind: 'non-campaign' },
+      });
+      llmResult = JSON.parse(raw.text.replace(/```json|```/g, '').trim());
     } catch {
       llmResult = null;
     }

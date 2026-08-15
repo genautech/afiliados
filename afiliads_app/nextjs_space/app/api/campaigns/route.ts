@@ -36,12 +36,23 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const body = await request.json();
+    const productResearchId = typeof body?.productResearchId === 'string'
+      ? body.productResearchId
+      : null;
+    if (productResearchId) {
+      const product = await prisma.productResearch.findFirst({
+        where: { id: productResearchId, userId },
+        select: { id: true },
+      });
+      if (!product) return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
+    }
     const campaign = await prisma.campaign.create({
       data: {
         userId,
-        productResearchId: body?.productResearchId ?? null,
+        productResearchId,
         name: body?.name ?? 'Nova Campanha',
         platform: body?.platform ?? 'ClickBank',
         vertical: body?.vertical ?? 'Weight Loss',

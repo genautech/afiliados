@@ -6,6 +6,17 @@ import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
 import { prisma } from '@/lib/prisma';
 import { getChecklistLearningReferencia } from '@/lib/complianceVerifier';
+import { fetchPageContent } from '@/lib/salesPageAnalyzer';
+
+function htmlToPromptText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 6000);
+}
 
 const HUNTER_PROMPT = `Você é o Product Hunter, agente caçador de produtos de afiliados especializado em ClickBank.
 Analise o produto informado com base no seu conhecimento do marketplace ClickBank, verticais nutra/saúde/MMO/sobrevivência e na regra do 3× (comissão média deve cobrir ao menos 3× o CPA estimado de teste).
@@ -110,6 +121,7 @@ export async function POST(request: NextRequest) {
         const hunterCtx = existing?.summary ? `Dados já conhecidos: ${JSON.stringify({ vertical: existing.vertical, gravity: existing.gravity, avgPayout: existing.avgPayout, summary: existing.summary })}` : '';
         const hunterRes = await callAgent(uid, {
           agent: 'product-hunter',
+          campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicHunterPrompt,
           userPrompt: `Produto: ${productName} (rede: ${netTitle}). ${hunterCtx}\nJSON puro.`,
         });
@@ -120,6 +132,7 @@ export async function POST(request: NextRequest) {
         send({ status: 'step', agent: 'seo', state: 'running' });
         const seoRes = await callAgent(uid, {
           agent: 'seo-architect',
+          campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicSeoPrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Resumo: ${hunter?.summary} | Tags: ${(hunter?.tags ?? []).join(', ')}\nJSON puro.`,
         });
@@ -133,21 +146,10 @@ export async function POST(request: NextRequest) {
         let affiliatePageUrlUsed = '';
         const urlGuess = typeof hunter?.affiliate_page_url_guess === 'string' ? hunter.affiliate_page_url_guess.trim() : '';
         if (urlGuess && /^https?:\/\//i.test(urlGuess)) {
-          try {
-            const pageRes = await fetch(urlGuess, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
-            if (pageRes.ok) {
-              const html = await pageRes.text();
-              affiliatePageText = html
-                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .slice(0, 6000);
-              affiliatePageUrlUsed = urlGuess;
-            }
-          } catch (e: any) {
-            console.error('Falha ao buscar página de afiliados:', urlGuess, e?.message);
+          const html = await fetchPageContent(urlGuess);
+          if (html) {
+            affiliatePageText = htmlToPromptText(html);
+            affiliatePageUrlUsed = urlGuess;
           }
         }
 
@@ -157,21 +159,10 @@ export async function POST(request: NextRequest) {
         let vendorPageUrlUsed = '';
         const vendorUrlGuess = typeof hunter?.vendor_sales_page_url_guess === 'string' ? hunter.vendor_sales_page_url_guess.trim() : '';
         if (vendorUrlGuess && /^https?:\/\//i.test(vendorUrlGuess)) {
-          try {
-            const vendorRes = await fetch(vendorUrlGuess, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
-            if (vendorRes.ok) {
-              const vendorHtml = await vendorRes.text();
-              vendorPageText = vendorHtml
-                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .slice(0, 6000);
-              vendorPageUrlUsed = vendorUrlGuess;
-            }
-          } catch (e: any) {
-            console.error('Falha ao buscar página de vendas do vendor:', vendorUrlGuess, e?.message);
+          const vendorHtml = await fetchPageContent(vendorUrlGuess);
+          if (vendorHtml) {
+            vendorPageText = htmlToPromptText(vendorHtml);
+            vendorPageUrlUsed = vendorUrlGuess;
           }
         }
 
@@ -179,6 +170,7 @@ export async function POST(request: NextRequest) {
         const checklistLearning = await getChecklistLearningReferencia(uid, hunter?.vertical, undefined, netTitle).catch(() => '');
         const compRes = await callAgent(uid, {
           agent: 'compliance-sentinel',
+          campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicCompliancePrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}
 ${affiliatePageText ? `TEXTO REAL DA PÁGINA DE AFILIADOS (${affiliatePageUrlUsed}):\n"""${affiliatePageText}"""` : `Não foi possível buscar a página de afiliados real (tentativa: ${urlGuess || 'nenhuma URL sugerida pelo Hunter'}). Responda "canais.google_search_permitido": "nao_verificado" e alerte nível crítico.`}

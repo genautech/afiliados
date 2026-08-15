@@ -39,16 +39,18 @@ export async function runAgentSequence(
   for (const step of steps) {
     try {
       const userPrompt = step.buildUserPrompt({ baseContext, previous: results });
+      const campaignId = step.campaignId ?? topCampaignId;
       const res: AgentCallResult = await callAgent(userId, {
         agent: step.agent,
         systemPrompt: step.systemPrompt,
         userPrompt,
         json: step.json,
         validate: step.validate,
-        campaignId: step.campaignId ?? topCampaignId,
+        campaignId,
+        campaignTarget: campaignId ? { kind: 'campaign', campaignId } : { kind: 'non-campaign' },
       });
-      totalTokens += res.usage.totalTokens;
-      results.push({ agent: step.agent, data: res.data, text: res.text, tokens: res.usage.totalTokens, error: null });
+      totalTokens += (res.usage.totalTokens ?? 0);
+      results.push({ agent: step.agent, data: res.data, text: res.text, tokens: (res.usage.totalTokens ?? 0), error: null });
     } catch (e: any) {
       results.push({ agent: step.agent, data: null, text: '', tokens: 0, error: e?.message ?? String(e) });
     }

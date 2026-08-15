@@ -49,7 +49,7 @@ Responda APENAS com JSON válido no formato:
 
 Responda com JSON puro, sem blocos markdown ou explicações.`;
 
-export async function generateRsaCopy(userId: string, args: { keyword: string; benefit?: string; angle?: string; vertical?: string; forbiddenTerms?: string[] }): Promise<RsaResult> {
+export async function generateRsaCopy(userId: string, args: { campaignId?: string; keyword: string; benefit?: string; angle?: string; vertical?: string; forbiddenTerms?: string[] }): Promise<RsaResult> {
   const userPrompt = `Gere um RSA para:
 - Keyword principal: ${args.keyword}
 - Benefício: ${args.benefit ?? 'geral'}
@@ -61,7 +61,14 @@ Lembre: títulos max 30 chars, descrições max 90 chars. JSON puro.`;
 
   let result: RsaResult;
   try {
-    const res = await callAgent(userId, { agent: 'cro-copywriter', systemPrompt: SYSTEM_PROMPT, userPrompt, validate: validateRsa });
+    const res = await callAgent(userId, {
+      agent: 'cro-copywriter', systemPrompt: SYSTEM_PROMPT, userPrompt,
+      campaignId: args.campaignId,
+      campaignTarget: args.campaignId
+        ? { kind: 'campaign', campaignId: args.campaignId }
+        : { kind: 'non-campaign' },
+      validate: validateRsa,
+    });
     result = res.data;
   } catch (e: any) {
     result = { titles: [], descriptions: [], warnings: [e?.message ?? 'Erro na geração'] };

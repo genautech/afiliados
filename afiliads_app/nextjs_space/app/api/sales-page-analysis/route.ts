@@ -1,13 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchPageContent, analyzeDom, classifySalesPage, SalesPageType } from '@/lib/salesPageAnalyzer';
-import { prisma } from '@/lib/prisma'; // Corrigido: import named export
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { fetchPageContent, analyzeDom, classifySalesPage } from '@/lib/salesPageAnalyzer';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
+    if (!userId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
     const { url, productId } = await req.json();
 
-    if (!url) {
+    if (typeof url !== 'string' || !url.trim()) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    if (productId) {
+      const product = await prisma.productResearch.findFirst({
+        where: { id: productId, userId },
+        select: { id: true },
+      });
+      if (!product) {
+        return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
+      }
     }
 
     const htmlContent = await fetchPageContent(url);
@@ -19,17 +37,11 @@ export async function POST(req: NextRequest) {
     const characteristics = analyzeDom(htmlContent);
     const salesPageType = classifySalesPage(characteristics);
 
-    // Se um productId for fornecido, atualiza o ProductResearch
     if (productId) {
-      try {
-        await prisma.productResearch.update({
-          where: { id: productId },
-          data: { salesPageType: salesPageType },
-        });
-      } catch (dbError) {
-        console.error(`Failed to update ProductResearch for ${productId}:`, dbError);
-        // Continua mesmo se a atualização do banco falhar, para retornar a análise
-      }
+      await prisma.productResearch.update({
+        where: { id: productId },
+        data: { salesPageType },
+      });
     }
 
     return NextResponse.json({

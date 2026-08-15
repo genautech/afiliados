@@ -17,6 +17,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         keywords: true,
         dailyLogs: { orderBy: { logDate: 'asc' } },
         decisions: { orderBy: { createdAt: 'desc' } },
+        presells: {
+          where: { userId },
+          select: { id: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
         productResearch: { select: { id: true, name: true, vertical: true, riskLevel: true, network: true, avgPayout: true, affiliatePageUrl: true, assetsUrl: true } },
       },
     });

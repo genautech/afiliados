@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { recommendBridgePage, BridgePageType } from '@/lib/bridgePageRecommender';
+import { recommendBridgePage } from '@/lib/bridgePageRecommender';
 import { SalesPageType } from '@/lib/salesPageAnalyzer';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const { productId, campaignId, salesPageType: salesPageTypeString } = await req.json();
 
@@ -23,8 +24,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid salesPageType provided' }, { status: 400 });
     }
 
-    const product = await prisma.productResearch.findUnique({
-      where: { id: productId },
+    const product = await prisma.productResearch.findFirst({
+      where: { id: productId, userId },
     });
 
     if (!product) {
@@ -33,9 +34,12 @@ export async function POST(req: NextRequest) {
 
     let campaign = null;
     if (campaignId) {
-      campaign = await prisma.campaign.findUnique({
+      campaign = await prisma.campaign.findFirst({
         where: { id: campaignId, userId },
       });
+      if (!campaign) {
+        return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+      }
     }
 
     // Chamar a função de recomendação
