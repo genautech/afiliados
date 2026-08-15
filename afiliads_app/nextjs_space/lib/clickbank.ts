@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { readIntegrationFieldValue } from './integration-secrets';
 
 const CB_API = 'https://api.clickbank.com/rest/1.3';
 
@@ -23,7 +24,10 @@ export interface CbSyncResult {
 
 async function getCbKey(userId: string): Promise<{ apiKey: string; nickname: string } | null> {
   const rows = await prisma.integration.findMany({ where: { userId, serviceName: 'clickbank' } });
-  const apiKey = rows.find(r => r.fieldName === 'api_key')?.fieldValue ?? '';
+  const apiKeyRow = rows.find(r => r.fieldName === 'api_key');
+  const apiKey = apiKeyRow?.fieldValue
+    ? readIntegrationFieldValue(apiKeyRow.fieldName, apiKeyRow.fieldValue)
+    : '';
   const nickname = rows.find(r => r.fieldName === 'account_nickname')?.fieldValue ?? '';
   if (!apiKey || apiKey.includes('MOCK')) return null;
   return { apiKey, nickname };

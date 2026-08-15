@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { assertMutationAllowed } from './google-ads/mutation-guard';
+import { readIntegrationFieldValue } from './integration-secrets';
 import {
   GOOGLE_ADS_API_VERSION,
   buildApiHeaders,
@@ -64,7 +65,7 @@ export async function getGoogleAdsConfig(userId: string): Promise<GoogleAdsCrede
   const map: Record<string, string> = {};
   for (const r of rows) {
     if (r.fieldValue) {
-      map[r.fieldName] = r.fieldValue;
+      map[r.fieldName] = readIntegrationFieldValue(r.fieldName, r.fieldValue);
     }
   }
 

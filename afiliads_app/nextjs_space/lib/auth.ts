@@ -32,10 +32,43 @@ export const authOptions: NextAuthOptions = {
   pages: { signIn: '/login' },
   callbacks: {
     async jwt({ token, user }: any) {
-      if (user) { token.id = user.id; token.role = user.role ?? 'USER'; }
+      if (user) {
+        token.id = user.id;
+        token.role = user.role ?? 'USER';
+        token.active = true;
+        return token;
+      }
+      if (!token.id) {
+        token.active = false;
+        return token;
+      }
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: token.id },
+          select: { id: true, email: true, role: true, isActive: true },
+        });
+        if (!currentUser || currentUser.isActive === false) {
+          delete token.id;
+          delete token.role;
+          token.active = false;
+          return token;
+        }
+        token.id = currentUser.id;
+        token.email = currentUser.email;
+        token.role = currentUser.role ?? 'USER';
+        token.active = true;
+      } catch {
+        delete token.id;
+        delete token.role;
+        token.active = false;
+      }
       return token;
     },
     async session({ session, token }: any) {
+      if (token.active !== true || !token.id) {
+        session.user = undefined;
+        return session;
+      }
       if (session?.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role ?? 'USER';
