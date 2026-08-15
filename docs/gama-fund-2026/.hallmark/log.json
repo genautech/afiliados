@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2026-08-15",
+    "macrostructure": "Index-First",
+    "theme": "Editorial técnico",
+    "enrichment": "Operational deadline bar, submission readiness and readable HTML documents",
+    "nav": "Accessible rail with Escape dismissal",
+    "footer": "Provenance colophon",
+    "brief": "AfiliAds Gama Fund 2026 application readiness revision",
+    "audit": "Unsupported test total removed; mandatory materials exposed; 3 smoke checks passed; E2E verified at 390 and 1440 px without overflow"
+  },
+  {
+    "date": "2026-08-10",
+    "macrostructure": "Index-First",
+    "theme": "Almanac",
+    "enrichment": "Data-first typography and interactive financial scenarios",
+    "nav": "N3",
+    "footer": "Ft4",
+    "brief": "AfiliAds Gama Fund 2026 standalone investment room",
+    "audit": "58/58 gates passed; responsive verified at 320, 375, 414, 768 and 1440 px; contrast pairs reviewed"
+  }
+]

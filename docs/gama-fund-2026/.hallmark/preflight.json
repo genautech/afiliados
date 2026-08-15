@@ -1,0 +1,14 @@
+{
+  "date": "2026-08-10",
+  "artifact": "AfiliAds Gama Fund Investment Room",
+  "target": "docs/gama-fund-2026/index.html",
+  "framework": "vanilla HTML, CSS and JavaScript",
+  "existing_target_design_system": false,
+  "reference_surface": "afiliads_app/nextjs_space/app/afiliads",
+  "continuity": {
+    "preserved": ["austere technical tone", "warm paper base", "high contrast typography"],
+    "diversified": ["Index-First macrostructure", "Almanac theme", "N3 side rail", "Ft4 dense colophon"]
+  },
+  "motion_cut": ["scenario switch", "document search", "reading progress", "active section navigation"],
+  "constraints": ["offline", "no dependencies", "no invented traction", "mobile first responsive verification"]
+}

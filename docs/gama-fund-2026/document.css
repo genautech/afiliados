@@ -1,0 +1,70 @@
+/* Hallmark · genre: editorial · macrostructure: Long Document · design-system: AfiliAds Investment Room · tone: austere-technical */
+@import url("./tokens.css");
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+html { scroll-behavior: smooth; }
+body { margin: 0; color: var(--color-ink); background: var(--color-paper); font-family: var(--font-body); font-size: var(--text-md); line-height: var(--leading-body); }
+a { color: var(--color-accent-dark); }
+button { font: inherit; }
+.skip-link { position: fixed; z-index: var(--z-mobile-nav); top: var(--space-3); left: var(--space-3); padding: var(--space-2) var(--space-3); color: var(--color-paper-raised); background: var(--color-ink); transform: translateY(-180%); }
+.skip-link:focus { transform: translateY(0); }
+.document-toolbar { position: sticky; z-index: var(--z-rail); top: 0; display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; min-height: 4.5rem; padding: var(--space-3) var(--page-gutter); color: var(--color-paper-raised); background: var(--color-ink); border-bottom: var(--rule-heavy) solid var(--color-signal); }
+.document-brand { display: flex; gap: var(--space-3); align-items: center; color: inherit; text-decoration: none; white-space: nowrap; }
+.document-brand strong { color: var(--color-signal); font-family: var(--font-display); font-size: 1.75rem; }
+.document-brand span, .document-actions span { font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; }
+.document-actions { display: flex; gap: var(--space-4); align-items: center; }
+.document-actions span { color: var(--color-ink-on-dark-muted); }
+.document-actions button { min-height: 2.6rem; padding: var(--space-2) var(--space-3); color: var(--color-ink); background: var(--color-signal); border: 0; cursor: pointer; white-space: nowrap; }
+.document-actions button:hover { background: var(--color-paper-raised); }
+.document-actions button:active { transform: translateY(1px); }
+.document-shell { width: min(100%, 66rem); margin: 0 auto; padding: var(--space-7) var(--page-gutter) var(--space-9); }
+.document-meta { display: flex; justify-content: space-between; gap: var(--space-4); padding-bottom: var(--space-3); border-bottom: var(--rule-heavy) solid var(--color-ink); color: var(--color-ink-faint); font-size: var(--text-xs); letter-spacing: 0.07em; text-transform: uppercase; }
+.prose h1, .prose h2, .prose h3, .prose h4 { min-width: 0; color: var(--color-ink); font-family: var(--font-display); font-style: normal; font-weight: 500; line-height: var(--leading-title); overflow-wrap: anywhere; }
+.prose h1 { max-width: 18ch; margin: var(--space-8) 0 var(--space-7); font-size: var(--text-2xl); letter-spacing: -0.05em; }
+.prose h2 { margin: var(--space-8) 0 var(--space-4); padding-top: var(--space-4); border-top: var(--rule-thin) solid var(--color-rule-strong); font-size: var(--text-xl); letter-spacing: -0.03em; }
+.prose h3 { margin: var(--space-6) 0 var(--space-3); font-size: 1.4rem; }
+.prose h4 { margin: var(--space-5) 0 var(--space-2); font-size: 1.1rem; }
+.prose p, .prose li { max-width: var(--measure-copy); }
+.prose p { margin: 0 0 var(--space-4); }
+.prose ul, .prose ol { margin: 0 0 var(--space-5); padding-left: var(--space-6); }
+.prose li { margin-bottom: var(--space-2); padding-left: var(--space-2); }
+.prose blockquote { max-width: 54rem; margin: var(--space-6) 0; padding: var(--space-4) 0 var(--space-4) var(--space-5); border-left: var(--rule-heavy) solid var(--color-accent); font-family: var(--font-display); font-size: var(--text-lg); }
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose code { padding: 0.08em 0.28em; background: var(--color-paper-raised); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.9em; }
+.prose pre { overflow-x: auto; margin: var(--space-5) 0; padding: var(--space-4); color: var(--color-paper-raised); background: var(--color-ink); }
+.prose pre code { padding: 0; color: inherit; background: transparent; border: 0; }
+.table-scroll { overflow-x: auto; margin: var(--space-5) 0 var(--space-6); border-top: var(--rule-heavy) solid var(--color-ink); }
+.prose table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.prose th, .prose td { min-width: 8rem; padding: var(--space-3); border-bottom: var(--rule-thin) solid var(--color-rule); text-align: left; vertical-align: top; }
+.prose th { color: var(--color-ink-faint); font-size: var(--text-xs); letter-spacing: 0.06em; text-transform: uppercase; }
+.is-draft .document-toolbar { border-bottom-color: var(--color-warning); }
+.is-draft .document-actions span { color: var(--color-signal); }
+.document-close { display: flex; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-9); padding-top: var(--space-4); border-top: var(--rule-heavy) solid var(--color-ink); }
+.document-close a { font-weight: 700; text-decoration: none; white-space: nowrap; }
+:focus-visible { outline: var(--rule-heavy) solid var(--color-focus); outline-offset: 3px; }
+
+@media (max-width: 600px) {
+  .document-toolbar { align-items: flex-start; }
+  .document-actions span { display: none; }
+  .document-shell { padding-top: var(--space-6); }
+  .document-meta { align-items: flex-start; flex-direction: column; }
+  .prose h1 { margin-top: var(--space-7); }
+  .document-close { align-items: flex-start; flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+@media print {
+  @page { size: A4; margin: 16mm; }
+  body { background: var(--color-paper-raised); font-size: 10.5pt; }
+  .document-toolbar, .skip-link, .document-close { display: none; }
+  .document-shell { width: 100%; padding: 0; }
+  .document-meta { margin-bottom: var(--space-6); }
+  .prose h1 { margin-top: var(--space-6); font-size: 30pt; }
+  .prose h2 { break-after: avoid-page; }
+  .prose table, .prose blockquote, .prose pre { break-inside: avoid; }
+  .is-draft::before { position: fixed; z-index: 100; top: 8mm; right: 8mm; padding: 2mm 3mm; color: var(--color-negative); border: var(--rule-thin) solid var(--color-negative); content: "RASCUNHO — NÃO ENVIAR"; font-size: 8pt; font-weight: 700; }
+}

@@ -1,0 +1,74 @@
+/* Hallmark — tokens.css | AfiliAds Gama Fund Investment Room | 2026-08-10 */
+:root {
+  color-scheme: light;
+
+  --color-paper: oklch(0.965 0.012 88);
+  --color-paper-raised: oklch(0.985 0.008 88);
+  --color-ink: oklch(0.235 0.018 252);
+  --color-ink-soft: oklch(0.42 0.021 251);
+  --color-ink-faint: oklch(0.46 0.02 249);
+  --color-ink-on-dark-muted: oklch(0.76 0.018 87);
+  --color-rule: oklch(0.79 0.017 87);
+  --color-rule-strong: oklch(0.61 0.022 84);
+  --color-accent: oklch(0.5 0.145 202);
+  --color-accent-dark: oklch(0.38 0.115 202);
+  --color-accent-ink: oklch(0.985 0.008 88);
+  --color-accent-wash: oklch(0.91 0.04 198);
+  --color-signal: oklch(0.71 0.15 91);
+  --color-positive: oklch(0.4 0.1 154);
+  --color-warning: oklch(0.43 0.11 65);
+  --color-negative: oklch(0.42 0.14 29);
+  --color-focus: oklch(0.4 0.17 240);
+  --color-focus-on-dark: oklch(0.8 0.12 198);
+  --color-selection: oklch(0.83 0.08 195);
+
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  --font-body: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-body);
+
+  --text-xs: 0.72rem;
+  --text-sm: 0.86rem;
+  --text-md: 1rem;
+  --text-lg: clamp(1.08rem, 1.2vw, 1.25rem);
+  --text-xl: clamp(1.55rem, 2.4vw, 2.3rem);
+  --text-2xl: clamp(2.3rem, 5.8vw, 5.4rem);
+
+  --leading-tight: 1.02;
+  --leading-title: 1.12;
+  --leading-body: 1.58;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+  --space-9: 7rem;
+
+  --measure-copy: 67ch;
+  --measure-wide: 82rem;
+  --rail-width: 16.5rem;
+  --page-gutter: clamp(1.25rem, 4vw, 4rem);
+
+  --rule-thin: 1px;
+  --rule-heavy: 3px;
+  --radius-sm: 0.18rem;
+  --radius-md: 0.35rem;
+
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --z-progress: 80;
+  --z-rail: 60;
+  --z-mobile-nav: 70;
+}
+
+::selection {
+  color: var(--color-ink);
+  background: var(--color-selection);
+}

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sua Jornada de Transformação Começa Aqui!</title>
+    <!-- Inclua o CDN do Tailwind CSS para desenvolvimento rápido -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f7f7f7;
+        }
+        .container {
+            max-width: 800px;
+        }
+        /* Estilos básicos para o pop-up de saída */
+        .exit-popup-overlay {
+            display: none; /* Escondido por padrão */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .exit-popup-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            margin: 20px;
+            position: relative;
+        }
+        .exit-popup-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #aaa;
+        }
+        .exit-popup-close:hover {
+            color: #333;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-md py-4">
+        <div class="container mx-auto flex justify-between items-center px-4">
+            <img src="https://via.placeholder.com/150x50" alt="Logo da Empresa" class="h-12">
+            <nav>
+                <!-- Links de navegação podem ser adicionados aqui se necessário -->
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-8 bg-white rounded-lg shadow-xl my-8">
+        <h1 class="text-4xl md:text-5xl font-bold text-center text-blue-800 mb-6">
+            Descubra o Segredo por Trás de Milhares de Vendas Online!
+        </h1>
+        <p class="text-lg text-center text-gray-700 mb-8">
+            Você está a um passo de acessar o método exclusivo que está transformando a vida de centenas de afiliados.
+            Não perca esta oportunidade!
+        </p>
+
+        <!-- Seção de Prova Social / Benefícios Rápidos (Exemplo de superpresell_features) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+            <div class="bg-blue-50 p-6 rounded-lg text-center">
+                <h3 class="font-semibold text-xl text-blue-700 mb-2">Resultados Comprovados</h3>
+                <p class="text-gray-600">Mais de 10.000 alunos satisfeitos alcançaram seus objetivos financeiros.</p>
+            </div>
+            <div class="bg-blue-50 p-6 rounded-lg text-center">
+                <h3 class="font-semibold text-xl text-blue-700 mb-2">Suporte Exclusivo</h3>
+                <p class="text-gray-600">Equipe dedicada pronta para te ajudar em cada etapa do processo.</p>
+            </div>
+        </div>
+
+        <!-- Call to Action Principal (Exemplo de conversion_triggers) -->
+        <div class="text-center mb-8">
+            <a href="https://seulinkdeafiliado.com/produto" target="_blank"
+               class="inline-block bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-full text-2xl transition duration-300 ease-in-out transform hover:scale-105">
+                SIM, EU QUERO MUDAR MINHA VIDA AGORA!
+            </a>
+            <p class="text-sm text-gray-500 mt-2">Clique no botão acima para ser redirecionado à página oficial.</p>
+        </div>
+
+        <!-- Seção de Escassez (Exemplo de conversion_triggers) -->
+        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-8" role="alert">
+            <p class="font-bold">Atenção:</p>
+            <p>Esta oferta especial é por tempo limitado e as vagas estão se esgotando rapidamente!</p>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-6">
+        <div class="container mx-auto text-center px-4">
+            <p>&copy; 2023 Sua Empresa. Todos os direitos reservados.</p>
+            <p class="text-sm mt-2">
+                <a href="#politica-privacidade" class="text-blue-400 hover:underline">Política de Privacidade</a> |
+                <a href="#termos-uso" class="text-blue-400 hover:underline">Termos de Uso</a>
+            </p>
+            <p class="text-xs text-gray-500 mt-4">
+                Disclaimer: Os resultados podem variar. Nenhum resultado é garantido.
+            </p>
+        </div>
+    </footer>
+
+    <!-- Exit Pop-up (superpresell_features) -->
+    <div class="exit-popup-overlay" id="exitPopup">
+        <div class="exit-popup-content">
+            <span class="exit-popup-close" onclick="document.getElementById('exitPopup').style.display='none';">&times;</span>
+            <h2 class="text-3xl font-bold text-blue-800 mb-4">ESPERE! Não Vá Embora Ainda!</h2>
+            <p class="text-lg text-gray-700 mb-6">
+                Temos uma oferta exclusiva ou um conteúdo bônus especial para você.
+                Não perca esta chance única!
+            </p>
+            <a href="https://seulinkdeafiliado.com/oferta-bonus" target="_blank"
+               class="inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full text-xl transition duration-300 ease-in-out">
+                QUERO MINHA OFERTA EXCLUSIVA!
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Lógica simples para ativar o pop-up de saída ao tentar sair da página
+        document.addEventListener('mouseleave', function(e) {
+            if (e.clientY < 10) { // Se o mouse for para o topo da janela (geralmente indicando tentativa de fechar ou mudar de aba)
+                document.getElementById('exitPopup').style.display = 'flex';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AfiliAds — modelo financeiro de 12 meses — AfiliAds / Gama Fund 2026">
+  <title>AfiliAds — modelo financeiro de 12 meses — AfiliAds</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="document.css">
+</head>
+<body>
+  <a class="skip-link" href="#documento">Pular para o documento</a>
+  <header class="document-toolbar">
+    <a class="document-brand" href="index.html#documentos" aria-label="Voltar à sala de investimento"><strong>A/</strong><span>Investment room</span></a>
+    <div class="document-actions">
+      <span>Documento de trabalho</span>
+      <button type="button" onclick="window.print()">Salvar em PDF</button>
+    </div>
+  </header>
+  <main id="documento" class="document-shell">
+    <div class="document-meta"><span>Gama Fund 2026</span><span>Fonte: modelo-financeiro-12m.md</span></div>
+    <article class="prose"><h1 id="afiliads-modelo-financeiro-de-12-meses">AfiliAds — modelo financeiro de 12 meses</h1>
+<p>Data-base: 10 de agosto de 2026. Moeda: reais, salvo indicação contrária.</p>
+<blockquote><p>Modelo gerencial para candidatura e planejamento, não demonstração contábil nem recomendação financeira. AfiliAds ainda não possui histórico comercial suficiente; portanto, aquisição, churn e consumo por campanha são hipóteses explícitas a validar.</p></blockquote>
+<h2 id="decisoes-confirmadas-pelo-founder">Decisões confirmadas pelo founder</h2>
+<ul>
+<li>estrutura: newco independente;</li>
+<li>dedicação: 50 horas por semana;</li>
+<li>transição: imediata;</li>
+<li>captação pretendida: R$ 2 milhões;</li>
+<li>runway mínimo: 12 meses;</li>
+<li>estágio: produto funcional, ainda sem escala e sem série confiável de custo real por campanha.</li>
+</ul>
+<h2 id="resumo-executivo">Resumo executivo</h2>
+<p>O pedido de R$ 2 milhões é defensável como um plano de 12 meses que <strong>não depende de receita para sobreviver</strong>. A receita estende o runway ou financia escala; não é usada para esconder uma necessidade maior de capital.</p>
+<p>No cenário-base, a empresa termina o mês 12 com:</p>
+<ul>
+<li>245 clientes ativos líquidos;</li>
+<li>MRR de R$ 244 mil;</li>
+<li>ARR run-rate de R$ 2,93 milhões;</li>
+<li>receita reconhecida no ano de R$ 1,02 milhão;</li>
+<li>margem bruta média modelada de 75%;</li>
+<li>aproximadamente R$ 762 mil gerados pela contribuição bruta, além do runway financiado.</li>
+</ul>
+<p>O cenário-base é uma meta operacional, não forecast comprometido. Sem sinais de conversão dos primeiros pilotos, o cenário conservador deve orientar caixa e contratações.</p>
+<h2 id="como-dados-historicos-foram-usados">Como dados históricos foram usados</h2>
+<h3 id="o-que-existe">O que existe</h3>
+<ul>
+<li>O produto já registra tokens e <code>costUsd</code> por <code>AgentRun</code> no schema e possui painel agregado.</li>
+<li>A tabela de referência do código contém preços por modelo/provedor.</li>
+<li>O deck histórico da Yoobe registra capacidade anterior de comercialização e escala do founder.</li>
+<li>Concorrentes adjacentes provam willingness-to-pay: RedTrack publica planos de US$ 79, US$ 499 e US$ 999/mês; ClickFunnels publica US$ 97, US$ 197 e US$ 297/mês.</li>
+</ul>
+<h3 id="o-que-ainda-nao-existe">O que ainda não existe</h3>
+<ul>
+<li>coorte pagante do AfiliAds;</li>
+<li>churn, expansão ou CAC observado;</li>
+<li>distribuição real de tokens por campanha completa;</li>
+<li>taxa de retry, grounding e revisão humana em produção;</li>
+<li>custo de suporte por perfil.</li>
+</ul>
+<p>Os números históricos da Yoobe <strong>não foram usados para fabricar crescimento do AfiliAds</strong>. Eles provam capacidade do founder, mas são negócios e mercados diferentes.</p>
+<h2 id="pricing-para-validacao">Pricing para validação</h2>
+<div class="table-scroll"><table><thead><tr><th>Plano</th><th>Preço mensal</th><th>Franquia sugerida</th><th>Cliente principal</th></tr></thead><tbody>
+<tr><td>Starter</td><td>R$ 297</td><td>3 campanhas/mês</td><td>iniciante sério</td></tr>
+<tr><td>Pro</td><td>R$ 997</td><td>15 campanhas/mês</td><td>operador profissional</td></tr>
+<tr><td>Agency</td><td>R$ 2.997</td><td>50 campanhas/mês</td><td>agência/equipe</td></tr>
+<tr><td>Overage</td><td>R$ 39</td><td>por campanha adicional</td><td>todos os planos</td></tr>
+</tbody></table></div>
+<p>Contratos anuais podem receber até dois meses de desconto somente após validar retenção. BYOK pode reduzir COGS, mas não deve ser obrigatório para o produto funcionar.</p>
+<h3 id="referencia-de-mercado">Referência de mercado</h3>
+<ul>
+<li><a href="https://www.redtrack.io/pricing/" target="_blank" rel="noreferrer">RedTrack</a>: US$ 79 a US$ 999/mês, conforme escala e recursos.</li>
+<li><a href="https://support.clickfunnels.com/en/articles/12734340-clickfunnels-2-0-pricing" target="_blank" rel="noreferrer">ClickFunnels</a>: US$ 97, US$ 197 e US$ 297/mês em 2026.</li>
+<li><a href="https://www.optmyzr.com/pricing/" target="_blank" rel="noreferrer">Optmyzr</a>: precificação por gasto gerenciado, com enterprise customizado.</li>
+</ul>
+<p>AfiliAds não copia esses preços: usa-os para demonstrar que operadores já pagam por tracking, páginas e automação separadamente.</p>
+<h2 id="economia-de-ia-por-campanha">Economia de IA por campanha</h2>
+<h3 id="premissa-de-workload">Premissa de workload</h3>
+<p>Uma campanha completa consumiria, antes de otimização:</p>
+<ul>
+<li>600 mil tokens de entrada;</li>
+<li>120 mil tokens de saída;</li>
+<li>85% do volume em Flash;</li>
+<li>15% em Pro/revisão crítica;</li>
+<li>retries, avaliações e grounding como multiplicadores adicionais.</li>
+</ul>
+<p>Preços oficiais de referência no Vertex AI:</p>
+<ul>
+<li>Gemini 2.5 Flash: US$ 0,15/1M tokens de entrada; US$ 0,60 de saída sem thinking ou US$ 3,50 com thinking;</li>
+<li>Gemini 2.5 Pro: US$ 1,25/1M de entrada e US$ 10/1M de saída, para contexto até 200 mil tokens;</li>
+<li>grounding acima da franquia: US$ 35 por mil prompts grounded.</li>
+</ul>
+<p>Fonte: <a href="https://cloud.google.com/vertex-ai/generative-ai/pricing" target="_blank" rel="noreferrer">Generative AI on Vertex AI pricing</a>.</p>
+<p>Com câmbio gerencial de R$ 5,50/US$:</p>
+<div class="table-scroll"><table><thead><tr><th>Faixa</th><th>Custo de IA/campanha</th><th>Uso no modelo</th></tr></thead><tbody>
+<tr><td>token puro, sem overhead</td><td>R$ 2,50–R$ 5,00</td><td>piso técnico</td></tr>
+<tr><td>pipeline com retry/eval/grounding</td><td>R$ 8–R$ 15</td><td>faixa provável inicial</td></tr>
+<tr><td>stress</td><td>R$ 30</td><td>teste de margem</td></tr>
+</tbody></table></div>
+<p>O modelo-base usa <strong>R$ 12 por campanha</strong> no início e prevê R$ 6 após cache, deduplicação, batch, roteamento e redução de retries. Até existir telemetria, nenhum contrato pode oferecer uso ilimitado.</p>
+<h3 id="atencao-ao-codigo-atual">Atenção ao código atual</h3>
+<p><code>lib/llm-pricing.ts</code> ainda usa algumas referências diferentes das tarifas oficiais atuais — por exemplo, Gemini 2.5 Pro com saída a US$ 12 e o fallback Gemini a US$ 0,30/US$ 1,20. Isso é conservador em alguns casos, mas não substitui sincronização periódica de preços.</p>
+<h2 id="margem-bruta">Margem bruta</h2>
+<p>O ano foi modelado com 75% de margem bruta média:</p>
+<ul>
+<li>meses iniciais: aproximadamente 68%–72%;</li>
+<li>mês 12: meta de 78%;</li>
+<li>stress com IA a R$ 30/campanha: 60%–68%, exigindo overage ou redução de franquia.</li>
+</ul>
+<p>COGS inclui:</p>
+<ul>
+<li>inferência, grounding e APIs de pesquisa;</li>
+<li>compute/data variáveis;</li>
+<li>processamento de pagamentos;</li>
+<li>suporte diretamente associado ao uso;</li>
+<li>impostos sobre receita como aproximação gerencial.</li>
+</ul>
+<p>Custos de P&amp;D, vendas, jurídico e infraestrutura de desenvolvimento ficam em OPEX.</p>
+<h2 id="cenarios-de-receita">Cenários de receita</h2>
+<p>As contagens são clientes ativos líquidos no fim de cada mês, já depois de churn. O mix implícito aumenta a presença de Pro/Agency conforme o cenário melhora.</p>
+<div class="table-scroll"><table><thead><tr><th>Indicador no mês 12</th><th>Conservador</th><th>Base</th><th>Escala</th></tr></thead><tbody>
+<tr><td>clientes ativos</td><td>78</td><td>245</td><td>600</td></tr>
+<tr><td>ARPA mensal</td><td>R$ 658</td><td>R$ 997</td><td>R$ 1.172</td></tr>
+<tr><td>MRR</td><td>R$ 51.324</td><td>R$ 244.265</td><td>R$ 703.200</td></tr>
+<tr><td>ARR run-rate</td><td>R$ 615.888</td><td>R$ 2.931.180</td><td>R$ 8.438.400</td></tr>
+<tr><td>receita reconhecida no ano</td><td>R$ 238.854</td><td>R$ 1.015.943</td><td>R$ 2.828.036</td></tr>
+<tr><td>contribuição bruta a 75%</td><td>R$ 179.141</td><td>R$ 761.957</td><td>R$ 2.121.027</td></tr>
+</tbody></table></div>
+<h3 id="trajetoria-mensal-de-clientes-ativos">Trajetória mensal de clientes ativos</h3>
+<div class="table-scroll"><table><thead><tr><th>Mês</th><th>Conservador</th><th>Base</th><th>Escala</th></tr></thead><tbody>
+<tr><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>2</td><td>3</td><td>5</td><td>8</td></tr>
+<tr><td>3</td><td>6</td><td>12</td><td>20</td></tr>
+<tr><td>4</td><td>10</td><td>22</td><td>40</td></tr>
+<tr><td>5</td><td>15</td><td>35</td><td>70</td></tr>
+<tr><td>6</td><td>21</td><td>50</td><td>110</td></tr>
+<tr><td>7</td><td>28</td><td>70</td><td>160</td></tr>
+<tr><td>8</td><td>36</td><td>95</td><td>225</td></tr>
+<tr><td>9</td><td>45</td><td>125</td><td>300</td></tr>
+<tr><td>10</td><td>55</td><td>160</td><td>390</td></tr>
+<tr><td>11</td><td>66</td><td>200</td><td>490</td></tr>
+<tr><td>12</td><td>78</td><td>245</td><td>600</td></tr>
+</tbody></table></div>
+<h2 id="uso-dos-r-2-milhoes">Uso dos R$ 2 milhões</h2>
+<div class="table-scroll"><table><thead><tr><th>Área</th><th>Valor</th><th>%</th><th>Resultado financiado</th></tr></thead><tbody>
+<tr><td>produto, engenharia e P&amp;D</td><td>R$ 900 mil</td><td>45%</td><td>produto, evals, dados e segurança</td></tr>
+<tr><td>go-to-market</td><td>R$ 360 mil</td><td>18%</td><td>pilotos, growth, comunidade e vendas</td></tr>
+<tr><td>Google Cloud, IA e dados</td><td>R$ 220 mil</td><td>11%</td><td>shadow budget sem depender dos créditos</td></tr>
+<tr><td>customer success e operações</td><td>R$ 180 mil</td><td>9%</td><td>onboarding e suporte dos design partners</td></tr>
+<tr><td>jurídico, segurança e administração</td><td>R$ 160 mil</td><td>8%</td><td>newco, IP, contratos, LGPD e controles</td></tr>
+<tr><td>contingência</td><td>R$ 180 mil</td><td>9%</td><td>câmbio, contratação e consumo acima do plano</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>R$ 2 milhões</strong></td><td><strong>100%</strong></td><td><strong>12 meses sem depender de receita</strong></td></tr>
+</tbody></table></div>
+<h3 id="composicao-indicativa-de-p-d">Composição indicativa de P&amp;D</h3>
+<ul>
+<li>pró-labore do founder: R$ 15 mil/mês;</li>
+<li>dois engenheiros full-stack/AI: aproximadamente R$ 22 mil/mês cada, custo carregado;</li>
+<li>ML/data engineer a partir da validação dos pilotos;</li>
+<li>product design e segurança por projeto;</li>
+<li>nenhum headcount antecipado sem milestone comercial.</li>
+</ul>
+<h2 id="curva-de-gasto-fixo">Curva de gasto fixo</h2>
+<div class="table-scroll"><table><thead><tr><th>Trimestre</th><th>Gasto</th><th>Média mensal</th><th>Lógica</th></tr></thead><tbody>
+<tr><td>Q1</td><td>R$ 330 mil</td><td>R$ 110 mil</td><td>founder, produto e pilotos</td></tr>
+<tr><td>Q2</td><td>R$ 450 mil</td><td>R$ 150 mil</td><td>engenharia e primeira contratação GTM</td></tr>
+<tr><td>Q3</td><td>R$ 540 mil</td><td>R$ 180 mil</td><td>dados/evals, CS e aquisição</td></tr>
+<tr><td>Q4</td><td>R$ 680 mil</td><td>R$ 227 mil</td><td>escala condicionada às métricas</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>R$ 2 milhões</strong></td><td><strong>R$ 167 mil</strong></td><td></td></tr>
+</tbody></table></div>
+<p>O gasto do Q4 não é automático. Se o cenário ficar abaixo do conservador, congelam-se contratações e preserva-se runway.</p>
+<h2 id="milestones-de-liberacao-de-caixa">Milestones de liberação de caixa</h2>
+<h3 id="gate-1-ate-o-mes-3">Gate 1 — até o mês 3</h3>
+<ul>
+<li>20 entrevistas;</li>
+<li>5 design partners;</li>
+<li>pelo menos 2 pilotos pagos ou LOIs com preço;</li>
+<li>telemetria de tokens e custo por campanha completa.</li>
+</ul>
+<h3 id="gate-2-ate-o-mes-6">Gate 2 — até o mês 6</h3>
+<ul>
+<li>50 clientes ativos no cenário-base;</li>
+<li>MRR próximo de R$ 50 mil;</li>
+<li>margem bruta observada acima de 65%;</li>
+<li>ativação e retenção medidas por coorte.</li>
+</ul>
+<h3 id="gate-3-ate-o-mes-9">Gate 3 — até o mês 9</h3>
+<ul>
+<li>125 clientes ativos no cenário-base;</li>
+<li>MRR próximo de R$ 125 mil;</li>
+<li>payback de CAC menor que seis meses;</li>
+<li>expansão em campanhas/contas observável.</li>
+</ul>
+<h3 id="gate-4-mes-12">Gate 4 — mês 12</h3>
+<ul>
+<li>cenário-base: 245 clientes e R$ 244 mil de MRR;</li>
+<li>margem bruta próxima de 78%;</li>
+<li>posição para seed/continuação baseada em retenção, não apenas aquisição.</li>
+</ul>
+<h2 id="unit-economics-que-precisam-ser-provados">Unit economics que precisam ser provados</h2>
+<div class="table-scroll"><table><thead><tr><th>Métrica</th><th>Base de planejamento</th><th>Stress/gatilho</th></tr></thead><tbody>
+<tr><td>margem bruta</td><td>75% média</td><td>&lt;65% por 2 meses exige repricing</td></tr>
+<tr><td>CAC blended</td><td>R$ 1.300</td><td>&gt;R$ 3.000 desacelera mídia paga</td></tr>
+<tr><td>payback</td><td>&lt;4 meses</td><td>máximo aceitável inicial: 6 meses</td></tr>
+<tr><td>churn logo mensal</td><td>3%</td><td>&gt;5% bloqueia escala de GTM</td></tr>
+<tr><td>custo IA/campanha</td><td>R$ 12 → R$ 6</td><td>&gt;R$ 20 exige overage/redução de franquia</td></tr>
+<tr><td>ativação</td><td>campanha <code>PAUSED</code> em até 7 dias</td><td>&gt;14 dias exige correção de onboarding</td></tr>
+</tbody></table></div>
+<p>O CAC de R$ 1.300 pressupõe founder-led sales, comunidades e parcerias. Não é razoável assumir esse CAC se a aquisição depender de mídia paga ampla desde o início.</p>
+<h2 id="efeito-dos-creditos-google">Efeito dos créditos Google</h2>
+<p>Créditos não entram em margem nem reduzem o shadow COGS. Se concedidos, permitem:</p>
+<ul>
+<li>aumentar o número de evals e pilotos;</li>
+<li>preservar até R$ 220 mil do orçamento de Cloud/IA;</li>
+<li>estender runway ou financiar produto/dados após os gates;</li>
+<li>testar cargas de escala sem contratar infraestrutura antecipadamente.</li>
+</ul>
+<h2 id="o-que-precisamos-medir-nas-proximas-quatro-semanas">O que precisamos medir nas próximas quatro semanas</h2>
+<ol>
+<li>Tokens de entrada/saída por agente e campanha completa.</li>
+<li>Custo de retries, falhas e revisão independente.</li>
+<li>Número de campanhas mensais por perfil.</li>
+<li>Disposição a pagar nos três preços propostos.</li>
+<li>Tempo manual anterior e tempo no AfiliAds.</li>
+<li>Custo de onboarding e suporte.</li>
+<li>Conversão da waitlist para entrevista, piloto e pagamento.</li>
+</ol>
+<p>Após 10 campanhas completas e cinco pilotos, este modelo deve ser recalibrado com percentis p50/p90, não apenas médias.</p>
+<h2 id="riscos-do-modelo">Riscos do modelo</h2>
+<ul>
+<li>245 clientes em 12 meses é agressivo sem canal de distribuição comprovado.</li>
+<li>suporte concierge pode consumir a margem da fase inicial.</li>
+<li>políticas do Google Ads podem limitar certos clientes/verticais.</li>
+<li>câmbio afeta APIs cobradas em dólar.</li>
+<li>o mix pode ficar concentrado em Starter e reduzir ARPA.</li>
+<li>créditos podem criar comportamento de uso que não sobrevive ao preço de tabela.</li>
+</ul>
+<p>Por isso, a narrativa para investidores deve apresentar o cenário conservador como proteção de caixa e o cenário-base como plano de execução condicionado a milestones.</p></article>
+    <nav class="document-close" aria-label="Fim do documento">
+      <a href="index.html#documentos">← Voltar ao índice</a>
+      <a href="https://airtable.com/appwuiPjoHvDDvrlY/pagJdmdOat1PfvGBs/form" target="_blank" rel="noreferrer">Formulário oficial ↗</a>
+    </nav>
+  </main>
+</body>
+</html>

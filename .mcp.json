@@ -15,8 +15,16 @@
     "hostinger-wordpress": {
       "command": "hostinger-wordpress-mcp",
       "env": {
-        "HOSTINGER_API_TOKEN": "1Ycd6O4kUcTvVRo1mcCJXcWlWXhC06GnSnTZZN0o77419514"
+        "HOSTINGER_API_TOKEN": "${HOSTINGER_API_TOKEN}"
       }
+    },
+    "knowledge-studio": {
+      "command": "node",
+      "args": [
+        "--no-warnings",
+        "--experimental-strip-types",
+        "/Users/genautech/knowledge-studio/mcp/server.ts"
+      ]
     }
   }
 }

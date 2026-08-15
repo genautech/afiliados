@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AfiliAds — estratégia Google Cloud e uso responsável dos créditos — AfiliAds / Gama Fund 2026">
+  <title>AfiliAds — estratégia Google Cloud e uso responsável dos créditos — AfiliAds</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="document.css">
+</head>
+<body>
+  <a class="skip-link" href="#documento">Pular para o documento</a>
+  <header class="document-toolbar">
+    <a class="document-brand" href="index.html#documentos" aria-label="Voltar à sala de investimento"><strong>A/</strong><span>Investment room</span></a>
+    <div class="document-actions">
+      <span>Documento de trabalho</span>
+      <button type="button" onclick="window.print()">Salvar em PDF</button>
+    </div>
+  </header>
+  <main id="documento" class="document-shell">
+    <div class="document-meta"><span>Gama Fund 2026</span><span>Fonte: estrategia-google-cloud.md</span></div>
+    <article class="prose"><h1 id="afiliads-estrategia-google-cloud-e-uso-responsavel-dos-creditos">AfiliAds — estratégia Google Cloud e uso responsável dos créditos</h1>
+<h2 id="principio">Princípio</h2>
+<p>Google Cloud não entra como lista de logos. Cada serviço precisa remover um risco ou habilitar uma métrica. O orçamento é liberado por marcos e todo custo é acompanhado em duas visões: faturado e <strong>shadow cost sem créditos</strong>.</p>
+<h2 id="arquitetura-alvo">Arquitetura-alvo</h2>
+<pre><code>Aplicação / API
+  → orquestração de agentes (Vertex AI / Gemini; Agent Engine quando maduro)
+  → funções determinísticas de readiness, orçamento e autorização
+  → Google Ads API v25 / publicação / tracking
+  → eventos em Pub/Sub
+  → BigQuery: decisões, custos, versões, métricas e experimentos
+  → Vertex AI Evaluation: qualidade, segurança, latência e revisão humana</code></pre>
+<h3 id="camada-de-raciocinio">Camada de raciocínio</h3>
+<ul>
+<li>Gemini no Vertex AI para interpretação, geração estruturada e revisão independente.</li>
+<li>Model Garden/MaaS para modelos alternativos quando uma tarefa exigir custo, formato ou independência diferentes.</li>
+<li>Vertex AI Evaluation para datasets reproduzíveis de vendor terms, compliance, estratégia, copy e páginas.</li>
+<li>Agent Engine somente quando sessões, memória, observabilidade e escala gerenciada justificarem a migração; não por moda arquitetural.</li>
+</ul>
+<h3 id="camada-de-dados">Camada de dados</h3>
+<ul>
+<li>BigQuery como warehouse de eventos e resultados entre campanhas.</li>
+<li>Vector Search/embeddings para recuperar campanhas, regras e correções semanticamente semelhantes.</li>
+<li>Cloud SQL/AlloyDB para estado transacional conforme necessidade real do produto.</li>
+<li>Cloud Storage para artefatos versionados e evidência de auditoria.</li>
+</ul>
+<h3 id="execucao-e-governanca">Execução e governança</h3>
+<ul>
+<li>Cloud Run para workloads stateless e workers escaláveis.</li>
+<li>Pub/Sub para desacoplar coleta, avaliação e sincronização.</li>
+<li>Secret Manager, IAM mínimo e logs redigidos para credenciais.</li>
+<li>Budget alerts, quotas por tenant e kill switches por provider.</li>
+</ul>
+<p>Fontes técnicas: <a href="https://cloud.google.com/vertex-ai/generative-ai/docs/reasoning-engine/overview" target="_blank" rel="noreferrer">Vertex AI Agent Engine</a>, <a href="https://docs.cloud.google.com/vertex-ai/docs/evaluation/using-model-evaluation" target="_blank" rel="noreferrer">Vertex AI model evaluation</a>, <a href="https://docs.cloud.google.com/bigquery/docs/vector-search-intro" target="_blank" rel="noreferrer">BigQuery vector search</a>, <a href="https://developers.google.com/google-ads/api/docs/experiments/overview" target="_blank" rel="noreferrer">Google Ads experiments</a> e <a href="https://developers.google.com/google-ads/api/docs/experiments/reporting" target="_blank" rel="noreferrer">reporting de experimentos</a>.</p>
+<h2 id="plano-de-uso-de-ate-us-350-mil-em-creditos">Plano de uso de até US$ 350 mil em créditos</h2>
+<p>Valores são tetos de planejamento, não compromisso de gasto.</p>
+<div class="table-scroll"><table><thead><tr><th>Envelope</th><th>%</th><th>Teto</th><th>Resultado exigido</th></tr></thead><tbody>
+<tr><td>inferência e evals Vertex AI</td><td>35%</td><td>US$ 122,5k</td><td>benchmark por tarefa e custo/qualidade</td></tr>
+<tr><td>dados, BigQuery e memória</td><td>20%</td><td>US$ 70k</td><td>dataset multi-campanha e consultas operacionais</td></tr>
+<tr><td>compute/orquestração</td><td>18%</td><td>US$ 63k</td><td>SLO e custo por workflow em escala</td></tr>
+<tr><td>ambientes seguros e observabilidade</td><td>12%</td><td>US$ 42k</td><td>auditoria, alertas e incident response</td></tr>
+<tr><td>multimodal/ativos controlados</td><td>8%</td><td>US$ 28k</td><td>experimentos com ganho medido, não volume de assets</td></tr>
+<tr><td>contingência técnica</td><td>7%</td><td>US$ 24,5k</td><td>usada só mediante milestone aprovado</td></tr>
+</tbody></table></div>
+<h2 id="liberacao-por-marcos">Liberação por marcos</h2>
+<h3 id="marco-1-0-a-90-dias">Marco 1 — 0 a 90 dias</h3>
+<ul>
+<li>5 design partners;</li>
+<li>benchmark mínimo com 200 exemplos revisados;</li>
+<li>custo por tarefa e campanha;</li>
+<li>três campanhas <code>PAUSED</code> produzidas em piloto;</li>
+<li>shadow billing ativo.</li>
+</ul>
+<p>Teto indicativo: 10% dos créditos.</p>
+<h3 id="marco-2-3-a-6-meses">Marco 2 — 3 a 6 meses</h3>
+<ul>
+<li>onboarding repetível;</li>
+<li>clientes pagantes ou LOIs convertidas;</li>
+<li>dataset de decisões/resultados no BigQuery;</li>
+<li>avaliação automática + amostragem humana;</li>
+<li>margem projetada sem créditos dentro da faixa-alvo.</li>
+</ul>
+<p>Teto acumulado: 30%.</p>
+<h3 id="marco-3-6-a-12-meses">Marco 3 — 6 a 12 meses</h3>
+<ul>
+<li>retenção e expansão observáveis;</li>
+<li>automação segura de workflows assíncronos;</li>
+<li>SLOs, alertas e isolamento por tenant;</li>
+<li>primeira expansão de canal/geo baseada em demanda.</li>
+</ul>
+<p>Teto acumulado: 65%.</p>
+<h3 id="marco-4-12-a-24-meses">Marco 4 — 12 a 24 meses</h3>
+<ul>
+<li>escala comprovada e unit economics sustentáveis;</li>
+<li>migração seletiva para serviços gerenciados onde reduz TCO;</li>
+<li>restante liberado contra receita, retenção e confiabilidade.</li>
+</ul>
+<h2 id="metricas-de-ia-para-o-comite">Métricas de IA para o comitê</h2>
+<ul>
+<li>taxa de saída válida por schema;</li>
+<li>precisão/recall em extração de restrições;</li>
+<li>falso negativo em regras críticas;</li>
+<li>concordância entre gerador e revisor independente;</li>
+<li>taxa de override humano;</li>
+<li>latência p50/p95;</li>
+<li>custo por tarefa e por campanha;</li>
+<li>regressões por versão de modelo/prompt;</li>
+<li>incidentes de mutação indevida: meta zero.</li>
+</ul>
+<h2 id="guardrails-financeiros">Guardrails financeiros</h2>
+<ol>
+<li>Nenhum plano é precificado usando custo líquido após crédito.</li>
+<li>Cada tenant tem quota, budget e rate limit.</li>
+<li>Tarefas simples usam modelo light; premium exige ganho medido.</li>
+<li>Cache, deduplicação e reuso de análise precedem aumento de tokens.</li>
+<li>BYOK pode existir como opção, não como remendo para unit economics ruins.</li>
+<li>Custo de inferência vira COGS no modelo financeiro.</li>
+</ol>
+<h2 id="o-pedido-ao-google">O pedido ao Google</h2>
+<p>O recurso mais valioso não é apenas crédito. É colaboração com Vertex AI/DeepMind para construir um benchmark proprietário de agent reliability em operações com impacto financeiro e acesso aos times de Ads/Cloud para revisar padrões de execução, avaliação e governança.</p></article>
+    <nav class="document-close" aria-label="Fim do documento">
+      <a href="index.html#documentos">← Voltar ao índice</a>
+      <a href="https://airtable.com/appwuiPjoHvDDvrlY/pagJdmdOat1PfvGBs/form" target="_blank" rel="noreferrer">Formulário oficial ↗</a>
+    </nav>
+  </main>
+</body>
+</html>

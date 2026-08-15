@@ -45,12 +45,45 @@ MEDIO_RISCO = [
     r"\bempr[ée]stimo\b|\bcr[ée]dito\b|\binvestimento\b",  # finanças: checar certificação
 ]
 
+# Termos de ALTO risco específicos por tipo de Bridge Page
+ALTO_RISCO_POGO = [
+    r"\bfinalmente (a solução|o segredo)",
+    r"\bganhe dinheiro (agora|rápido)",
+]
+ALTO_RISCO_ADVERTORIAL = [
+    r"\bcompre agora\b",
+    r"\bdesconto exclusiv(o|a)\b",
+]
+ALTO_RISCO_QUIZ_FUNNEL = [
+    r"\bresposta milagrosa\b",
+    r"\bresultado garantido\b",
+]
+ALTO_RISCO_LEAD_GEN_PAGE = [
+    r"\bfique rico com este ebook\b",
+    r"\bsegredo milionário grátis\b",
+]
+
+# Termos de MÉDIO risco específicos por tipo de Bridge Page
+MEDIO_RISCO_POGO = [
+    r"\bsaiba mais detalhes\b",
+]
+MEDIO_RISCO_ADVERTORIAL = [
+    r"\bpublicidade\b",
+    r"\bpatrocinado\b",
+]
+MEDIO_RISCO_QUIZ_FUNNEL = [
+    r"\btestes de personalidade\b",
+]
+MEDIO_RISCO_LEAD_GEN_PAGE = [
+    r"\bpara mais informaç[õo]es\b",
+]
+
 
 def _norm(s: str) -> str:
     return unicodedata.normalize("NFC", s)
 
 
-def check_line(texto: str, tipo: str):
+def check_line(texto: str, tipo: str, bridge_page_type: str = None):
     texto = _norm(texto)
     n = len(texto)
     problemas, alertas = [], []
@@ -69,12 +102,44 @@ def check_line(texto: str, tipo: str):
     for pat in MEDIO_RISCO:
         if re.search(pat, low):
             alertas.append(f"atenção (médio risco): padrão '{pat}' — confirmar compliance do nicho")
+
+    # Regras específicas por tipo de Bridge Page
+    if bridge_page_type == "POGO":
+        for pat in ALTO_RISCO_POGO:
+            if re.search(pat, low):
+                problemas.append(f"TERMO DE ALTO RISCO (POGO): padrão '{pat}'")
+        for pat in MEDIO_RISCO_POGO:
+            if re.search(pat, low):
+                alertas.append(f"atenção (POGO médio risco): padrão '{pat}'")
+    elif bridge_page_type == "ADVERTORIAL":
+        for pat in ALTO_RISCO_ADVERTORIAL:
+            if re.search(pat, low):
+                problemas.append(f"TERMO DE ALTO RISCO (ADVERTORIAL): padrão '{pat}'")
+        for pat in MEDIO_RISCO_ADVERTORIAL:
+            if re.search(pat, low):
+                alertas.append(f"atenção (ADVERTORIAL médio risco): padrão '{pat}'")
+    elif bridge_page_type == "QUIZ_FUNNEL":
+        for pat in ALTO_RISCO_QUIZ_FUNNEL:
+            if re.search(pat, low):
+                problemas.append(f"TERMO DE ALTO RISCO (QUIZ_FUNNEL): padrão '{pat}'")
+        for pat in MEDIO_RISCO_QUIZ_FUNNEL:
+            if re.search(pat, low):
+                alertas.append(f"atenção (QUIZ_FUNNEL médio risco): padrão '{pat}'")
+    elif bridge_page_type == "LEAD_GEN_PAGE":
+        for pat in ALTO_RISCO_LEAD_GEN_PAGE:
+            if re.search(pat, low):
+                problemas.append(f"TERMO DE ALTO RISCO (LEAD_GEN_PAGE): padrão '{pat}'")
+        for pat in MEDIO_RISCO_LEAD_GEN_PAGE:
+            if re.search(pat, low):
+                alertas.append(f"atenção (LEAD_GEN_PAGE médio risco): padrão '{pat}'")
+
     return n, problemas, alertas
 
 
 def main():
     raw = sys.stdin.read() if (len(sys.argv) > 1 and sys.argv[1] == "-") else open(sys.argv[1], encoding="utf-8").read()
     data = json.loads(raw)
+    bridge_page_type = data.get("bridge_page_type") # Novo: obter tipo da bridge page
     grupos = [("titulo", data.get("titulos", [])),
               ("descricao", data.get("descricoes", [])),
               ("caminho", data.get("caminhos", []))]
@@ -85,10 +150,10 @@ def main():
         nome = {"titulo": "TÍTULOS", "descricao": "DESCRIÇÕES", "caminho": "CAMINHOS"}[tipo]
         print(f"\n=== {nome} ({len(linhas)}/{MAX_QTD[tipo]} máx) ===")
         if len(linhas) > MAX_QTD[tipo]:
-            print(f"  ✖ quantidade excede o máximo do RSA ({MAX_QTD[tipo]})")
+            print(f"  ✖ quantidade excede o máximo do RSA ({MAX_QTD[tipo]})\n")
             falhou = True
         for i, t in enumerate(linhas, 1):
-            n, probs, alertas = check_line(t, tipo)
+            n, probs, alertas = check_line(t, tipo, bridge_page_type) # Passar bridge_page_type
             status = "✔" if not probs else "✖"
             if probs:
                 falhou = True
