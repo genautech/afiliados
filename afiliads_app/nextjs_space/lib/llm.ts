@@ -1,7 +1,24 @@
 import { prisma } from './prisma';
 import { GoogleAuth } from 'google-auth-library';
-import { estimateCostUsd } from './llm-pricing';
+import { createHash } from 'crypto';
+import { estimateCostUsd, type CostMultipliers } from './llm-pricing';
 import { assertCampaignLlmAllowed, type CampaignGuardTarget } from './campaign-guard';
+import { readIntegrationFieldValue } from './integration-secrets';
+import {
+  LlmBudgetExceededError,
+  reconcileLlmBudget,
+  reserveLlmBudget,
+  type AgentRunClient,
+  type LlmBudgetReservation,
+} from './llm-budget';
+import { validateJson } from './json-validation';
+
+const llmBudgetClient = prisma as unknown as AgentRunClient;
+
+// Cache simples em memória pra cortar gasto com regen/retry de prompts idênticos.
+const LLM_CACHE_TTL_MS = 10 * 60 * 1000;
+const llmResponseCache = new Map<string, { at: number; result: AgentCallResult }>();
+const llmCacheEnabled = () => process.env.NODE_ENV !== 'test' && !process.env.VITEST;
 
 let vertexAuth: GoogleAuth | null = null;
 let vertexClientPromise: Promise<any> | null = null;
@@ -26,7 +43,10 @@ async function getVertexAccessToken(): Promise<string> {
   return token;
 }
 
-function vertexHost(location: string) {
+export function vertexHost(location: string) {
+  if (!/^(?:global|[a-z]+(?:-[a-z]+)+\d)$/.test(location)) {
+    throw new Error('GCP_VERTEX_LOCATION inválida');
+  }
   return location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
 }
 
@@ -36,7 +56,8 @@ function vertexHost(location: string) {
 async function callVertexMaas(
   publisherModel: string,
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  maxOutputTokens: number,
 ): Promise<{ text: string; usage: LlmUsage; model: string }> {
   const project = process.env.GCP_PROJECT_ID;
   const location = process.env.GCP_VERTEX_LOCATION || 'global';
@@ -52,7 +73,7 @@ async function callVertexMaas(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 4000,
+        max_tokens: maxOutputTokens,
         stream: false,
       }),
     }
@@ -62,18 +83,18 @@ async function callVertexMaas(
   return {
     text: data?.choices?.[0]?.message?.content || '',
     usage: {
-      promptTokens: data?.usage?.prompt_tokens ?? 0,
-      completionTokens: data?.usage?.completion_tokens ?? 0,
-      totalTokens: data?.usage?.total_tokens ?? 0,
+      promptTokens: data?.usage?.prompt_tokens,
+      completionTokens: data?.usage?.completion_tokens,
+      totalTokens: data?.usage?.total_tokens,
     },
     model: data?.model ?? publisherModel,
   };
 }
 
 export interface LlmUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
 }
 
 export interface AgentCallResult {
@@ -83,15 +104,16 @@ export interface AgentCallResult {
   durationMs: number;
   provider: string;
   model: string;
+  error: string | null;
 }
 
-interface LlmOptions {
+export interface LlmOptions {
   systemPrompt: string;
   userPrompt: string;
   fallbackKey?: string;
   agent?: string;
   campaignId?: string;
-  campaignTarget?: CampaignGuardTarget;
+  campaignTarget: CampaignGuardTarget;
 }
 
 export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
@@ -125,6 +147,11 @@ export const AGENT_ROUTING_PREFERENCES: Record<string, AgentRoutingPreference> =
     providers: ['google', 'grok', 'kimi', 'ollama', 'openai', 'anthropic'],
     modelOverrides: { kimi: KIMI_MODELS.K2_5 },
   },
+};
+
+export const AGENT_MODEL_LOCKS: Partial<Record<string, { provider: Provider; model: string }>> = {
+  'presell-builder': { provider: 'kimi', model: KIMI_MODELS.K3 },
+  'bridge-page-builder': { provider: 'kimi', model: KIMI_MODELS.K2_7_CODE },
 };
 
 export function selectKimiModel({
@@ -207,9 +234,9 @@ export const AGENT_TIERS: Record<string, Tier> = {
 // - light (chat, validação simples): Ollama grátis lidera; Grok non-reasoning (barato, baixa
 //   latência) como fallback pago antes de subir pra Gemini/Claude.
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'grok', 'google', 'kimi', 'openai', 'ollama'],
-  standard: ['grok', 'google', 'kimi', 'ollama', 'openai', 'anthropic'],
-  light: ['ollama', 'grok', 'google', 'kimi', 'openai', 'anthropic'],
+  premium: ['anthropic', 'grok', 'google', 'openai', 'ollama'],
+  standard: ['grok', 'google', 'ollama', 'openai', 'anthropic'],
+  light: ['ollama', 'grok', 'google', 'openai', 'anthropic'],
 };
 
 const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
@@ -221,6 +248,22 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
   kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_5 },
 };
+
+const ALLOWED_MODELS: Record<Provider, ReadonlySet<string>> = {
+  anthropic: new Set(['claude-opus-4-8', 'claude-opus-4-7', 'claude-fable-5']),
+  openai: new Set(['gpt-4o', 'gpt-4o-mini']),
+  google: new Set(['gemini-2.5-pro', 'gemini-3.5-flash']),
+  grok: new Set(['grok-4.20-reasoning', 'grok-4.1-fast-reasoning', 'grok-4.1-fast-non-reasoning']),
+  ollama: new Set(['gpt-oss:120b', 'gpt-oss:20b']),
+  abacusai: new Set(['gpt-5.4-mini']),
+  kimi: new Set(Object.values(KIMI_MODELS)),
+};
+
+export function assertAllowedProviderModel(provider: Provider, model: string): void {
+  if (!ALLOWED_MODELS[provider]?.has(model)) {
+    throw new Error(`Modelo não permitido para ${provider}`);
+  }
+}
 
 // Modelos Claude alternativos por tier, tentados em ordem dentro do mesmo passo
 // "anthropic" antes de desistir e cair para o próximo provider da cadeia. Existem
@@ -262,6 +305,7 @@ interface RoutingContext {
   budgets: Record<Provider, number>;
   monthUsage: Record<Provider, number>;
   disabled: Set<Provider>;
+  costMultipliers: CostMultipliers;
 }
 
 async function getLlmIntegrations(userId: string): Promise<Record<string, string>> {
@@ -269,17 +313,20 @@ async function getLlmIntegrations(userId: string): Promise<Record<string, string
     where: { userId, serviceName: 'llm' },
   });
   const map: Record<string, string> = {};
-  for (const r of rows) if (r.fieldValue) map[r.fieldName] = r.fieldValue;
+  for (const r of rows) {
+    if (!r.fieldValue) continue;
+    map[r.fieldName] = readIntegrationFieldValue(r.fieldName, r.fieldValue);
+  }
   return map;
 }
 
 async function getMonthUsage(userId: string): Promise<Record<Provider, number>> {
   const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
   const grouped = await prisma.agentRun.groupBy({
     by: ['provider'],
-    where: { userId, createdAt: { gte: monthStart }, success: true },
+    where: { userId, createdAt: { gte: monthStart }, totalTokens: { gt: 0 } },
     _sum: { totalTokens: true },
   });
   const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0, kimi: 0 };
@@ -320,14 +367,17 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
   // aprovada no futuro, defina Integration llm/vertex_claude_enabled = "on" para reativar.
   if (process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON) {
     // Vertex usa a service account do ambiente (dona da plataforma) → sempre 'platform'
-    keys.google = 'vertex';
-    keySources.google = 'platform';
+    if (!keys.google) { keys.google = 'vertex'; keySources.google = 'platform'; }
     if (!keys.grok) { keys.grok = 'vertex'; keySources.grok = 'platform'; }
     if (map['vertex_claude_enabled'] === 'on') { keys.anthropic = 'vertex'; keySources.anthropic = 'platform'; }
   }
   const models: Partial<Record<Provider, string>> = {};
   for (const p of ACTIVE_PROVIDERS) {
-    if (map[`model_${p}`]) models[p] = map[`model_${p}`];
+    const configuredModel = map[`model_${p}`];
+    if (configuredModel) {
+      assertAllowedProviderModel(p, configuredModel);
+      models[p] = configuredModel;
+    }
   }
   const disabled = new Set<Provider>(
     (map['disabled_providers'] ?? '')
@@ -343,23 +393,64 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
   const mode = map['routing'] === 'manual' ? 'manual' : 'auto';
   const manualProvider = (map['provider'] as Provider) || null;
   const monthUsage = await getMonthUsage(userId);
-  return { mode, manualProvider, keys, keySources, models, budgets, monthUsage, disabled };
+  const costMultipliers: CostMultipliers = { 
+    anthropic: { prompt: Number(map['cost_anthropic_prompt']) || 1, completion: Number(map['cost_anthropic_completion']) || 1 },
+    openai: { prompt: Number(map['cost_openai_prompt']) || 1, completion: Number(map['cost_openai_completion']) || 1 },
+    google: { prompt: Number(map['cost_google_prompt']) || 1, completion: Number(map['cost_google_completion']) || 1 },
+    grok: { prompt: Number(map['cost_grok_prompt']) || 1, completion: Number(map['cost_grok_completion']) || 1 },
+    ollama: { prompt: Number(map['cost_ollama_prompt']) || 1, completion: Number(map['cost_ollama_completion']) || 1 },
+    kimi: { prompt: Number(map['cost_kimi_prompt']) || 1, completion: Number(map['cost_kimi_completion']) || 1 },
+    abacusai: { prompt: Number(map['cost_abacusai_prompt']) || 1, completion: Number(map['cost_abacusai_completion']) || 1 },
+  };
+  return { mode, manualProvider, keys, keySources, models, budgets, monthUsage, disabled, costMultipliers };
 }
 
-export function buildChain(ctx: RoutingContext, tier: Tier): { provider: Provider; model: string; overBudget: boolean }[] {
+export function buildChain(ctx: RoutingContext, tier: Tier, reservedTokens = 0): { provider: Provider; model: string; overBudget: boolean }[] {
   const base = ctx.mode === 'manual' && ctx.manualProvider
     ? [ctx.manualProvider, ...TIER_CHAINS[tier].filter(p => p !== ctx.manualProvider)]
     : [...TIER_CHAINS[tier]];
-  let available = base.filter(p => ctx.keys[p] && !ctx.disabled.has(p));
-  // Se tudo foi desativado, ignora o disable para não derrubar o app
-  if (available.length === 0) available = base.filter(p => ctx.keys[p]);
-  const inBudget = available.filter(p => !ctx.budgets[p] || ctx.monthUsage[p] < ctx.budgets[p]);
-  const overBudget = available.filter(p => ctx.budgets[p] && ctx.monthUsage[p] >= ctx.budgets[p]);
-  return [...inBudget, ...overBudget].map(p => ({
+  const available = base.filter(p => ctx.keys[p] && !ctx.disabled.has(p));
+  const inBudget = available.filter(p => (
+    !ctx.budgets[p]
+    || (ctx.monthUsage[p] < ctx.budgets[p] && ctx.monthUsage[p] + reservedTokens <= ctx.budgets[p])
+  ));
+  return inBudget.map(p => ({
     provider: p,
     model: ctx.models[p] ?? DEFAULT_MODELS[p][tier],
-    overBudget: overBudget.includes(p),
+    overBudget: false,
   }));
+}
+
+export function resolveOllamaApiBaseUrl(
+  rawBaseUrl: string,
+  hasBearerCredential: boolean,
+  additionalHosts = process.env.OLLAMA_API_ALLOWED_HOSTS || '',
+): string {
+  let url: URL;
+  try {
+    url = new URL(rawBaseUrl);
+  } catch {
+    throw new Error('OLLAMA_BASE_URL inválida');
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('OLLAMA_BASE_URL contém componentes não permitidos');
+  }
+  if (hasBearerCredential) {
+    const allowedHosts = new Set([
+      'ollama.com',
+      ...additionalHosts.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean),
+    ]);
+    if (url.protocol !== 'https:') throw new Error('OLLAMA_BASE_URL com bearer deve usar HTTPS');
+    if ((url.port && url.port !== '443') || !allowedHosts.has(url.hostname.toLowerCase())) {
+      throw new Error('Host de OLLAMA_BASE_URL não autorizado');
+    }
+  } else {
+    const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1']);
+    if (!loopbackHosts.has(url.hostname.toLowerCase()) || !['http:', 'https:'].includes(url.protocol)) {
+      throw new Error('OLLAMA_BASE_URL local deve apontar para loopback');
+    }
+  }
+  return url.toString().replace(/\/+$/, '');
 }
 
 async function callProvider(
@@ -367,8 +458,10 @@ async function callProvider(
   model: string,
   apiKey: string,
   systemPrompt: string,
-  userPrompt: string
-): Promise<{ text: string; usage: LlmUsage; model: string }> {
+  userPrompt: string,
+  maxOutputTokens: number,
+): Promise<{ text: string; usage: LlmUsage; model: string; durationMs: number }> {
+  const startTime = Date.now();
   switch (provider) {
     case 'openai': {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -380,6 +473,7 @@ async function callProvider(
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
+          max_completion_tokens: maxOutputTokens,
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do OpenAI: ${await response.text()}`);
@@ -387,11 +481,12 @@ async function callProvider(
       return {
         text: data?.choices?.[0]?.message?.content || '',
         usage: {
-          promptTokens: data?.usage?.prompt_tokens ?? 0,
-          completionTokens: data?.usage?.completion_tokens ?? 0,
-          totalTokens: data?.usage?.total_tokens ?? 0,
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
         },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
@@ -407,7 +502,7 @@ async function callProvider(
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({
               anthropic_version: 'vertex-2023-10-16',
-              max_tokens: 4000,
+              max_tokens: maxOutputTokens,
               system: systemPrompt,
               messages: [{ role: 'user', content: userPrompt }],
             }),
@@ -415,12 +510,13 @@ async function callProvider(
         );
         if (!response.ok) throw new Error(`Erro na API do Anthropic (Vertex): ${await response.text()}`);
         const data = await response.json();
-        const inp = data?.usage?.input_tokens ?? 0;
-        const out = data?.usage?.output_tokens ?? 0;
+        const inp = data?.usage?.input_tokens;
+        const out = data?.usage?.output_tokens;
         return {
           text: data?.content?.[0]?.text || '',
-          usage: { promptTokens: inp, completionTokens: out, totalTokens: inp + out },
+          usage: { promptTokens: inp, completionTokens: out, totalTokens: (inp ?? 0) + (out ?? 0) },
           model: data?.model ?? model,
+          durationMs: Date.now() - startTime,
         };
       }
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -432,19 +528,20 @@ async function callProvider(
         },
         body: JSON.stringify({
           model,
-          max_tokens: 4000,
+          max_tokens: maxOutputTokens,
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Anthropic: ${await response.text()}`);
       const data = await response.json();
-      const inp = data?.usage?.input_tokens ?? 0;
-      const out = data?.usage?.output_tokens ?? 0;
+      const inp = data?.usage?.input_tokens;
+      const out = data?.usage?.output_tokens;
       return {
         text: data?.content?.[0]?.text || '',
-        usage: { promptTokens: inp, completionTokens: out, totalTokens: inp + out },
+        usage: { promptTokens: inp, completionTokens: out, totalTokens: (inp ?? 0) + (out ?? 0) },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
@@ -461,6 +558,7 @@ async function callProvider(
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemPrompt }] },
               contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+              generationConfig: { maxOutputTokens },
             }),
           }
         );
@@ -470,11 +568,12 @@ async function callProvider(
         return {
           text: data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? '').join('') || '',
           usage: {
-            promptTokens: um?.promptTokenCount ?? 0,
-            completionTokens: um?.candidatesTokenCount ?? 0,
-            totalTokens: um?.totalTokenCount ?? ((um?.promptTokenCount ?? 0) + (um?.candidatesTokenCount ?? 0)),
+            promptTokens: um.promptTokenCount,
+            completionTokens: um.candidatesTokenCount,
+            totalTokens: um.totalTokenCount,
           },
-          model,
+          model: data?.model ?? model,
+          durationMs: Date.now() - startTime,
         };
       }
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
@@ -483,6 +582,7 @@ async function callProvider(
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { maxOutputTokens },
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Gemini: ${await response.text()}`);
@@ -491,28 +591,30 @@ async function callProvider(
       return {
         text: data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? '').join('') || '',
         usage: {
-          promptTokens: um?.promptTokenCount ?? 0,
-          completionTokens: um?.candidatesTokenCount ?? 0,
-          totalTokens: um?.totalTokenCount ?? ((um?.promptTokenCount ?? 0) + (um?.candidatesTokenCount ?? 0)),
+          promptTokens: um.promptTokenCount,
+          completionTokens: um.candidatesTokenCount,
+          totalTokens: um.totalTokenCount,
         },
-        model,
+        model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
     case 'grok': {
       if (apiKey === 'vertex') {
-        // Modelos xAI no Vertex usam o endpoint MaaS único (OpenAI-compatible), formato "xai/<modelo>"
-        return callVertexMaas(`xai/${model}`, systemPrompt, userPrompt);
+        const res = await callVertexMaas(`xai/${model}`, systemPrompt, userPrompt, maxOutputTokens);
+        return { ...res, durationMs: Date.now() - startTime };
       }
       const response = await fetch('https://api.x.ai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
           model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
+          max_tokens: maxOutputTokens,
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Grok (xAI): ${await response.text()}`);
@@ -520,17 +622,22 @@ async function callProvider(
       return {
         text: data?.choices?.[0]?.message?.content || '',
         usage: {
-          promptTokens: data?.usage?.prompt_tokens ?? 0,
-          completionTokens: data?.usage?.completion_tokens ?? 0,
-          totalTokens: data?.usage?.total_tokens ?? 0,
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
         },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
     case 'ollama': {
       // Com API key → Ollama Cloud (ollama.com); sem key → servidor local
-      const baseUrl = process.env.OLLAMA_BASE_URL || (apiKey && apiKey !== 'local' ? 'https://ollama.com/v1' : 'http://localhost:11434/v1');
+      const hasBearerCredential = Boolean(apiKey && apiKey !== 'local');
+      const baseUrl = resolveOllamaApiBaseUrl(
+        process.env.OLLAMA_BASE_URL || (hasBearerCredential ? 'https://ollama.com/v1' : 'http://localhost:11434/v1'),
+        hasBearerCredential,
+      );
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (apiKey && apiKey !== 'local') headers['Authorization'] = `Bearer ${apiKey}`;
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -542,6 +649,7 @@ async function callProvider(
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
+          max_tokens: maxOutputTokens,
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do Ollama: ${await response.text()}`);
@@ -549,11 +657,12 @@ async function callProvider(
       return {
         text: data?.choices?.[0]?.message?.content || '',
         usage: {
-          promptTokens: data?.usage?.prompt_tokens ?? 0,
-          completionTokens: data?.usage?.completion_tokens ?? 0,
-          totalTokens: data?.usage?.total_tokens ?? 0,
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
         },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
@@ -563,9 +672,7 @@ async function callProvider(
       const baseUrl = resolveKimiApiBaseUrl();
       const modelOptions = model === KIMI_MODELS.K3
         ? { reasoning_effort: 'low' }
-        : model === KIMI_MODELS.K2_7_CODE
-          ? { thinking: { type: 'enabled', keep: 'all' } }
-          : {};
+        : {};
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -575,7 +682,7 @@ async function callProvider(
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          max_completion_tokens: 4096,
+          max_completion_tokens: maxOutputTokens,
           ...modelOptions,
         }),
       });
@@ -584,11 +691,12 @@ async function callProvider(
       return {
         text: data?.choices?.[0]?.message?.content || '',
         usage: {
-          promptTokens: data?.usage?.prompt_tokens ?? 0,
-          completionTokens: data?.usage?.completion_tokens ?? 0,
-          totalTokens: data?.usage?.total_tokens ?? 0,
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
         },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
 
@@ -603,52 +711,22 @@ async function callProvider(
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
+          max_tokens: maxOutputTokens,
         }),
       });
-      if (!response.ok) throw new Error(`Erro na API do Abacus.ai: ${await response.text()}`);
+      if (!response.ok) throw new Error(`Erro na API do AbacusAI: ${await response.text()}`);
       const data = await response.json();
       return {
         text: data?.choices?.[0]?.message?.content || '',
         usage: {
-          promptTokens: data?.usage?.prompt_tokens ?? 0,
-          completionTokens: data?.usage?.completion_tokens ?? 0,
-          totalTokens: data?.usage?.total_tokens ?? 0,
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
         },
         model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
       };
     }
-  }
-}
-
-function logRun(userId: string, agent: string, provider: string, model: string, usage: LlmUsage, durationMs: number, success: boolean, keySource: KeySource, error?: string) {
-  prisma.agentRun.create({
-    data: {
-      userId,
-      agent,
-      provider,
-      model,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens,
-      costUsd: estimateCostUsd(provider, model, usage.promptTokens, usage.completionTokens),
-      keySource,
-      durationMs,
-      success,
-      error: error?.slice(0, 2000) ?? null,
-    },
-  }).catch((e) => console.error('AgentRun log error:', e));
-}
-
-export function parseAgentJson(text: string): any {
-  const cleaned = text.replace(/```json|```/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) {
-      try { return JSON.parse(match[0]); } catch { return null; }
-    }
-    return null;
   }
 }
 
@@ -656,18 +734,40 @@ export async function callAgent(
   userId: string,
   opts: LlmOptions & { agent: string; json?: boolean; validate?: (data: any, text: string) => string | null }
 ): Promise<AgentCallResult> {
-  const guardTarget: CampaignGuardTarget = opts.campaignTarget ?? (
-    opts.campaignId
-      ? { kind: 'campaign', campaignId: opts.campaignId }
-      : { kind: 'non-campaign' }
-  );
+  const startTime = Date.now();
+  if (!opts.campaignTarget) {
+    throw new Error('callAgent exige campaignTarget explícito');
+  }
+  if (opts.campaignId && opts.campaignTarget?.kind === 'non-campaign') {
+    throw new Error('campaignTarget contraditório: campaignId não pode ser tratado como non-campaign');
+  }
+  if (
+    opts.campaignTarget.kind === 'campaign'
+    && opts.campaignTarget.campaignId
+    && opts.campaignId !== opts.campaignTarget.campaignId
+  ) {
+    throw new Error('campaignTarget contraditório: campaignTarget.campaignId deve ser idêntico a campaignId');
+  }
+  if (opts.campaignTarget.kind === 'campaign' && opts.campaignTarget.purpose === 'paused-compliance' && opts.agent !== 'compliance-sentinel') {
+    throw new Error('paused-compliance é restrito ao agente compliance-sentinel');
+  }
+  const guardTarget: CampaignGuardTarget = opts.campaignTarget;
   await assertCampaignLlmAllowed(userId, guardTarget);
 
   const tier = AGENT_TIERS[opts.agent] ?? 'standard';
   const ctx = await getRoutingContext(userId, opts.fallbackKey);
   const preference = AGENT_ROUTING_PREFERENCES[opts.agent];
-  let chain = buildChain(ctx, tier);
-  if (preference) {
+  const modelLock = AGENT_MODEL_LOCKS[opts.agent];
+  // A reserva exata, incluindo prompt e concorrência, ocorre atomicamente por tentativa.
+  let chain = buildChain(ctx, tier, 0);
+  if (modelLock) {
+    // Lock é explícito: garante o provider travado na cadeia mesmo fora das TIER_CHAINS.
+    if (ctx.keys[modelLock.provider] && !chain.some((s) => s.provider === modelLock.provider)) {
+      chain = [{ provider: modelLock.provider, model: modelLock.model, overBudget: false }, ...chain];
+    }
+    const lockedProvider = chain.find((step) => step.provider === modelLock.provider);
+    chain = lockedProvider ? [{ ...lockedProvider, model: modelLock.model }] : [];
+  } else if (preference) {
     const rank = new Map(preference.providers.map((provider, index) => [provider, index]));
     chain = chain
       .sort((a, b) => (rank.get(a.provider) ?? 999) - (rank.get(b.provider) ?? 999))
@@ -689,11 +789,23 @@ export async function callAgent(
   let userPrompt = opts.userPrompt;
   let validationRetried = false;
 
+  // Cache de resposta em memória (10 min): evita cobrança duplicada quando a UI
+  // regenera/refaz retry com o mesmo prompt para o mesmo agente. Só cacheia sucesso.
+  const cacheKey = createHash('sha256')
+    .update(opts.agent + ' ' + (opts.systemPrompt || '') + ' ' + userPrompt)
+    .digest('hex');
+  if (llmCacheEnabled()) {
+    const cached = llmResponseCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < LLM_CACHE_TTL_MS) {
+      return { ...cached.result, cached: true } as AgentCallResult;
+    }
+  }
+
   for (let i = 0; i < chain.length; i++) {
     const step = chain[i];
     // Para o provider anthropic, sem modelo fixado manualmente (via integração/DB),
     // tenta os modelos Claude alternativos (4.8 → 4.7 → Fable 5) antes de desistir
-    // do provider e cair para o próximo da cadeia — cada um tem quota própria no Vertex.
+    // do provider e cair para o próximo da cadeia — cada uno tiene quota própria no Vertex.
     const modelAttempts = step.provider === 'anthropic' && !ctx.models.anthropic
       ? Array.from(new Set([step.model, ...ANTHROPIC_MODEL_FALLBACKS[tier]]))
       : [step.model];
@@ -701,47 +813,154 @@ export async function callAgent(
     const keySource: KeySource = ctx.keySources[step.provider] ?? 'platform';
     let movedToNextProvider = false;
     for (const modelAttempt of modelAttempts) {
-      const start = Date.now();
+      let reservation: LlmBudgetReservation | null;
       try {
-        const { text, usage, model } = await callProvider(step.provider, modelAttempt, ctx.keys[step.provider]!, opts.systemPrompt, userPrompt);
-        const durationMs = Date.now() - start;
-        const data = opts.json === false ? null : parseAgentJson(text);
-
-        // Auto-correção: uma retentativa no MESMO provider/modelo com o erro de validação anexado
-        const validationError = opts.validate ? opts.validate(data, text) : null;
-        if (validationError) {
-          logRun(userId, opts.agent, step.provider, model, usage, durationMs, false, keySource, `validação: ${validationError}`);
-          if (!validationRetried) {
-            validationRetried = true;
-            userPrompt = `${opts.userPrompt}\n\nATENÇÃO: sua resposta anterior foi rejeitada pela validação: "${validationError}". Corrija exatamente esse problema e responda de novo.`;
-            i--;
-            movedToNextProvider = true; // reprocessa o mesmo passo do zero no próximo turno do loop externo
-            break;
-          }
-          throw new Error(`Resposta do agente reprovada na validação: ${validationError}`);
+        reservation = await reserveLlmBudget(llmBudgetClient, {
+          userId,
+          agent: opts.agent,
+          provider: step.provider,
+          model: modelAttempt,
+          keySource,
+          monthlyBudget: ctx.budgets[step.provider] ?? 0,
+          promptBytes: new TextEncoder().encode(opts.systemPrompt + userPrompt).length,
+          requestedOutputTokens: 4096, // padrão histórico dos providers
+          now: new Date(),
+        });
+      } catch (error: any) {
+        const msg = error?.message ?? String(error);
+        if (isQuotaError(msg) && i < chain.length - 1) {
+          movedToNextProvider = true;
+          break;
         }
-
-        logRun(userId, opts.agent, step.provider, model, usage, durationMs, true, keySource);
-        return { text, data, usage, durationMs, provider: step.provider, model };
-      } catch (err: any) {
-        const durationMs = Date.now() - start;
-        const message = err?.message ?? '';
-        if (!message.startsWith('Resposta do agente reprovada')) {
-          logRun(userId, opts.agent, step.provider, modelAttempt, emptyUsage, durationMs, false, keySource, message);
-        }
-        lastError = err;
-        if (message.startsWith('Resposta do agente reprovada')) throw err;
-        // Erro que não é de quota (chave inválida, payload malformado, etc.): não adianta
-        // tentar outro modelo Claude, pula direto pro próximo provider da cadeia.
-        if (!isQuotaError(message)) break;
+        if (error?.message) lastError = error.message;
+        else lastError = String(error);
+        continue;
       }
+      if (!reservation) {
+        if ((ctx.budgets[step.provider] ?? 0) > 0) {
+          movedToNextProvider = true;
+          continue;
+        }
+        // Budget 0 = sem cap configurado: chama sem reserva, mas ainda registra telemetria.
+        reservation = { id: '', maxOutputTokens: 4096, reservedTokens: 0 };
+      }
+
+      let res: { text: string; usage: LlmUsage; model: string; durationMs: number } | null = null;
+      try {
+        res = await callProvider(step.provider, modelAttempt, ctx.keys[step.provider] ?? '', opts.systemPrompt, userPrompt, reservation.maxOutputTokens);
+      } catch (error: any) {
+        const msg = error?.message ?? String(error);
+        // O provider falhou, mas a reserva de budget foi feita. Precisa reconciliar.
+        // Em caso de quota esgotada, tenta o próximo provider.
+        await reconcileLlmBudget(llmBudgetClient, reservation, {
+          promptTokens: emptyUsage.promptTokens ?? 0,
+          completionTokens: emptyUsage.completionTokens ?? 0,
+          totalTokens: emptyUsage.totalTokens ?? 0,
+          costUsd: 0,
+          durationMs: 0,
+          success: false,
+          error: msg,
+        });
+        if (isQuotaError(msg) && i < chain.length - 1) {
+          movedToNextProvider = true;
+          break;
+        }
+        lastError = msg;
+        continue;
+      }
+
+      // Se a resposta LLM exige JSON e o parsing falha, tenta novamente com um prompt
+      // extra (instruindo a corrigir o JSON) e mais tokens para a correção.
+      if (opts.json && res?.text) {
+        const parseError = validateJson(res.text, opts.validate);
+        if (parseError) {
+          // Se a validação falha e a primeira tentativa não foi suficiente, tenta com prompt de correção.
+          if (!validationRetried) {
+            userPrompt = `Minha última resposta foi:\n\"\"\"${res.text}\"\"\"\nErro de parsing: ${parseError}. Por favor, corrija o JSON e me dê uma resposta válida.`;
+            validationRetried = true;
+            i--; // Tenta novamente com o mesmo provider/modelo, mas com o prompt de correção.
+            await reconcileLlmBudget(llmBudgetClient, reservation, {
+              promptTokens: res.usage.promptTokens ?? 0,
+              completionTokens: res.usage.completionTokens ?? 0,
+              totalTokens: res.usage.totalTokens ?? 0,
+              costUsd: estimateCostUsd(step.provider, modelAttempt, res.usage.promptTokens ?? 0, res.usage.completionTokens ?? 0, ctx.costMultipliers),
+              durationMs: res.durationMs,
+              success: false,
+              error: `JSON_INVALID: ${parseError}`,
+            });
+            continue;
+          }
+          // Se a validação falhou e já tentou corrigir, registra o erro final.
+          await reconcileLlmBudget(llmBudgetClient, reservation, {
+            promptTokens: res.usage.promptTokens ?? 0,
+            completionTokens: res.usage.completionTokens ?? 0,
+            totalTokens: res.usage.totalTokens ?? 0,
+            costUsd: estimateCostUsd(step.provider, modelAttempt, res.usage.promptTokens ?? 0, res.usage.completionTokens ?? 0, ctx.costMultipliers),
+            durationMs: res.durationMs,
+            success: false,
+            error: `JSON_INVALID_FINAL: ${parseError}`,
+          });
+          lastError = `JSON inválido após correção: ${parseError}`;
+          movedToNextProvider = true;
+          break; // Sai do loop de modelAttempts e tenta o próximo provider
+        }
+      }
+
+      // Se chegou aqui, a chamada foi bem-sucedida ou o JSON é válido (se opts.json).
+      const finalCostUsd = estimateCostUsd(step.provider, modelAttempt, res?.usage?.promptTokens ?? 0, res?.usage?.completionTokens ?? 0, ctx.costMultipliers);
+      const durationMs = Date.now() - startTime;
+
+      if (reservation.id) {
+        await reconcileLlmBudget(llmBudgetClient, reservation, {
+          promptTokens: res?.usage?.promptTokens ?? 0,
+          completionTokens: res?.usage?.completionTokens ?? 0,
+          totalTokens: res?.usage?.totalTokens ?? 0,
+          costUsd: finalCostUsd,
+          durationMs,
+          success: true,
+          error: null,
+        });
+      } else {
+        // Bypass (sem cap): telemetria direta, sem reserva prévia.
+        await (prisma.agentRun.create({
+          data: {
+            userId,
+            agent: opts.agent,
+            provider: step.provider,
+            model: modelAttempt,
+            promptTokens: res?.usage?.promptTokens ?? 0,
+            completionTokens: res?.usage?.completionTokens ?? 0,
+            totalTokens: res?.usage?.totalTokens ?? 0,
+            costUsd: finalCostUsd,
+            keySource,
+            durationMs,
+            success: true,
+            error: null,
+          },
+        }).catch((e: any) => { throw new Error(`Falha ao persistir telemetria financeira: ${e?.message ?? e}`); }));
+      }
+
+      const successResult: AgentCallResult = {
+        text: res?.text ?? '',
+        data: opts.json && res?.text ? JSON.parse(res.text) : res?.text,
+        usage: res?.usage ?? emptyUsage,
+        durationMs,
+        provider: step.provider,
+        model: modelAttempt,
+        error: lastError ?? null, // Ensure error is explicitly string or null
+      };
+      if (llmCacheEnabled()) llmResponseCache.set(cacheKey, { at: Date.now(), result: successResult });
+      return successResult;
     }
-    if (movedToNextProvider) continue;
+    if (movedToNextProvider) continue; // Continua para o próximo provider na cadeia
   }
-  throw lastError ?? new Error('Todos os provedores de LLM falharam.');
+  throw new Error(`Falha na chamada LLM: ${lastError ?? 'Erro desconhecido'}`);
 }
 
-export async function callLLM(userId: string, opts: LlmOptions): Promise<string> {
-  const result = await callAgent(userId, { ...opts, agent: opts.agent ?? 'desconhecido', json: false });
-  return result.text;
+export async function callLLM(
+  userId: string,
+  opts: LlmOptions & { json?: boolean; validate?: (data: any, text: string) => string | null }
+): Promise<AgentCallResult> {
+  const result = await callAgent(userId, { ...opts, agent: opts.agent ?? 'analysis-assistant' });
+  return { ...result, error: result.error ?? null };
 }

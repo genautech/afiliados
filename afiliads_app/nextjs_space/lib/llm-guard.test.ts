@@ -39,6 +39,7 @@ describe('callAgent - Campaign Guard Integration', () => {
         systemPrompt: 'System',
         userPrompt: 'User',
         campaignId: 'camp-123',
+        campaignTarget: { kind: 'campaign', campaignId: 'camp-123' },
       }),
     ).rejects.toThrow(CampaignGuardError);
 
@@ -58,6 +59,45 @@ describe('callAgent - Campaign Guard Integration', () => {
       }),
     ).rejects.toThrow('sem campaignId informado');
 
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejeita campaignId combinado com alvo non-campaign', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(callAgent('user-1', {
+      agent: 'ads-auditor', systemPrompt: 'System', userPrompt: 'User',
+      campaignId: 'camp-123', campaignTarget: { kind: 'non-campaign' },
+    })).rejects.toThrow('campaignTarget contraditório');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('falha fechado quando o caller omite target explícito', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(callAgent('user-1', {
+      agent: 'product-hunter', systemPrompt: 'System', userPrompt: 'User',
+    } as any)).rejects.toThrow('campaignTarget explícito');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejeita IDs divergentes entre campaignTarget e campaignId', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(callAgent('user-1', {
+      agent: 'ads-auditor', systemPrompt: 'System', userPrompt: 'User',
+      campaignId: 'camp-budget', campaignTarget: { kind: 'campaign', campaignId: 'camp-guard' },
+    })).rejects.toThrow('campaignTarget contraditório');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('restringe paused-compliance ao compliance-sentinel', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(callAgent('user-1', {
+      agent: 'ads-auditor', systemPrompt: 'System', userPrompt: 'User', campaignId: 'camp-123',
+      campaignTarget: { kind: 'campaign', campaignId: 'camp-123', purpose: 'paused-compliance' },
+    })).rejects.toThrow('paused-compliance');
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });

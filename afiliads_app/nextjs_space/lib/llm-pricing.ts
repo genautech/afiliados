@@ -58,16 +58,31 @@ export function getModelPrice(provider: string, model: string): ModelPrice {
   return PROVIDER_DEFAULTS[provider] ?? { inputPer1M: 0, outputPer1M: 0 };
 }
 
+export interface CostMultipliers {
+  anthropic: { prompt: number; completion: number };
+  openai: { prompt: number; completion: number };
+  google: { prompt: number; completion: number };
+  grok: { prompt: number; completion: number };
+  ollama: { prompt: number; completion: number };
+  kimi: { prompt: number; completion: number };
+  abacusai: { prompt: number; completion: number };
+}
+
 export function estimateCostUsd(
   provider: string,
   model: string,
   promptTokens: number,
-  completionTokens: number
+  completionTokens: number,
+  multipliers?: CostMultipliers,
 ): number {
   const price = getModelPrice(provider, model);
+  const providerMultipliers = multipliers?.[provider as keyof CostMultipliers];
+  const inputMultiplier = providerMultipliers?.prompt ?? 1;
+  const outputMultiplier = providerMultipliers?.completion ?? 1;
+
   const cost =
-    (promptTokens / 1_000_000) * price.inputPer1M +
-    (completionTokens / 1_000_000) * price.outputPer1M;
+    (promptTokens / 1_000_000) * price.inputPer1M * inputMultiplier +
+    (completionTokens / 1_000_000) * price.outputPer1M * outputMultiplier;
   // 6 casas decimais é suficiente (fração de centavo) e evita ruído de float no DB
   return Math.round(cost * 1_000_000) / 1_000_000;
 }

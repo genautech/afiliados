@@ -1,9 +1,8 @@
 import { prisma } from './prisma';
 
-export interface CampaignGuardTarget {
-  kind: 'campaign' | 'non-campaign';
-  campaignId?: string;
-}
+export type CampaignGuardTarget =
+  | { kind: 'non-campaign' }
+  | { kind: 'campaign'; campaignId?: string; purpose?: 'paused-compliance' };
 
 export interface CampaignGuardDecision {
   allowed: boolean;
@@ -27,6 +26,7 @@ export interface CampaignGuardDependencies {
 }
 
 export const INACTIVITY_LIMIT_MINUTES = 30;
+export const LLM_ELIGIBLE_CAMPAIGN_STATUSES = new Set(['RASCUNHO', 'EM_TESTE', 'ATIVA']);
 
 function logDecisionConsole(decision: CampaignGuardDecision): void {
   const ts = new Date().toISOString();
@@ -91,6 +91,32 @@ export async function assertCampaignLlmAllowed(
     };
     deps.logDecision(decision);
     throw new CampaignGuardError(decision);
+  }
+
+  const isPausedCompliance = target.purpose === 'paused-compliance';
+  const isPaused = campaign.status === 'PAUSADA' || campaign.status === 'PAUSADO';
+  if ((isPausedCompliance && !isPaused) || (!isPausedCompliance && !LLM_ELIGIBLE_CAMPAIGN_STATUSES.has(campaign.status))) {
+    const decision: CampaignGuardDecision = {
+      allowed: false,
+      decision: 'BLOCK',
+      reason: `Campanha ${cid} com status ${campaign.status} não está apta a consumir LLM`,
+      campaignId: cid,
+      userId,
+    };
+    deps.logDecision(decision);
+    throw new CampaignGuardError(decision);
+  }
+
+  if (isPausedCompliance) {
+    const decision: CampaignGuardDecision = {
+      allowed: true,
+      decision: 'ALLOW',
+      reason: `Campanha ${cid} pausada liberada somente para compliance`,
+      campaignId: cid,
+      userId,
+    };
+    deps.logDecision(decision);
+    return;
   }
 
   const now = deps.now();

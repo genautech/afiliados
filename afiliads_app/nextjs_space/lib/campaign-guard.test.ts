@@ -59,6 +59,46 @@ describe('assertCampaignLlmAllowed', () => {
     expect(deps.logDecision).toHaveBeenCalledWith(expect.objectContaining({ decision: 'BLOCK' }));
   });
 
+  it.each(['PAUSADA', 'CONCLUIDA', 'ARQUIVADA'])(
+    'bloqueia campanha recente com status inativo %s',
+    async (status) => {
+      const deps = dependencies({
+        id: 'campaign-1',
+        status,
+        updatedAt: new Date('2030-01-01T11:59:00.000Z'),
+      });
+
+      await expect(assertCampaignLlmAllowed(
+        'user-1',
+        { kind: 'campaign', campaignId: 'campaign-1' },
+        deps,
+      )).rejects.toThrow(`status ${status}`);
+      expect(deps.logDecision).toHaveBeenCalledWith(expect.objectContaining({ decision: 'BLOCK' }));
+    },
+  );
+
+  it('libera campanha pausada e stale somente para compliance restrito', async () => {
+    const deps = dependencies({
+      id: 'campaign-1', status: 'PAUSADA', updatedAt: new Date('2029-12-01T00:00:00.000Z'),
+    });
+    await expect(assertCampaignLlmAllowed(
+      'user-1',
+      { kind: 'campaign', campaignId: 'campaign-1', purpose: 'paused-compliance' },
+      deps,
+    )).resolves.toBeUndefined();
+  });
+
+  it('capability de compliance pausado não libera campanha encerrada', async () => {
+    const deps = dependencies({
+      id: 'campaign-1', status: 'CONCLUIDA', updatedAt: new Date('2030-01-01T11:59:00.000Z'),
+    });
+    await expect(assertCampaignLlmAllowed(
+      'user-1',
+      { kind: 'campaign', campaignId: 'campaign-1', purpose: 'paused-compliance' },
+      deps,
+    )).rejects.toThrow('status CONCLUIDA');
+  });
+
   it('falha fechado quando a campanha não pertence ao usuário ou não existe', async () => {
     const deps = dependencies(null);
 

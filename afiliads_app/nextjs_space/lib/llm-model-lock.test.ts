@@ -15,6 +15,9 @@ vi.mock('./prisma', () => ({
     },
   },
 }));
+vi.mock('./integration-secrets', () => ({
+  readIntegrationFieldValue: (_fieldName: string, value: string) => value,
+}));
 
 import { prisma } from './prisma';
 import { callAgent } from './llm';
@@ -24,7 +27,7 @@ afterEach(() => {
 });
 
 describe('Roteamento preferencial de Presell & Bridge Page', () => {
-  it('tenta Kimi K3 primeiro no presell-builder e faz fallback se a credencial falhar', async () => {
+  it('trava presell-builder em Kimi K3 e não faz fallback se a credencial falhar', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
       if (String(url).includes('moonshot.ai')) {
         const requestBody = JSON.parse(String(init?.body));
@@ -34,28 +37,17 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
         expect(requestBody).not.toHaveProperty('max_tokens');
         return { ok: false, text: async () => 'Invalid Authentication' } as any;
       }
-      if (String(url).includes('openai.com')) {
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [{ message: { content: '{"headline":"Fallback válido"}' } }],
-            usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-            model: 'gpt-4o-mini',
-          }),
-        } as any;
-      }
       throw new Error(`Provedor inesperado: ${url}`);
     });
 
-    const res = await callAgent('user-1', {
+    await expect(callAgent('user-1', {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
-    });
+      campaignTarget: { kind: 'non-campaign' },
+    })).rejects.toThrow('Erro na API do Kimi/Moonshot');
 
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(res.provider).toBe('openai');
-    expect(res.data).toEqual({ headline: 'Fallback válido' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     fetchSpy.mockRestore();
   });
 
@@ -67,7 +59,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
         expect(requestBody.max_completion_tokens).toBe(4096);
         expect(requestBody).not.toHaveProperty('max_tokens');
         expect(requestBody).not.toHaveProperty('reasoning_effort');
-        expect(requestBody.thinking).toEqual({ type: 'enabled', keep: 'all' });
+        expect(requestBody).not.toHaveProperty('thinking'); // thinking removido: reasoning tokens custam caro
         return {
           ok: true,
           json: async () => ({
@@ -84,27 +76,28 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       agent: 'bridge-page-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
+      campaignTarget: { kind: 'non-campaign' },
     });
 
     expect(res.provider).toBe('kimi');
     expect(res.model).toBe('kimi-k2.7-code');
-    expect(res.data).toEqual({ titulo_pagina: 'Página Teste' });
+    expect(JSON.parse(res.text)).toEqual({ titulo_pagina: 'Página Teste' });
     fetchSpy.mockRestore();
   });
 
-  it('respeita o modelo Kimi configurado pelo usuário antes do padrão do agente', async () => {
+  it('ignora override persistido e mantém o lock Kimi K3 do presell-builder', async () => {
     vi.mocked(prisma.integration.findMany).mockResolvedValueOnce([
       { serviceName: 'llm', fieldName: 'api_key_kimi', fieldValue: 'kimi-test-key' } as any,
       { serviceName: 'llm', fieldName: 'model_kimi', fieldValue: 'kimi-k2.6' } as any,
     ]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-      expect(JSON.parse(String(init?.body)).model).toBe('kimi-k2.6');
+      expect(JSON.parse(String(init?.body)).model).toBe('kimi-k3');
       return {
         ok: true,
         json: async () => ({
           choices: [{ message: { content: '{"ok":true}' } }],
           usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-          model: 'kimi-k2.6',
+          model: 'kimi-k3',
         }),
       } as any;
     });
@@ -113,9 +106,10 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
+      campaignTarget: { kind: 'non-campaign' },
     });
 
-    expect(res.model).toBe('kimi-k2.6');
+    expect(res.model).toBe('kimi-k3');
     fetchSpy.mockRestore();
   });
 
@@ -135,6 +129,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
+      campaignTarget: { kind: 'non-campaign' },
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -169,6 +164,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
+      campaignTarget: { kind: 'non-campaign' },
     })).rejects.toThrow(expectedError);
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -197,6 +193,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       agent: 'bridge-page-validator',
       systemPrompt: 'System',
       userPrompt: 'User',
+      campaignTarget: { kind: 'non-campaign' },
     });
 
     expect(res.provider).toBe('google');
@@ -204,7 +201,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
     fetchSpy.mockRestore();
   });
 
-  it('continua funcionando sem chave Kimi usando o próximo provider disponível', async () => {
+  it('falha explicitamente sem chave Kimi e não usa outro provider', async () => {
     vi.mocked(prisma.integration.findMany).mockResolvedValueOnce([
       { serviceName: 'llm', fieldName: 'api_key_openai', fieldValue: 'openai-test-key' } as any,
     ]);
@@ -217,14 +214,14 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       }),
     } as any);
 
-    const res = await callAgent('user-1', {
+    await expect(callAgent('user-1', {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
-    });
+      campaignTarget: { kind: 'non-campaign' },
+    })).rejects.toThrow('Nenhuma API key de LLM configurada');
 
-    expect(res.provider).toBe('openai');
-    expect(res.data).toEqual({ ok: true });
+    expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 
@@ -239,7 +236,7 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       status: 400,
       error: { type: 'content_filter', message: 'The request was rejected because it was considered high risk' },
     },
-  ])('faz fallback real sem fabricar HTML quando Kimi retorna $label', async ({ status, error }) => {
+  ])('falha fechado sem fallback quando Kimi retorna $label', async ({ status, error }) => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('moonshot.ai')) {
         return {
@@ -261,18 +258,16 @@ describe('Roteamento preferencial de Presell & Bridge Page', () => {
       throw new Error(`Provedor inesperado: ${url}`);
     });
 
-    const res = await callAgent('user-1', {
+    await expect(callAgent('user-1', {
       agent: 'presell-builder',
       systemPrompt: 'System',
       userPrompt: 'User',
-    });
+      campaignTarget: { kind: 'non-campaign' },
+    })).rejects.toThrow('Erro na API do Kimi/Moonshot');
 
     const calledUrls = fetchSpy.mock.calls.map(([url]) => String(url));
     expect(calledUrls.filter((url) => url.includes('moonshot.ai'))).toHaveLength(1);
-    expect(calledUrls.filter((url) => url.includes('openai.com'))).toHaveLength(1);
-    expect(res.provider).toBe('openai');
-    expect(res.data).toEqual({ ok: true, source: 'fallback' });
-    expect(res.text).not.toContain('<!--');
+    expect(calledUrls.filter((url) => url.includes('openai.com'))).toHaveLength(0);
     fetchSpy.mockRestore();
   });
 });
