@@ -18,6 +18,7 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   images: { unoptimized: true },
+  transpilePackages: ['lib/google-ads-experiments/orchestration', 'app/api/google-ads/experiments/route'],
   webpack: (config, { isServer, nextRuntime }) => {
     if (isServer) {
       config.externals = [...(config.externals || []), 'google-auth-library', 'gaxios'];
@@ -41,6 +42,19 @@ const nextConfig = {
         https: false,
       };
     }
+
+    // Garante que arquivos .ts em lib/google-ads-experiments sejam transpilados como ES Modules pelo SWC.
+    config.module.rules.push({
+      test: /\.ts$/,
+      include: [
+        path.resolve(__dirname, 'lib/google-ads-experiments'),
+      ],
+      use: {
+        loader: 'next-swc-loader',
+        options: {},
+      },
+    });
+
     return config;
   },
 };

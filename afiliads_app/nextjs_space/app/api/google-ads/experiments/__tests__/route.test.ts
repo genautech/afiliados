@@ -1,5 +1,5 @@
 import { expect, test, describe, vi, beforeEach } from 'vitest';
-import { POST } from '../route';
+import { GET, POST } from '../route';
 import { NextRequest } from 'next/server';
 
 vi.mock('next-auth', () => ({
@@ -7,11 +7,58 @@ vi.mock('next-auth', () => ({
 }));
 
 vi.mock('../../../../../lib/google-ads-experiments/orchestration', () => ({
-  setupExperiment: vi.fn()
+  setupExperiment: vi.fn(),
+  toExperimentDetailDTO: vi.fn((value) => value),
+}));
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    campaign: { findFirst: vi.fn() },
+    googleAdsExperiment: { findMany: vi.fn() },
+  },
 }));
 
 import { getServerSession } from 'next-auth';
 import { setupExperiment } from '../../../../../lib/google-ads-experiments/orchestration';
+import { prisma } from '@/lib/prisma';
+
+describe('GET /api/google-ads/experiments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('404 para campanha sem ownership e não consulta experimento', async () => {
+    (getServerSession as any).mockResolvedValue({ user: { id: 'u2' } });
+    vi.mocked(prisma.campaign.findFirst).mockResolvedValue(null);
+    const res = await GET(new NextRequest('http://localhost/api/google-ads/experiments?campaignId=c1'));
+    expect(res.status).toBe(404);
+    expect(prisma.googleAdsExperiment.findMany).not.toHaveBeenCalled();
+  });
+
+  test('retorna revisão da campanha própria e experimento mais recente', async () => {
+    (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
+    vi.mocked(prisma.campaign.findFirst).mockResolvedValue({ id: 'c1', updatedAt: new Date(1234) } as any);
+    vi.mocked(prisma.googleAdsExperiment.findMany).mockResolvedValue([{ id: 'e1' }] as any);
+    const res = await GET(new NextRequest('http://localhost/api/google-ads/experiments?campaignId=c1'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      experiments: [{ id: 'e1' }],
+      setupAuthorization: { resourceId: 'c1', revision: '1234' },
+    });
+  });
+
+  test('não esconde duplicatas ativas legadas e bloqueia nova preparação', async () => {
+    (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
+    vi.mocked(prisma.campaign.findFirst).mockResolvedValue({ id: 'c1', updatedAt: new Date(1234) } as any);
+    vi.mocked(prisma.googleAdsExperiment.findMany).mockResolvedValue([{ id: 'e2' }, { id: 'e1' }] as any);
+    const res = await GET(new NextRequest('http://localhost/api/google-ads/experiments?campaignId=c1'));
+    expect(await res.json()).toMatchObject({
+      experiments: [{ id: 'e2' }, { id: 'e1' }],
+      setupAuthorization: null,
+      conflict: expect.stringContaining('mais de um experimento ativo'),
+    });
+  });
+});
 
 describe('POST /api/google-ads/experiments', () => {
   beforeEach(() => {

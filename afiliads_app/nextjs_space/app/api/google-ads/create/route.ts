@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     let descriptions: string[] | undefined = body?.descriptions;
     if (!headlines?.length || !descriptions?.length) {
       const mainKeyword = selectedKeywords[0].keyword;
-      const rsa = await generateRsaCopy(userId, { keyword: mainKeyword, vertical: campaign.vertical, forbiddenTerms });
+      const rsa = await generateRsaCopy(userId, { campaignId, keyword: mainKeyword, vertical: campaign.vertical, forbiddenTerms });
       headlines = rsa.titles;
       descriptions = rsa.descriptions;
       if (!headlines?.length || !descriptions?.length) {

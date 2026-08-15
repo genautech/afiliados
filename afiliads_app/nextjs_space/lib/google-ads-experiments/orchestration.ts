@@ -7,9 +7,12 @@ import { assertMutationAllowed } from '../google-ads/mutation-guard';
 import { createExperiment, createExperimentArms, applyFinalUrlVariation, assertActionAllowedFromStatus, scheduleExperiment, endExperiment, promoteExperiment, graduateExperiment, pollExperimentOperation, listExperimentAsyncErrors } from '../google-ads/experiments';
 import { findAdGroupAdsInCampaign } from '../google-ads/ads';
 import { fetchExperimentReport, buildMetricSnapshotUpsertInput, upsertMetricSnapshot, validateFallbackArms } from '../google-ads/experiment-reporting';
-import { SetupExperimentPayloadSchema, ScheduleExperimentRoutePayloadSchema, ExperimentActionRoutePayloadSchema, type SetupExperimentPayload } from './schemas';
+import { SetupExperimentPayloadSchema, ScheduleExperimentRoutePayloadSchema, ExperimentActionRoutePayloadSchema, assertStartDateIsFuture, type SetupExperimentPayload } from './schemas';
 import { redactSensitive } from '../google-ads/errors';
+import { getExperimentDetail } from './detail';
 import { createHash } from 'crypto';
+
+export { getExperimentDetail };
 
 export interface SetupExperimentInput {
   userId: string;
@@ -35,6 +38,7 @@ export interface SetupExperimentInput {
     // (NOT_FOUND autoritativo); lança/rejeita quando a resposta é ambígua/inconclusiva (UNKNOWN).
     reconcileExperiment?: (expName: string) => Promise<{ googleExperimentId: string; resourceName: string } | null>;
     reconcileArms?: (experimentResourceName: string) => Promise<any[] | null>;
+    now?: Date;
     prisma?: any;
   };
 }
@@ -55,6 +59,17 @@ function hashPresellHtml(html: unknown): string | null {
     : null;
 }
 
+function normalizeApprovedHttpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function toExperimentDTO(exp: any) {
   const config = asConfigObject(exp.variationConfig);
   const proof = asConfigObject(config?.proof);
@@ -64,6 +79,7 @@ export function toExperimentDTO(exp: any) {
     : null;
   return {
     id: exp.id,
+    setupIdempotencyKey: exp.idempotencyKey,
     userId: exp.userId,
     campaignId: exp.campaignId,
     googleExperimentId: exp.googleExperimentId ?? null,
@@ -161,13 +177,23 @@ async function reconcileRemoteExperimentByName(
   expName: string,
   deps?: any
 ): Promise<ReconcileResult<{ googleExperimentId: string; resourceName: string }>> {
+  const validateIdentity = (candidate: any): ReconcileResult<{ googleExperimentId: string; resourceName: string }> => {
+    const match = typeof candidate?.resourceName === 'string'
+      ? /^customers\/(\d+)\/experiments\/(\d+)$/.exec(candidate.resourceName)
+      : null;
+    if (!match || match[1] !== String(config.customerId)) {
+      return { kind: 'UNKNOWN', reason: 'identidade remota divergente do customer esperado' };
+    }
+    if (candidate.googleExperimentId && String(candidate.googleExperimentId) !== match[2]) {
+      return { kind: 'UNKNOWN', reason: 'experimentId remoto divergente do resourceName' };
+    }
+    return { kind: 'FOUND', value: { googleExperimentId: match[2], resourceName: candidate.resourceName } };
+  };
   if (deps?.reconcileExperiment) {
     try {
       const r = await deps.reconcileExperiment(expName);
       if (r === null) return { kind: 'NOT_FOUND' };
-      if (r && typeof r === 'object' && r.resourceName) {
-        return { kind: 'FOUND', value: { googleExperimentId: r.googleExperimentId ?? '', resourceName: r.resourceName } };
-      }
+      if (r && typeof r === 'object' && r.resourceName) return validateIdentity(r);
       return { kind: 'UNKNOWN', reason: 'resposta de reconciliação do experimento em formato inesperado' };
     } catch (err: any) {
       return { kind: 'UNKNOWN', reason: redactSensitive(err?.message || 'erro na reconciliação do experimento') };
@@ -190,11 +216,13 @@ async function reconcileRemoteExperimentByName(
     if (!data || !Array.isArray(data.results)) {
       return { kind: 'UNKNOWN', reason: 'resposta de busca de experimento em formato inesperado' };
     }
+    if (data.results.length > 1) {
+      return { kind: 'UNKNOWN', reason: 'mais de um experimento remoto encontrado para a identidade canônica' };
+    }
     const row = data.results[0]?.experiment;
     if (!row) return { kind: 'NOT_FOUND' };
     if (!row.resourceName) return { kind: 'UNKNOWN', reason: 'linha de experimento remota sem resourceName' };
-    const googleExperimentId = row.experimentId || row.resourceName.split('/').pop() || '';
-    return { kind: 'FOUND', value: { googleExperimentId, resourceName: row.resourceName } };
+    return validateIdentity({ googleExperimentId: row.experimentId, resourceName: row.resourceName });
   } catch (err: any) {
     return { kind: 'UNKNOWN', reason: redactSensitive(err?.message || 'erro ao consultar experimento remoto') };
   }
@@ -362,7 +390,12 @@ interface CanonicalSetupPayload {
 }
 
 function deriveDeterministicExperimentName(campaignId: string, idempotencyKey: string): string {
-  const suffix = idempotencyKey.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'exp123';
+  const suffix = createHash('sha256')
+    .update(campaignId, 'utf8')
+    .update('\0', 'utf8')
+    .update(idempotencyKey, 'utf8')
+    .digest('hex')
+    .slice(0, 24);
   return `EXP-${campaignId.substring(0, 5)}-${suffix}`;
 }
 
@@ -371,7 +404,7 @@ function canonicalizeSetupPayload(validated: SetupExperimentPayload, idempotency
     campaignId: validated.campaignId,
     presellId: validated.presellId,
     treatmentFinalUrl: validated.treatmentFinalUrl,
-    name: validated.name || deriveDeterministicExperimentName(validated.campaignId, idempotencyKey),
+    name: deriveDeterministicExperimentName(validated.campaignId, idempotencyKey),
     startDate: validated.startDate ? validated.startDate.slice(0, 10) : null,
     endDate: validated.endDate ? validated.endDate.slice(0, 10) : null,
     trafficSplitTreatment: validated.trafficSplitTreatment ?? 50,
@@ -382,7 +415,6 @@ const CANONICAL_FIELDS: (keyof CanonicalSetupPayload)[] = [
   'campaignId',
   'presellId',
   'treatmentFinalUrl',
-  'name',
   'startDate',
   'endDate',
   'trafficSplitTreatment',
@@ -447,7 +479,8 @@ function deriveLegacyCanonical(existing: { campaignId: string; name: string; sta
 // derivar o canônico com segurança.
 function resolveCanonicalPayloadOrThrow(
   existing: { campaignId: string; name: string; startDate?: any; endDate?: any; arms?: any[]; variationConfig: any },
-  incomingCanonical: CanonicalSetupPayload
+  incomingCanonical: CanonicalSetupPayload,
+  allowLegacyDateBackfill = false,
 ): CanonicalSetupPayload | null {
   if (existing.campaignId !== incomingCanonical.campaignId) {
     throw { status: 409, message: 'Conflito de idempotência: campaignId divergente' };
@@ -457,22 +490,28 @@ function resolveCanonicalPayloadOrThrow(
   const stored: CanonicalSetupPayload | null = cfg?.setupPayload ?? null;
 
   if (stored) {
-    const mismatch = findCanonicalMismatch(stored, incomingCanonical);
+    const storedForComparison = allowLegacyDateBackfill && stored.startDate === null && stored.endDate === null
+      ? { ...stored, startDate: incomingCanonical.startDate, endDate: incomingCanonical.endDate }
+      : stored;
+    const mismatch = findCanonicalMismatch(storedForComparison, incomingCanonical);
     if (mismatch) {
       throw { status: 409, message: `Conflito de idempotência: ${mismatch} divergente` };
     }
-    return null;
+    return storedForComparison === stored ? null : incomingCanonical;
   }
 
   const legacy = deriveLegacyCanonical(existing, cfg);
   if (!legacy) {
     throw { status: 409, message: 'Conflito de idempotência: registro legado sem dados suficientes para validar o payload' };
   }
-  const mismatch = findCanonicalMismatch(legacy, incomingCanonical);
+  const legacyForComparison = allowLegacyDateBackfill && legacy.startDate === null && legacy.endDate === null
+    ? { ...legacy, startDate: incomingCanonical.startDate, endDate: incomingCanonical.endDate }
+    : legacy;
+  const mismatch = findCanonicalMismatch(legacyForComparison, incomingCanonical);
   if (mismatch) {
     throw { status: 409, message: `Conflito de idempotência: ${mismatch} divergente (registro legado)` };
   }
-  return legacy;
+  return legacyForComparison;
 }
 
 // P1-1 (recuperação Tarefa 10B): saga durável por etapa, persistida em variationConfig.saga —
@@ -482,9 +521,18 @@ function resolveCanonicalPayloadOrThrow(
 // sucesso falhou — retry nunca pode tratar isso como "nunca tentado".
 type SagaStepState = 'PENDING' | 'IN_FLIGHT' | 'COMPLETE' | 'UNKNOWN';
 type SagaStep = 'experiment' | 'arms' | 'variation' | 'schedule' | 'promote' | 'end' | 'graduate';
+const SETUP_SAGA_RECOVERY_LEASE_MS = 5 * 60 * 1000;
 
 function getSagaState(cfg: Record<string, any> | null, step: SagaStep): SagaStepState | undefined {
   return cfg?.saga?.[step];
+}
+
+function setupSagaLeaseExpired(experiment: any, now: Date): boolean {
+  const updatedAt = experiment?.updatedAt instanceof Date
+    ? experiment.updatedAt
+    : new Date(experiment?.updatedAt ?? Number.NaN);
+  return Number.isFinite(updatedAt.getTime())
+    && now.getTime() - updatedAt.getTime() >= SETUP_SAGA_RECOVERY_LEASE_MS;
 }
 
 // Claim/lease local via CAS: só uma request ganha porque o `updateMany` só casa a linha
@@ -542,10 +590,19 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     const errorMsg = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     throw { status: 400, message: redactSensitive(`Payload inválido: ${errorMsg}`) };
   }
-  const validated = parseResult.data;
+  const parsedPayload = parseResult.data;
+  const setupNow = deps?.now ?? new Date();
+  const prismaClient = deps?.prisma ?? prisma;
+  let experiment = await prismaClient.googleAdsExperiment.findUnique({
+    where: { userId_idempotencyKey: { userId, idempotencyKey: parsedPayload.authorization.idempotencyKey } },
+    include: { arms: { orderBy: { isControl: 'desc' } } },
+  });
+  if (!experiment && parsedPayload.startDate && !assertStartDateIsFuture(parsedPayload.startDate, setupNow)) {
+    throw { status: 400, message: 'startDate precisa ser uma data futura' };
+  }
+  const validated = parsedPayload;
 
   // 2. Ownership & Resource Lookup ({ id, userId })
-  const prismaClient = deps?.prisma ?? prisma;
   const findCampaign = deps?.findCampaign ?? ((id: string, uid: string) => prismaClient.campaign.findFirst({ where: { id, userId: uid } }));
   const findPresell = deps?.findPresell ?? ((id: string, uid: string) => prismaClient.presell.findFirst({ where: { id, userId: uid } }));
 
@@ -561,6 +618,11 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
   if (presell.campaignId !== campaign.id) {
     throw { status: 400, message: 'Presell não pertence à campanha informada' };
+  }
+  const approvedTreatmentFinalUrl = normalizeApprovedHttpsUrl(presell.publishedUrl);
+  const requestedTreatmentFinalUrl = normalizeApprovedHttpsUrl(validated.treatmentFinalUrl);
+  if (!approvedTreatmentFinalUrl || requestedTreatmentFinalUrl !== approvedTreatmentFinalUrl) {
+    throw { status: 422, message: 'URL treatment diverge da URL HTTPS publicada da presell aprovada' };
   }
   const presellContentSha256 = hashPresellHtml(presell.html);
   if (!presellContentSha256) {
@@ -593,13 +655,40 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     throw { status: 400, message: redactSensitive(err.message || 'Falha de autorização da mutação') };
   }
 
-  const incomingCanonical = canonicalizeSetupPayload(validated, authContext.idempotencyKey);
-
   // 5. Short DB Step: Local Reservation & Canonical Payload Idempotency Check
-  let experiment = await prismaClient.googleAdsExperiment.findUnique({
-    where: { userId_idempotencyKey: { userId, idempotencyKey: authContext.idempotencyKey } },
-    include: { arms: { orderBy: { isControl: 'desc' } } },
-  });
+  if (!experiment) {
+    const activeForCampaign = await prismaClient.googleAdsExperiment.findFirst({
+      where: { userId, campaignId: campaign.id, status: { notIn: ['ENDED', 'ERROR'] } },
+      select: { id: true },
+    });
+    if (activeForCampaign) {
+      throw { status: 409, message: 'Já existe experimento ativo para esta campanha; recarregue antes de preparar novamente' };
+    }
+  }
+
+  const existingConfig = asConfigObject(experiment?.variationConfig);
+  const existingSetup = asConfigObject(existingConfig?.setupPayload);
+  const existingRemoteInput = asConfigObject(existingConfig?.remoteCreateInput);
+  const persistedStartDate = existingSetup?.startDate
+    ?? existingRemoteInput?.startDate
+    ?? (experiment?.startDate ? safeISO(experiment.startDate)?.slice(0, 10) : null);
+  const persistedEndDate = existingSetup?.endDate
+    ?? existingRemoteInput?.endDate
+    ?? (experiment?.endDate ? safeISO(experiment.endDate)?.slice(0, 10) : null);
+  const dateAnchor = experiment?.createdAt ? new Date(experiment.createdAt) : new Date(setupNow);
+  const defaultStart = new Date(dateAnchor);
+  defaultStart.setUTCDate(defaultStart.getUTCDate() + 1);
+  const effectiveStartDate = validated.startDate ?? persistedStartDate ?? defaultStart.toISOString().slice(0, 10);
+  const defaultEnd = new Date(`${effectiveStartDate}T00:00:00.000Z`);
+  defaultEnd.setUTCDate(defaultEnd.getUTCDate() + 30);
+  const effectiveValidated = {
+    ...validated,
+    treatmentFinalUrl: approvedTreatmentFinalUrl,
+    startDate: effectiveStartDate,
+    endDate: validated.endDate ?? persistedEndDate ?? defaultEnd.toISOString().slice(0, 10),
+  };
+  const incomingCanonical = canonicalizeSetupPayload(effectiveValidated, authContext.idempotencyKey);
+  const allowLegacyDateBackfill = !validated.startDate && !validated.endDate;
 
   // Distingue primeira tentativa (nunca houve mutate remota pra esta reserva) de retry (a
   // reserva local já existia antes desta chamada, então um mutate remoto pode já ter sido
@@ -611,39 +700,60 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
   // caminho normal quanto na recuperação de P2002 — nunca persiste setupPayload derivado sem
   // ter comparado contra o que já estava provado remotamente.
   async function migrateCanonicalPayloadIfNeeded(existing: any) {
-    const toPersist = resolveCanonicalPayloadOrThrow(existing, incomingCanonical);
+    const toPersist = resolveCanonicalPayloadOrThrow(existing, incomingCanonical, allowLegacyDateBackfill);
     if (!toPersist) return existing;
     const nextConfig = { ...(asConfigObject(existing.variationConfig) ?? {}), setupPayload: toPersist };
-    return prismaClient.googleAdsExperiment.update({
+    const updated = await prismaClient.googleAdsExperiment.update({
       where: { id: existing.id },
-      data: { variationConfig: nextConfig },
+      data: {
+        variationConfig: nextConfig,
+        startDate: existing.startDate ?? (toPersist.startDate ? new Date(toPersist.startDate) : null),
+        endDate: existing.endDate ?? (toPersist.endDate ? new Date(toPersist.endDate) : null),
+      },
       include: { arms: { orderBy: { isControl: 'desc' } } },
     });
+    return {
+      ...existing,
+      ...updated,
+      arms: Array.isArray(updated.arms) && updated.arms.length > 0 ? updated.arms : existing.arms,
+      variationConfig: nextConfig,
+      startDate: updated.startDate ?? existing.startDate ?? (toPersist.startDate ? new Date(toPersist.startDate) : null),
+      endDate: updated.endDate ?? existing.endDate ?? (toPersist.endDate ? new Date(toPersist.endDate) : null),
+    };
   }
 
   if (experiment) {
     experiment = await migrateCanonicalPayloadIfNeeded(experiment);
   } else {
     try {
-      experiment = await prismaClient.googleAdsExperiment.create({
-        data: {
-          userId,
-          campaignId: campaign.id,
-          idempotencyKey: authContext.idempotencyKey,
-          name: incomingCanonical.name,
-          status: 'SETUP',
-          type: 'SEARCH_CUSTOM',
-          variationType: 'PRESELL_URL',
-          startDate: incomingCanonical.startDate ? new Date(incomingCanonical.startDate) : null,
-          endDate: incomingCanonical.endDate ? new Date(incomingCanonical.endDate) : null,
-          trafficAllocationType: 'SEARCH_CUSTOM',
-          variationConfig: {
-            setupPayload: incomingCanonical,
-            saga: { experiment: 'PENDING', arms: 'PENDING', variation: 'PENDING' },
+      experiment = await prismaClient.$transaction(async (tx: any) => {
+        const concurrentActive = await tx.googleAdsExperiment.findFirst({
+          where: { userId, campaignId: campaign.id, status: { notIn: ['ENDED', 'ERROR'] } },
+          select: { id: true },
+        });
+        if (concurrentActive) {
+          throw { status: 409, message: 'Já existe experimento ativo para esta campanha; recarregue antes de preparar novamente' };
+        }
+        return tx.googleAdsExperiment.create({
+          data: {
+            userId,
+            campaignId: campaign.id,
+            idempotencyKey: authContext.idempotencyKey,
+            name: incomingCanonical.name,
+            status: 'SETUP',
+            type: 'SEARCH_CUSTOM',
+            variationType: 'PRESELL_URL',
+            startDate: incomingCanonical.startDate ? new Date(incomingCanonical.startDate) : null,
+            endDate: incomingCanonical.endDate ? new Date(incomingCanonical.endDate) : null,
+            trafficAllocationType: 'SEARCH_CUSTOM',
+            variationConfig: {
+              setupPayload: incomingCanonical,
+              saga: { experiment: 'PENDING', arms: 'PENDING', variation: 'PENDING' },
+            },
           },
-        },
-        include: { arms: { orderBy: { isControl: 'desc' } } },
-      });
+          include: { arms: { orderBy: { isControl: 'desc' } } },
+        });
+      }, { isolationLevel: 'Serializable' });
       isFreshReservation = true;
     } catch (createErr: any) {
       // Race condition handling (P2002)
@@ -672,8 +782,9 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     arms.length === 2 &&
     treatmentArm &&
     persistedProof?.verified === true &&
-    persistedProof?.finalUrl === validated.treatmentFinalUrl &&
-    treatmentArm.finalUrl === validated.treatmentFinalUrl &&
+    persistedProof?.finalUrl === effectiveValidated.treatmentFinalUrl &&
+    persistedProof?.presellPublishedUrl === approvedTreatmentFinalUrl &&
+    treatmentArm.finalUrl === effectiveValidated.treatmentFinalUrl &&
     treatmentArm.localPresellId === validated.presellId &&
     !experiment.lastError
   ) {
@@ -723,11 +834,13 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
   if (!resourceName) {
     const sagaCfgBeforeA = asConfigObject(experiment.variationConfig);
     const sagaExperimentState = getSagaState(sagaCfgBeforeA, 'experiment');
-    // Etapa durável já teve mutate tentada (IN_FLIGHT/UNKNOWN) em invocação anterior — mesmo
-    // reconciliação NOT_FOUND não é mais autoritativa o suficiente pra criar de novo (P1-1).
-    const experimentAttemptedBefore = sagaExperimentState === 'IN_FLIGHT' || sagaExperimentState === 'UNKNOWN' || sagaExperimentState === 'COMPLETE';
-
-    const reconciled = await reconcileRemoteExperimentByName(token, config, experiment.name, deps);
+    // UNKNOWN/IN_FLIGHT com lease expirado permite nova tentativa (recuperação);
+    // COMPLETE nunca recria. UNKNOWN fresco bloqueia (revisão manual).
+    const experimentAttemptedBefore = sagaExperimentState === 'COMPLETE'
+      || ((sagaExperimentState === 'IN_FLIGHT' || sagaExperimentState === 'UNKNOWN') && !setupSagaLeaseExpired(experiment, setupNow));
+    const reconciled: ReconcileResult<{ googleExperimentId: string; resourceName: string }> = experimentAttemptedBefore
+      ? await reconcileRemoteExperimentByName(token, config, incomingCanonical.name, deps)
+      : { kind: 'NOT_FOUND' }; // If no attempt before, assume NOT_FOUND to proceed with creation
 
     if (reconciled.kind === 'FOUND') {
       googleExperimentId = reconciled.value.googleExperimentId;
@@ -742,29 +855,10 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
         },
         include: { arms: { orderBy: { isControl: 'desc' } } },
       });
-    } else if (experimentAttemptedBefore || (reconciled.kind === 'UNKNOWN' && !isFreshReservation)) {
-      // Retry após resultado remoto ambíguo (ou após tentativa anterior durável): não sabemos
-      // se uma mutate anterior já criou o experimento — falhar fechado sem segunda mutate.
-      const sanitizedMsg = redactSensitive(
-        reconciled.kind === 'UNKNOWN'
-          ? `Reconciliação do experimento remoto inconclusiva: ${reconciled.reason}`
-          : 'Reconciliação do experimento remoto inconclusiva: sem confirmação após tentativa anterior'
-      );
-      await prismaClient.googleAdsExperiment.update({
-        where: { id: experiment.id },
-        data: { lastError: sanitizedMsg },
-      }).catch(() => {});
-      throw { status: 502, message: sanitizedMsg };
-    } else {
-      // NOT_FOUND (autoritativo) OU UNKNOWN em primeira tentativa comprovadamente inédita
-      // (nenhuma mutate anterior pode ter acontecido pra esta reserva — seguro criar). Antes de
-      // mutar, adquire claim exclusivo (CAS) pra garantir que no máximo uma request concorrente
-      // chega a chamar createExperiment (P1-1).
+    } else if (reconciled.kind === 'NOT_FOUND' && !experimentAttemptedBefore) { // Only allow creation if NOT_FOUND and NO prior attempt
       const remoteCreateInput = sagaCfgBeforeA?.remoteCreateInput ?? {
-        // P1-3: calculado uma única vez por reserva — persistido no claim abaixo, nunca
-        // recalculado numa tentativa posterior (senão retries recalculariam start/end diferentes).
-        startDate: validated.startDate || new Date().toISOString().split('T')[0],
-        endDate: validated.endDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        startDate: incomingCanonical.startDate,
+        endDate: incomingCanonical.endDate,
       };
 
       const claim = await claimSagaStep(prismaClient, experiment, 'experiment', { remoteCreateInput });
@@ -772,8 +866,6 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
       if (!claim.claimed) {
         if (experiment.resourceName) {
-          // Outra request ganhou o claim e já persistiu o resourceName — segue com o resultado
-          // dela em vez de falhar à toa.
           resourceName = experiment.resourceName;
           googleExperimentId = experiment.googleExperimentId;
         } else {
@@ -818,9 +910,6 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
             include: { arms: { orderBy: { isControl: 'desc' } } },
           });
         } catch (err: any) {
-          // Mutate lançou (ou o checkpoint pós-sucesso falhou) — nunca volta pra PENDING; fica
-          // UNKNOWN pra que um retry seja obrigado a reconciliar (ou falhar fechado) em vez de
-          // remutar (P1-1).
           const sanitizedMsg = redactSensitive(err.message || 'Erro na criação remota do experimento');
           const claimedConfig = asConfigObject(experiment.variationConfig) ?? {};
           await prismaClient.googleAdsExperiment.update({
@@ -833,6 +922,17 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
           throw { status: 502, message: sanitizedMsg };
         }
       }
+    } else { // All other cases: UNKNOWN (anytime) or NOT_FOUND after a prior attempt.
+      const sanitizedMsg = redactSensitive(
+        reconciled.kind === 'UNKNOWN'
+          ? `Reconciliação do experimento remoto inconclusiva: ${reconciled.reason}`
+          : 'Reconciliação do experimento remoto inconclusiva: sem confirmação após tentativa anterior'
+      );
+      await prismaClient.googleAdsExperiment.update({
+        where: { id: experiment.id },
+        data: { lastError: sanitizedMsg },
+      }).catch(() => {});
+      throw { status: 502, message: sanitizedMsg };
     }
   }
 
@@ -851,7 +951,9 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
     const sagaCfgBeforeB = asConfigObject(experiment.variationConfig);
     const sagaArmsState = getSagaState(sagaCfgBeforeB, 'arms');
-    const armsAttemptedBefore = sagaArmsState === 'IN_FLIGHT' || sagaArmsState === 'UNKNOWN' || sagaArmsState === 'COMPLETE';
+    // Mesma regra do checkpoint A: lease expirado permite recuperação; COMPLETE nunca recria.
+    const armsAttemptedBefore = sagaArmsState === 'COMPLETE'
+      || ((sagaArmsState === 'IN_FLIGHT' || sagaArmsState === 'UNKNOWN') && !setupSagaLeaseExpired(experiment, setupNow));
 
     if (!armsCheckpointIsFresh) {
       const reconciledArms = await reconcileRemoteArms(
@@ -865,9 +967,9 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
       if (reconciledArms.kind === 'FOUND') {
         createdArms = reconciledArms.value;
-      } else if (armsAttemptedBefore || reconciledArms.kind === 'UNKNOWN') {
-        // P1-1: etapa durável já teve mutate tentada antes — NOT_FOUND deixa de ser autoritativo
-        // suficiente sozinho, igual ao checkpoint A.
+      } else if (reconciledArms.kind === 'NOT_FOUND' && !armsAttemptedBefore) { // Only create if definitely NOT_FOUND and NO previous attempt
+        // NOT_FOUND (e nunca tentado antes) cai para criação abaixo.
+      } else { // This is the blocking path for UNKNOWN (anytime) or NOT_FOUND after a prior attempt.
         const sanitizedMsg = redactSensitive(
           reconciledArms.kind === 'UNKNOWN'
             ? `Reconciliação dos braços remotos inconclusiva: ${reconciledArms.reason}`
@@ -879,7 +981,6 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
         }).catch(() => {});
         throw { status: 502, message: sanitizedMsg };
       }
-      // NOT_FOUND (e nunca tentado antes) cai para criação abaixo.
     }
 
     if (!createdArms) {
@@ -970,7 +1071,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
         servedCampaignResourceName: arm.servedCampaignResourceName,
         googleCampaignId: arm.isControl ? campaign.googleCampaignId : null,
         localPresellId: arm.isControl ? null : validated.presellId,
-        finalUrl: arm.isControl ? controlFinalUrl : validated.treatmentFinalUrl,
+        finalUrl: arm.isControl ? controlFinalUrl : effectiveValidated.treatmentFinalUrl,
       }));
 
       const persistedArmsConfig = asConfigObject(experiment.variationConfig) ?? {};
@@ -1011,9 +1112,12 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     throw { status: 502, message: 'Braço de tratamento incompleto no experimento' };
   }
 
-  const variationConfigBeforeClaim = asConfigObject(experiment.variationConfig) ?? {};
+  const variationConfigBeforeClaim = asConfigObject(experiment.variationConfig);
   const variationState = getSagaState(variationConfigBeforeClaim, 'variation');
-  if (variationState === 'IN_FLIGHT' || variationState === 'UNKNOWN' || variationState === 'COMPLETE') {
+  if (
+    variationState === 'COMPLETE'
+    || ((variationState === 'IN_FLIGHT' || variationState === 'UNKNOWN') && !setupSagaLeaseExpired(experiment, setupNow))
+  ) {
     const msg = 'Variação remota já foi tentada sem prova local conclusiva; revisão manual necessária';
     await prismaClient.googleAdsExperiment.update({
       where: { id: experiment.id },
@@ -1030,8 +1134,9 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     const freshTreatment = (experiment.arms || []).find((a: any) => !a.isControl);
     if (
       freshProof?.verified === true &&
-      freshProof.finalUrl === validated.treatmentFinalUrl &&
-      freshTreatment?.finalUrl === validated.treatmentFinalUrl
+      freshProof.finalUrl === effectiveValidated.treatmentFinalUrl &&
+      freshProof.presellPublishedUrl === approvedTreatmentFinalUrl &&
+      freshTreatment?.finalUrl === effectiveValidated.treatmentFinalUrl
     ) {
       return {
         success: true,
@@ -1050,7 +1155,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
       token,
       config,
       resourceName!,
-      validated.treatmentFinalUrl,
+      effectiveValidated.treatmentFinalUrl,
       capability
     );
 
@@ -1061,8 +1166,9 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
       const variationProof = {
         verified: true,
         verifiedAt: new Date().toISOString(),
-        finalUrl: validated.treatmentFinalUrl,
+        finalUrl: effectiveValidated.treatmentFinalUrl,
         presellId: validated.presellId,
+        presellPublishedUrl: approvedTreatmentFinalUrl,
         presellContentSha256,
         trafficSplitTreatment: validated.trafficSplitTreatment || 50,
         adsModifiedCount: applyRes.adsModified?.length ?? 1,
@@ -1070,7 +1176,7 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
 
       await prismaClient.googleAdsExperimentArm.update({
         where: { id: tArm.id },
-        data: { finalUrl: validated.treatmentFinalUrl },
+        data: { finalUrl: effectiveValidated.treatmentFinalUrl },
       });
 
       experiment = await prismaClient.googleAdsExperiment.update({
@@ -1112,26 +1218,6 @@ export async function setupExperiment({ userId, payload, deps }: SetupExperiment
     }).catch(() => {});
     throw { status: 502, message: sanitizedMsg };
   }
-}
-
-export async function getExperimentDetail(id: string, userId: string, deps?: any) {
-  const prismaClient = deps?.prisma ?? prisma;
-
-  // Point 4: Lookup Prisma owned por { id, userId }
-  const exp = await prismaClient.googleAdsExperiment.findFirst({
-    where: { id, userId },
-    include: {
-      arms: { orderBy: { isControl: 'desc' } },
-      operations: { orderBy: { startedAt: 'desc' }, take: 1 },
-      metricSnapshots: { orderBy: { snapshotDate: 'desc' }, take: 1 },
-    },
-  });
-
-  if (!exp) {
-    throw { status: 404, message: 'Experimento não encontrado' };
-  }
-
-  return toExperimentDetailDTO(exp);
 }
 
 interface ScheduleLifecycleInput {
@@ -1208,6 +1294,8 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
     || proof.presellId !== treatmentArm.localPresellId
     || typeof proof.presellContentSha256 !== 'string'
     || !/^[a-f0-9]{64}$/.test(proof.presellContentSha256)
+    || typeof proof.presellPublishedUrl !== 'string'
+    || normalizeApprovedHttpsUrl(proof.presellPublishedUrl) !== normalizeApprovedHttpsUrl(treatmentArm.finalUrl)
   ) {
     throw { status: 422, message: 'Variação de tratamento não possui prova persistida e consistente' };
   }
@@ -1248,6 +1336,10 @@ export async function scheduleExperimentLifecycle({ id, userId, payload, deps }:
   const currentContentSha256 = hashPresellHtml(currentPresell?.html);
   if (!currentContentSha256 || currentContentSha256 !== proof.presellContentSha256) {
     throw { status: 409, message: 'Conteúdo da presell diverge da revisão aprovada; nova aprovação obrigatória' };
+  }
+  const currentPublishedUrl = normalizeApprovedHttpsUrl(currentPresell?.publishedUrl);
+  if (!currentPublishedUrl || currentPublishedUrl !== normalizeApprovedHttpsUrl(proof.presellPublishedUrl)) {
+    throw { status: 409, message: 'URL publicada da presell diverge da revisão aprovada; nova aprovação obrigatória' };
   }
 
   const adsConfig = await (deps?.getAdsConfig ?? getGoogleAdsConfig)(userId);
@@ -1377,6 +1469,7 @@ interface ExperimentActionLifecycleInput {
       experimentCampaignResourceName: string;
       campaignBudgetResourceName: string;
     } | null>;
+    now?: Date;
   };
 }
 
@@ -1385,6 +1478,70 @@ const ACTION_CONTRACT = {
   PROMOTE: { authorization: 'PROMOTE_EXPERIMENT', transport: 'promoteExperiment', saga: 'promote', terminalStatus: null },
   GRADUATE: { authorization: 'GRADUATE_EXPERIMENT', transport: 'graduateExperiment', saga: 'graduate', terminalStatus: 'GRADUATED' },
 } as const;
+
+interface PromotionEvidence {
+  snapshotId: string;
+  snapshotDate: string;
+  controlClicks: number;
+  treatmentClicks: number;
+  conversionPointEstimate: number;
+  conversionMarginOfError: number;
+  conversionPValue: number;
+}
+
+function requirePromotionEvidence(experiment: any, now: Date): PromotionEvidence {
+  const snapshot = Array.isArray(experiment.metricSnapshots) ? experiment.metricSnapshots[0] : null;
+  const statistics = asConfigObject(snapshot?.statistics);
+  const conversions = asConfigObject(statistics?.conversions);
+  const pointEstimate = conversions?.pointEstimate;
+  const marginOfError = conversions?.marginOfError;
+  const pValue = conversions?.pValue;
+  const snapshotDate = safeISO(snapshot?.snapshotDate);
+  const snapshotTime = snapshotDate ? new Date(snapshotDate).getTime() : Number.NaN;
+  const snapshotAgeMs = now.getTime() - snapshotTime;
+  const controlClicks = snapshot?.controlClicks;
+  const treatmentClicks = snapshot?.treatmentClicks;
+  const controlConversions = snapshot?.controlConversions;
+  const treatmentConversions = snapshot?.treatmentConversions;
+
+  const validCounts = [controlClicks, treatmentClicks, controlConversions, treatmentConversions]
+    .every((value) => Number.isInteger(value) && value >= 0);
+  const validStatistics = [pointEstimate, marginOfError, pValue]
+    .every((value) => typeof value === 'number' && Number.isFinite(value));
+  if (
+    !snapshot
+    || typeof snapshot.id !== 'string'
+    || !snapshotDate
+    || !Number.isFinite(snapshotAgeMs)
+    || snapshotAgeMs < -5 * 60_000
+    || snapshotAgeMs > 48 * 60 * 60_000
+    || !validCounts
+    || !validStatistics
+    || controlClicks < 100
+    || treatmentClicks < 100
+    || treatmentConversions <= controlConversions
+    || pValue < 0
+    || pValue >= 0.05
+    || pointEstimate <= 0
+    || marginOfError < 0
+    || pointEstimate - marginOfError <= 0
+  ) {
+    throw {
+      status: 422,
+      message: 'PROMOTE bloqueado: última observação persistida não comprova ganho significativo de conversões',
+    };
+  }
+
+  return {
+    snapshotId: snapshot.id,
+    snapshotDate,
+    controlClicks,
+    treatmentClicks,
+    conversionPointEstimate: pointEstimate,
+    conversionMarginOfError: marginOfError,
+    conversionPValue: pValue,
+  };
+}
 
 const LIFECYCLE_REMOTE_PROOF: Record<string, ReadonlySet<string>> = {
   schedule: new Set(['SCHEDULED', 'RUNNING', 'ENDED', 'PROMOTED', 'GRADUATED']),
@@ -1437,7 +1594,11 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
   const prismaClient = deps?.prisma ?? prisma;
   let experiment = await prismaClient.googleAdsExperiment.findFirst({
     where: { id, userId },
-    include: { arms: { orderBy: { isControl: 'desc' } }, operations: { orderBy: { startedAt: 'desc' } } },
+    include: {
+      arms: { orderBy: { isControl: 'desc' } },
+      operations: { orderBy: { startedAt: 'desc' } },
+      metricSnapshots: { orderBy: { snapshotDate: 'desc' }, take: 1 },
+    },
   });
   if (!experiment) throw { status: 404, message: 'Experimento não encontrado' };
 
@@ -1494,6 +1655,10 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
     throw { status: 409, message: redactSensitive(error?.message || 'Ação incompatível com o estado atual') };
   }
 
+  const promotionEvidence = action === 'PROMOTE'
+    ? requirePromotionEvidence(experiment, deps?.now ?? new Date())
+    : null;
+
   let graduateMapping: { experimentCampaignResourceName: string; campaignBudgetResourceName: string } | null = null;
   if (action === 'GRADUATE') {
     if (!deps?.resolveGraduateBudgetMapping) {
@@ -1529,7 +1694,13 @@ export async function runExperimentAction({ id, userId, payload, deps }: Experim
 
   const lifecycle = {
     ...lifecycleRoot,
-    [contract.saga]: { idempotencyKey: authorization.idempotencyKey, authorizedRevision: revision, state: 'IN_FLIGHT', reason: parsed.data.reason },
+    [contract.saga]: {
+      idempotencyKey: authorization.idempotencyKey,
+      authorizedRevision: revision,
+      state: 'IN_FLIGHT',
+      reason: parsed.data.reason,
+      ...(promotionEvidence ? { promotionEvidence } : {}),
+    },
   };
   const claim = await claimSagaStep(prismaClient, experiment, contract.saga, { lifecycle });
   if (!claim.claimed) throw { status: 409, message: `${action} já foi reivindicada por outra requisição` };
@@ -1621,14 +1792,21 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     throw { status: 404, message: 'Experimento não encontrado' };
   }
 
-  if (!exp.resourceName) {
-    throw { status: 422, message: 'Experimento não possui resourceName remoto' };
-  }
-
   const getAdsConfig = deps?.getAdsConfig ?? getGoogleAdsConfig;
   const config = await getAdsConfig(userId);
   if (!config) {
     throw { status: 400, message: 'Configuração do Google Ads não encontrada para este usuário' };
+  }
+  const expConfig = asConfigObject(exp.variationConfig);
+  const legacyResourceName = expConfig?.source === 'legacy-campaign-fields'
+    && typeof exp.googleExperimentId === 'string'
+    && /^\d+$/.test(exp.googleExperimentId)
+    && /^\d+$/.test(config.customerId)
+      ? `customers/${config.customerId}/experiments/${exp.googleExperimentId}`
+      : null;
+  const effectiveResourceName = exp.resourceName ?? legacyResourceName;
+  if (!effectiveResourceName) {
+    throw { status: 422, message: 'Experimento não possui resourceName remoto verificável' };
   }
 
   const isMock = deps?.isMock ?? (config && config.developerToken ? isMockMode(config) : true);
@@ -1665,7 +1843,7 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
         const callListErrors = deps?.listExperimentAsyncErrors ?? listExperimentAsyncErrors;
         let asyncErrors: string[] = pollRes.errors || [];
         try {
-          const listRes = await callListErrors(token, config, exp.resourceName);
+          const listRes = await callListErrors(token, config, effectiveResourceName);
           if (listRes?.errors?.length > 0) asyncErrors = listRes.errors;
         } catch {
           // Ignored if list errors fails
@@ -1696,7 +1874,7 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     const fallbackCampaigns = armsReadyForFallback
       ? validateFallbackArms(exp.id, exp.arms)
       : undefined;
-    const reportRes = await callFetchExperimentReport(token, config, exp.resourceName, {
+    const reportRes = await callFetchExperimentReport(token, config, effectiveResourceName, {
       targetClicks: 100,
       fallbackCampaigns,
     });
@@ -1713,7 +1891,7 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     if (isErrorState || !isMock) {
       const callListErrors = deps?.listExperimentAsyncErrors ?? listExperimentAsyncErrors;
       try {
-        const asyncErrorsRes = await callListErrors(token, config, exp.resourceName);
+        const asyncErrorsRes = await callListErrors(token, config, effectiveResourceName);
         if (asyncErrorsRes?.errors?.length > 0) {
           lastErrorMsg = redactSensitive(asyncErrorsRes.errors[0]);
         }
@@ -1728,11 +1906,6 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
     const now = new Date();
     const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const upsertInput = buildMetricSnapshotUpsertInput(id, utcMidnight, reportRes, null);
-
-    if (upsertInput) {
-      const callUpsertMetricSnapshot = deps?.upsertMetricSnapshot ?? upsertMetricSnapshot;
-      await callUpsertMetricSnapshot(prismaClient as any, upsertInput);
-    }
 
     // Point 7: Preservar remoteStatusRaw separadamente em decisionPolicy
     const decisionPolicyObj = (typeof exp.decisionPolicy === 'object' && exp.decisionPolicy !== null) ? (exp.decisionPolicy as any) : {};
@@ -1756,16 +1929,26 @@ export async function syncExperiment(id: string, userId: string, deps?: any) {
 
     const changed = exp.status !== targetLocalStatus;
 
-    const syncCas = await prismaClient.googleAdsExperiment.updateMany({
-      where: { id, updatedAt: exp.updatedAt, status: exp.status },
-      data: {
-        status: targetLocalStatus,
-        lastSyncedAt: now,
-        lastError: lastErrorMsg,
-        decisionPolicy: updatedDecisionPolicy,
-        ...(lifecycleReconciliation ? { variationConfig: lifecycleReconciliation.variationConfig } : {}),
-      },
-    });
+    const persistObservation = async (transactionClient: any) => {
+      const syncCas = await transactionClient.googleAdsExperiment.updateMany({
+        where: { id, updatedAt: exp.updatedAt, status: exp.status },
+        data: {
+          status: targetLocalStatus,
+          lastSyncedAt: now,
+          lastError: lastErrorMsg,
+          decisionPolicy: updatedDecisionPolicy,
+          ...(lifecycleReconciliation ? { variationConfig: lifecycleReconciliation.variationConfig } : {}),
+        },
+      });
+      if (syncCas.count === 1 && upsertInput) {
+        const callUpsertMetricSnapshot = deps?.upsertMetricSnapshot ?? upsertMetricSnapshot;
+        await callUpsertMetricSnapshot(transactionClient, upsertInput);
+      }
+      return syncCas;
+    };
+    const syncCas = typeof prismaClient.$transaction === 'function'
+      ? await prismaClient.$transaction(persistObservation)
+      : await persistObservation(prismaClient);
 
     const warnings: string[] = [];
     if (isErrorState) warnings.push(`Status remoto não mapeado: ${remoteStatusRaw}`);

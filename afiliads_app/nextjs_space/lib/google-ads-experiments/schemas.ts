@@ -13,8 +13,21 @@ import {
   EXPERIMENT_VARIATION_TYPES,
 } from './types';
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const NUMERIC_ID = /^\d+$/;
+
+function isRealIsoDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+const isoDateSchema = z.string()
+  .regex(ISO_DATE, 'data precisa ser YYYY-MM-DD')
+  .refine(isRealIsoDate, 'data de calendário inválida');
 
 // Split de cada braço inteiro entre 1 e 99; MVP sempre 2 braços (control + treatment).
 export const trafficSplitSchema = z.number().int().min(1).max(99);
@@ -64,8 +77,8 @@ export const CreateExperimentDraftInputSchema = z
     googleCampaignId: z.string().regex(NUMERIC_ID, 'googleCampaignId deve ser numérico'),
     hypothesis: z.string().min(1).max(2000),
     variationType: ExperimentVariationTypeSchema.default('PRESELL_URL'),
-    startDate: z.string().regex(ISO_DATE, 'startDate precisa ser YYYY-MM-DD'),
-    endDate: z.string().regex(ISO_DATE, 'endDate precisa ser YYYY-MM-DD'),
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
     lossCap: z.number().positive('lossCap precisa ser maior que zero'),
   })
   .refine((v) => v.endDate > v.startDate, {
@@ -222,10 +235,27 @@ export const SetupExperimentPayloadSchema = z
     presellId: z.string().min(1),
     treatmentFinalUrl: experimentUrlSchema,
     name: z.string().min(1).max(255).optional(),
-    startDate: z.string().regex(ISO_DATE, 'startDate precisa ser YYYY-MM-DD').optional(),
-    endDate: z.string().regex(ISO_DATE, 'endDate precisa ser YYYY-MM-DD').optional(),
+    startDate: isoDateSchema.optional(),
+    endDate: isoDateSchema.optional(),
     trafficSplitTreatment: z.number().int().min(1).max(99).optional().default(50),
     authorization: MutationAuthorizationSchema.strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (Boolean(value.startDate) !== Boolean(value.endDate)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'startDate e endDate precisam ser informadas juntas',
+        path: value.startDate ? ['endDate'] : ['startDate'],
+      });
+      return;
+    }
+    if (value.startDate && value.endDate && value.endDate <= value.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'endDate precisa ser depois de startDate',
+        path: ['endDate'],
+      });
+    }
+  });
 export type SetupExperimentPayload = z.infer<typeof SetupExperimentPayloadSchema>;

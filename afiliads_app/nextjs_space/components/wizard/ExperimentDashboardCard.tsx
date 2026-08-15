@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -30,6 +30,7 @@ import {
   getDetailedStatusVocabulary,
   type ExperimentDashboardReport,
 } from './experiment-dashboard-helpers';
+import { buildExperimentActionPayload } from './experiment-api-contracts';
 
 interface ExperimentDashboardCardProps {
   experimentId: string;
@@ -60,6 +61,11 @@ export function ExperimentDashboardCard({
     description: '',
   });
   const [confirmedAction, setConfirmedAction] = useState(false);
+  const actionIdempotencyKeys = useRef<Record<'END' | 'PROMOTE' | 'GRADUATE', string>>({
+    END: `end_${crypto.randomUUID().replace(/-/g, '')}`,
+    PROMOTE: `promote_${crypto.randomUUID().replace(/-/g, '')}`,
+    GRADUATE: `graduate_${crypto.randomUUID().replace(/-/g, '')}`,
+  });
 
   const loadData = async () => {
     if (!experimentId) return;
@@ -104,15 +110,23 @@ export function ExperimentDashboardCard({
 
   const handleExecuteAction = async () => {
     if (!experimentId || !actionModal.action || !confirmedAction) return;
+    const revision = experimentData?.updatedAt;
+    if (!revision) {
+      toast.error('Revisão do experimento indisponível; recarregue os dados');
+      return;
+    }
     setExecutingAction(true);
     try {
       const res = await fetch(`/api/google-ads/experiments/${experimentId}/actions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(buildExperimentActionPayload({
           action: actionModal.action,
+          experimentId,
+          revision,
+          idempotencyKey: actionIdempotencyKeys.current[actionModal.action],
           reason: `Ação ${actionModal.action} solicitada via interface humana no AfiliAds`,
-        }),
+        })),
       });
 
       const data = await res.json();
@@ -133,8 +147,21 @@ export function ExperimentDashboardCard({
     }
   };
 
-  const exp = experimentData?.experiment;
-  const report: ExperimentDashboardReport | null = experimentData?.report ?? null;
+  const exp = experimentData;
+  const latestSnapshot = exp?.metricSnapshots?.[0];
+  const targetClicks = typeof exp?.decisionPolicy?.targetClicks === 'number' ? exp.decisionPolicy.targetClicks : 100;
+  const report: ExperimentDashboardReport | null = latestSnapshot ? {
+    outcome: latestSnapshot.controlClicks + latestSnapshot.treatmentClicks < targetClicks ? 'UNDERPOWERED' : 'NOT_SIGNIFICANT',
+    controlClicks: latestSnapshot.controlClicks,
+    treatmentClicks: latestSnapshot.treatmentClicks,
+    targetClicks,
+    controlConversions: latestSnapshot.controlConversions,
+    treatmentConversions: latestSnapshot.treatmentConversions,
+    controlImpressions: latestSnapshot.controlImpressions,
+    treatmentImpressions: latestSnapshot.treatmentImpressions,
+    pValue: latestSnapshot.statistics?.conversions?.pValue ?? undefined,
+    conversionsUplift: latestSnapshot.statistics?.conversions?.pointEstimate ?? undefined,
+  } : null;
   const feasibility = getExperimentActionFeasibility(report);
   const statusVocab = getDetailedStatusVocabulary({
     status: exp?.status ?? 'RASCUNHO',
@@ -143,8 +170,8 @@ export function ExperimentDashboardCard({
   });
 
   const totalClicks = (report?.controlClicks ?? 0) + (report?.treatmentClicks ?? 0);
-  const targetClicks = report?.targetClicks ?? 100;
-  const samplePercent = Math.min(100, Math.round((totalClicks / targetClicks) * 100));
+  const reportTargetClicks = report?.targetClicks ?? 100;
+  const samplePercent = Math.min(100, Math.round((totalClicks / reportTargetClicks) * 100));
 
   return (
     <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 space-y-5 shadow-xl text-white my-4">
@@ -184,7 +211,7 @@ export function ExperimentDashboardCard({
             Progresso de Amostra do Teste
           </span>
           <span className="font-mono text-slate-400">
-            {totalClicks} / {targetClicks} cliques necessários ({samplePercent}%)
+            {totalClicks} / {reportTargetClicks} cliques necessários ({samplePercent}%)
           </span>
         </div>
         <Progress value={samplePercent} className="h-2 bg-slate-800" />
@@ -212,7 +239,7 @@ export function ExperimentDashboardCard({
             </div>
             <div>
               <span className="text-slate-500 block text-[10px]">Conversões</span>
-              <strong className="text-white text-sm">{experimentData?.metrics?.controlConversions ?? 0}</strong>
+              <strong className="text-white text-sm">{report?.controlConversions ?? 0}</strong>
             </div>
           </div>
         </div>
@@ -268,15 +295,8 @@ export function ExperimentDashboardCard({
           <Button
             size="sm"
             variant="outline"
-            disabled={!feasibility.canGraduate || executingAction}
-            onClick={() =>
-              setActionModal({
-                open: true,
-                action: 'GRADUATE',
-                title: 'Graduar como Campanha Independente (GRADUATE)',
-                description: 'Esta ação converterá a campanha de tratamento em uma nova campanha independente no Google Ads.',
-              })
-            }
+            disabled
+            title="Indisponível até o mapeamento de budget ser comprovado pelo servidor"
             className="border-purple-600/50 text-purple-300 hover:bg-purple-950/40 text-xs font-medium gap-1.5 disabled:opacity-50"
           >
             <Award className="h-3.5 w-3.5" />

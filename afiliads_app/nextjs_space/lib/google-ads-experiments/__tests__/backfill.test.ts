@@ -33,6 +33,20 @@ describe('mapLegacyCampaignToExperimentDraft', () => {
     expect(draft).toBeNull();
   });
 
+  it('1b. recupera flag inconsistente quando há identidade remota e marca reconciliação fail-closed', () => {
+    const draft = mapLegacyCampaignToExperimentDraft(campaign({
+      isExperiment: false,
+      experimentId: '987654321',
+      experimentStatus: 'RUNNING',
+    }));
+    expect(draft).not.toBeNull();
+    expect(draft?.data.status).toBe('SETUP');
+    expect(draft?.data.variationConfig).toMatchObject({
+      legacyFlagInconsistent: true,
+      reconciliationRequired: true,
+    });
+  });
+
   it('2. gera idempotencyKey estável e determinística por campanha', () => {
     const draft = mapLegacyCampaignToExperimentDraft(campaign());
     expect(draft?.idempotencyKey).toBe(buildBackfillIdempotencyKey('campaign_1'));

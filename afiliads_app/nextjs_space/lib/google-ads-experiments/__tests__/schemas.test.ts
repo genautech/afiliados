@@ -9,6 +9,7 @@ import {
   ExperimentSyncResultSchema,
   ScheduleExperimentInputSchema,
   ScheduleExperimentRoutePayloadSchema,
+  SetupExperimentPayloadSchema,
   assertStartDateIsFuture,
   experimentUrlSchema,
   trafficSplitSchema,
@@ -319,5 +320,33 @@ describe('assertStartDateIsFuture', () => {
   it('23. hoje ou no passado retorna false', () => {
     expect(assertStartDateIsFuture('2030-01-15', now)).toBe(false);
     expect(assertStartDateIsFuture('2030-01-14', now)).toBe(false);
+  });
+});
+
+describe('SetupExperimentPayloadSchema dates', () => {
+  const base = {
+    campaignId: 'c1',
+    presellId: 'p1',
+    treatmentFinalUrl: 'https://example.com/treatment',
+    authorization: lifecycleAuthorization('SETUP_EXPERIMENT'),
+  };
+
+  it('24. rejeita datas inexistentes e sufixos após YYYY-MM-DD', () => {
+    expect(SetupExperimentPayloadSchema.safeParse({
+      ...base, startDate: '2030-02-30', endDate: '2030-03-10',
+    }).success).toBe(false);
+    expect(SetupExperimentPayloadSchema.safeParse({
+      ...base, startDate: '2030-02-01T12:00:00Z', endDate: '2030-03-10',
+    }).success).toBe(false);
+  });
+
+  it('25. exige start/end em par e endDate posterior', () => {
+    expect(SetupExperimentPayloadSchema.safeParse({ ...base, startDate: '2030-02-01' }).success).toBe(false);
+    expect(SetupExperimentPayloadSchema.safeParse({
+      ...base, startDate: '2030-02-10', endDate: '2030-02-10',
+    }).success).toBe(false);
+    expect(SetupExperimentPayloadSchema.safeParse({
+      ...base, startDate: '2030-02-10', endDate: '2030-02-01',
+    }).success).toBe(false);
   });
 });

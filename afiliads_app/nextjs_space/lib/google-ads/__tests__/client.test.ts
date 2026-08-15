@@ -236,21 +236,34 @@ describe('googleAdsMutateRequest (A5)', () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     await expect(
-      googleAdsMutateRequest('tok', credentials(), 'campaigns:mutate', undefined as any, { body: {} })
+      googleAdsMutateRequest('tok', credentials(), 'experiments:mutate', undefined as any, { body: {} })
     ).rejects.toThrow(/MutationCapability/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('19. com capability válida (emitida por createMutationCapability), chama fetch normalmente', async () => {
+  it('19. com capability válida para a coleção, chama fetch normalmente', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ results: [] })));
     const data = await googleAdsMutateRequest(
       'tok',
       credentials(),
-      'campaigns:mutate',
-      capability('createGoogleCampaign'),
+      'experiments:mutate',
+      capability('createExperiment'),
       { body: { operations: [] } }
     );
     expect(data).toEqual({ results: [] });
+  });
+
+  it('19B. rejeita capability emitida para outra coleção antes de qualquer fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(googleAdsMutateRequest(
+      'tok',
+      credentials(),
+      'adGroupAds:mutate',
+      capability('createExperiment'),
+      { body: { operations: [] } },
+    )).rejects.toThrow(/MutationCapability|operação|coleção/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('20. nunca aceita retry — 500 falha na primeira tentativa mesmo com muitas tentativas possíveis', async () => {
@@ -260,8 +273,8 @@ describe('googleAdsMutateRequest (A5)', () => {
       googleAdsMutateRequest(
         'tok',
         credentials(),
-        'campaigns:mutate',
-        capability('createGoogleCampaign'),
+        'adGroupAds:mutate',
+        capability('updateAdFinalUrls'),
         { body: {} }
       )
     ).rejects.toThrow(GoogleAdsApiError);

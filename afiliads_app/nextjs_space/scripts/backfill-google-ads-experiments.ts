@@ -23,7 +23,13 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     const legacyCampaigns = await prisma.campaign.findMany({
-      where: { isExperiment: true },
+      where: {
+        OR: [
+          { isExperiment: true },
+          { experimentId: { not: null } },
+          { googleTrialCampaignId: { not: null } },
+        ],
+      },
       select: {
         id: true,
         userId: true,
@@ -41,7 +47,7 @@ async function main() {
     });
 
     if (legacyCampaigns.length === 0) {
-      console.log("Nenhuma campanha com isExperiment=true encontrada. Nada a migrar.");
+      console.log("Nenhuma campanha com evidência legada de experimento encontrada. Nada a migrar.");
       return;
     }
 

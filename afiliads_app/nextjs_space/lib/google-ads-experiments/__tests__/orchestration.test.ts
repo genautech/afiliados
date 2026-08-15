@@ -1,9 +1,10 @@
 import { expect, test, describe, vi, beforeEach } from 'vitest';
 import { createHash } from 'node:crypto';
-import { setupExperiment, getExperimentDetail, syncExperiment } from '../orchestration';
+import { setupExperiment, getExperimentDetail, syncExperiment, toExperimentDTO } from '../orchestration';
 
 vi.mock('../../prisma', () => ({
   prisma: {
+    $transaction: vi.fn(),
     googleAdsExperiment: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -28,7 +29,9 @@ import { prisma } from '../../prisma';
 describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma as any).$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => callback(prisma));
     (prisma.googleAdsExperiment.update as any).mockResolvedValue({ id: 'exp1', arms: [] });
+    (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue(null);
     (prisma.googleAdsExperiment.updateMany as any).mockResolvedValue({ count: 1 });
     (prisma.googleAdsExperimentArm.createMany as any).mockResolvedValue({ count: 2 });
     // claimSagaStep relê a revisão pós-claim (select updatedAt) após todo claim bem-sucedido,
@@ -56,6 +59,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       campaignId: 'c1',
       userId: 'u1',
       html: '<html><body>approved treatment</body></html>',
+      publishedUrl: 'https://treatment.com/landing',
     }),
     readinessDeps: {},
     checkReadiness: vi.fn().mockResolvedValue({ ready: true, data: { finalUrl: 'https://control.com' }, warnings: [] }),
@@ -89,12 +93,16 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
     trafficSplitTreatment: 50,
   };
 
+  const deterministicName = `EXP-c1-${createHash('sha256')
+    .update('c1', 'utf8').update('\0', 'utf8').update('validkey_1234567890', 'utf8')
+    .digest('hex').slice(0, 24)}`;
+
   const currentConfig = (saga: Record<string, string> = {}) => ({
     setupPayload: {
       campaignId: 'c1',
       presellId: 'p1',
       treatmentFinalUrl: 'https://treatment.com/landing',
-      name: 'EXP-c1-validkey1234',
+      name: deterministicName,
       startDate: null,
       endDate: null,
       trafficSplitTreatment: 50,
@@ -112,6 +120,11 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
     { isControl: false, id: 'armT', finalUrl: 'https://treatment.com/landing', trafficSplit: 50, localPresellId: 'p1', inDesignCampaignResourceName: 'customers/1234567890/campaigns/MOCK-TREATMENT' },
   ];
 
+  test('DTO expõe chave de setup estável para reload do Wizard', () => {
+    expect(toExperimentDTO({ id: 'e1', idempotencyKey: 'stable_setup_key', arms: [] }))
+      .toMatchObject({ setupIdempotencyKey: 'stable_setup_key' });
+  });
+
   // -----------------------------------------------------------------------------------------
   // Gates básicos (cobertura restaurada de c9ac033, itens 1-5 do handoff)
   // -----------------------------------------------------------------------------------------
@@ -127,6 +140,20 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       })).rejects.toMatchObject({ status: 400 });
     });
 
+    test('1b. startDate passada -> 400 antes de ownership/reserva', async () => {
+      const deps = {
+        ...baseDeps,
+        now: new Date('2030-01-15T12:00:00Z'),
+        findCampaign: vi.fn(),
+      };
+      await expect(setupExperiment({
+        userId: 'u1',
+        payload: { ...validPayload, startDate: '2030-01-14', endDate: '2030-01-20' },
+        deps,
+      })).rejects.toMatchObject({ status: 400 });
+      expect(deps.findCampaign).not.toHaveBeenCalled();
+    });
+
     test('2. campanha de outro usuário -> 404', async () => {
       const deps = { ...baseDeps, findCampaign: vi.fn().mockResolvedValue(null) };
       await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
@@ -137,6 +164,19 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       const deps = { ...baseDeps, findPresell: vi.fn().mockResolvedValue(null) };
       await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
         .rejects.toMatchObject({ status: 404 });
+    });
+
+    test('2c. rejeita URL treatment divergente da URL publicada da presell', async () => {
+      const deps = {
+        ...baseDeps,
+        findPresell: vi.fn().mockResolvedValue({
+          id: 'p1', campaignId: 'c1', userId: 'u1',
+          html: '<html>approved</html>', publishedUrl: 'https://approved.example/presell',
+        }),
+      };
+      await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
+        .rejects.toMatchObject({ status: 422 });
+      expect(deps.createExperiment).not.toHaveBeenCalled();
     });
 
     test('3. readiness fail -> 422 antes de OAuth/fetch', async () => {
@@ -179,6 +219,86 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
   // -----------------------------------------------------------------------------------------
   // Happy path (restaurado, item 6)
   // -----------------------------------------------------------------------------------------
+  test('setup sem datas reserva intervalo futuro determinístico e canônico', async () => {
+    (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(null);
+    (prisma.googleAdsExperiment.create as any).mockImplementation(async ({ data }: any) => ({
+      ...data,
+      id: 'exp-dates',
+      arms: [],
+      resourceName: null,
+      createdAt: new Date('2030-01-15T12:00:00Z'),
+      updatedAt: new Date('2030-01-15T12:00:00Z'),
+    }));
+    const deps = {
+      ...baseDeps,
+      now: new Date('2030-01-15T12:00:00Z'),
+      assertMutationAllowed: vi.fn().mockReturnValue({ allowed: false, reason: 'stop after reservation' }),
+    };
+
+    await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
+      .rejects.toMatchObject({ status: 502 });
+
+    expect(prisma.googleAdsExperiment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        startDate: new Date('2030-01-16T00:00:00.000Z'),
+        endDate: new Date('2030-02-15T00:00:00.000Z'),
+        variationConfig: expect.objectContaining({
+          setupPayload: expect.objectContaining({
+            startDate: '2030-01-16',
+            endDate: '2030-02-15',
+          }),
+        }),
+      }),
+    }));
+  });
+
+  test('nova chave não cria segundo experimento ativo para a mesma campanha', async () => {
+    (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(null);
+    (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({ id: 'existing-active', status: 'SETUP' });
+    await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps: baseDeps }))
+      .rejects.toMatchObject({ status: 409 });
+    expect(prisma.googleAdsExperiment.create).not.toHaveBeenCalled();
+  });
+
+  test('retry com datas explícitas persistidas continua quando startDate já chegou', async () => {
+    const setupPayload = {
+      campaignId: 'c1', presellId: 'p1', treatmentFinalUrl: validPayload.treatmentFinalUrl,
+      name: deterministicName, startDate: '2030-01-16', endDate: '2030-02-15', trafficSplitTreatment: 50,
+    };
+    (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+      id: 'exp-explicit', campaignId: 'c1', name: deterministicName, status: 'SETUP', arms: [],
+      variationConfig: { setupPayload, saga: { experiment: 'UNKNOWN' } },
+      startDate: new Date('2030-01-16T00:00:00Z'), endDate: new Date('2030-02-15T00:00:00Z'),
+    });
+    await expect(setupExperiment({
+      userId: 'u1',
+      payload: { ...validPayload, name: 'Retry Explicit', startDate: '2030-01-16', endDate: '2030-02-15' },
+      deps: { ...baseDeps, now: new Date('2030-01-16T12:00:00Z'), reconcileExperiment: vi.fn().mockResolvedValue(null) },
+    })).rejects.toMatchObject({ status: 502 });
+    expect(baseDeps.getAdsConfig).toHaveBeenCalled();
+  });
+
+  test('registro legado sem setupPayload adota datas determinísticas quando retry omite datas', async () => {
+    (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+      id: 'legacy-dates', campaignId: 'c1', name: 'Legacy Dates', status: 'SETUP',
+      createdAt: new Date('2030-01-15T12:00:00Z'), startDate: null, endDate: null,
+      arms: [
+        { isControl: true, trafficSplit: 50 },
+        { isControl: false, trafficSplit: 50, localPresellId: 'p1', finalUrl: validPayload.treatmentFinalUrl },
+      ],
+      variationConfig: { proof: { verified: true, presellId: 'p1', finalUrl: validPayload.treatmentFinalUrl, trafficSplitTreatment: 50 } },
+    });
+    await expect(setupExperiment({
+      userId: 'u1', payload: { ...validPayload, name: 'Legacy Dates' },
+      deps: { ...baseDeps, now: new Date('2030-01-15T12:00:00Z'), assertMutationAllowed: vi.fn().mockReturnValue({ allowed: false, reason: 'stop' }) },
+    })).rejects.toMatchObject({ status: 502 });
+    expect(prisma.googleAdsExperiment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        variationConfig: expect.objectContaining({ setupPayload: expect.objectContaining({ startDate: '2030-01-16', endDate: '2030-02-15' }) }),
+      }),
+    }));
+  });
+
   test('6. happy path mock cria um experimento local, 2 braços, split 100 e treatment verificado', async () => {
     (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(null);
     const mockExp = { id: 'exp1', name: 'EXP-c1-hap', campaignId: 'c1', arms: [], resourceName: null, variationConfig: currentConfig(), createdAt: new Date(), updatedAt: new Date() };
@@ -254,27 +374,35 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
         .rejects.toMatchObject({ status: 409 });
     });
 
-    test('409 se treatmentFinalUrl divergir', async () => {
+    test('422 se treatmentFinalUrl divergir da URL publicada', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(existingWithBaseline());
-      await expect(setupExperiment({ userId: 'u1', payload: { ...validPayload, treatmentFinalUrl: 'https://outra-url.com/x' }, deps: baseDeps }))
-        .rejects.toMatchObject({ status: 409 });
+      await expect(setupExperiment({ userId: 'u1', payload: { ...validPayload, treatmentFinalUrl: 'https://outro.example/x' }, deps: baseDeps }))
+        .rejects.toMatchObject({ status: 422 });
     });
 
-    test('409 se name divergir', async () => {
+    test('nome livre divergente é ignorado em favor da identidade derivada', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(existingWithBaseline());
-      await expect(setupExperiment({ userId: 'u1', payload: { ...validPayload, name: 'NOME_DIFERENTE' }, deps: baseDeps }))
-        .rejects.toMatchObject({ status: 409 });
+      const result = await setupExperiment({ userId: 'u1', payload: { ...validPayload, name: 'NOME_DIFERENTE' }, deps: baseDeps });
+      expect(result.success).toBe(true);
     });
 
     test('409 se startDate divergir', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(existingWithBaseline());
-      await expect(setupExperiment({ userId: 'u1', payload: { ...validPayload, startDate: '2026-09-01' }, deps: baseDeps }))
+      await expect(setupExperiment({
+        userId: 'u1',
+        payload: { ...validPayload, startDate: '2026-09-01', endDate: '2026-12-01' },
+        deps: { ...baseDeps, now: new Date('2026-08-02T12:00:00Z') },
+      }))
         .rejects.toMatchObject({ status: 409 });
     });
 
     test('409 se endDate divergir', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(existingWithBaseline());
-      await expect(setupExperiment({ userId: 'u1', payload: { ...validPayload, endDate: '2026-12-01' }, deps: baseDeps }))
+      await expect(setupExperiment({
+        userId: 'u1',
+        payload: { ...validPayload, startDate: '2026-09-01', endDate: '2026-12-01' },
+        deps: { ...baseDeps, now: new Date('2026-08-02T12:00:00Z') },
+      }))
         .rejects.toMatchObject({ status: 409 });
     });
 
@@ -284,7 +412,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
         .rejects.toMatchObject({ status: 409 });
     });
 
-    test('mesmo payload canônico em todos os 7 campos não gera 409 e prossegue', async () => {
+    test('mesmo payload canônico em todos os 6 campos funcionais não gera 409 e prossegue', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(
         existingWithBaseline({ name: undefined as any, treatmentFinalUrl: validPayload.treatmentFinalUrl })
       );
@@ -336,13 +464,13 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
       const res = await setupExperiment({ userId: 'u1', payload: validPayload, deps });
       expect(res.success).toBe(true);
-      expect(reconcileExperiment).toHaveBeenCalled();
+      expect(reconcileExperiment).not.toHaveBeenCalled();
       expect(deps.createExperiment).toHaveBeenCalledTimes(1);
     });
 
     test('retry (reserva já existia) + UNKNOWN -> zero create, 502, erro persistido sem 2ª mutate', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-retry-unknown', campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig(),
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
       });
 
       const reconcileExperiment = vi.fn().mockResolvedValue(undefined);
@@ -359,7 +487,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     test('retry + resposta vazia/inválida (UNKNOWN) -> zero create', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-retry-empty', campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig(),
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
       });
 
       const reconcileExperiment = vi.fn().mockRejectedValue(new Error(''));
@@ -372,31 +500,32 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     test('FOUND -> persiste checkpoint (resourceName) e não cria de novo', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-retry-found', campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig(),
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
       });
       (prisma.googleAdsExperiment.findUniqueOrThrow as any).mockResolvedValue({ id: 'exp1', arms: armsFixture(), variationConfig: currentConfig() });
 
-      const reconcileExperiment = vi.fn().mockResolvedValue({ googleExperimentId: 'gExp1', resourceName: 'customers/1234567890/experiments/gExp1' });
+      const reconcileExperiment = vi.fn().mockResolvedValue({ googleExperimentId: '999', resourceName: 'customers/1234567890/experiments/999' });
       const deps = { ...baseDeps, reconcileExperiment };
 
       const res = await setupExperiment({ userId: 'u1', payload: validPayload, deps });
       expect(res.success).toBe(true);
-      expect(reconcileExperiment).toHaveBeenCalledWith('EXP-retry-found');
+      expect(reconcileExperiment).toHaveBeenCalledWith(deterministicName);
       expect(deps.createExperiment).not.toHaveBeenCalled();
     });
 
-    test('NOT_FOUND explícito (retry) -> autoritativo, prossegue com uma create', async () => {
+    test('NOT_FOUND explícito antes do lease expirar continua bloqueado', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-retry-notfound', campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [], variationConfig: currentConfig(),
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP', resourceName: null, arms: [],
+        updatedAt: new Date(), variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
       });
       (prisma.googleAdsExperiment.findUniqueOrThrow as any).mockResolvedValue({ id: 'exp1', arms: armsFixture(), variationConfig: currentConfig() });
 
       const reconcileExperiment = vi.fn().mockResolvedValue(null);
       const deps = { ...baseDeps, reconcileExperiment };
 
-      const res = await setupExperiment({ userId: 'u1', payload: validPayload, deps });
-      expect(res.success).toBe(true);
-      expect(deps.createExperiment).toHaveBeenCalledTimes(1);
+      await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
+        .rejects.toMatchObject({ status: 502 });
+      expect(deps.createExperiment).not.toHaveBeenCalled();
     });
   });
 
@@ -551,7 +680,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
           { isControl: true, finalUrl: 'https://control.com' },
           { isControl: false, id: 'armT', inDesignCampaignResourceName: 'campT', finalUrl: 'https://treatment.com/landing', localPresellId: 'p1' },
         ],
-        variationConfig: { setupPayload: { campaignId: 'c1', presellId: 'p1', treatmentFinalUrl: 'https://treatment.com/landing', name: 'EXP-c1-validkey1234', startDate: null, endDate: null, trafficSplitTreatment: 50 }, proof: { verified: true, finalUrl: 'https://treatment.com/landing', presellId: 'p1' } },
+        variationConfig: { setupPayload: { campaignId: 'c1', presellId: 'p1', treatmentFinalUrl: 'https://treatment.com/landing', name: deterministicName, startDate: null, endDate: null, trafficSplitTreatment: 50 }, proof: { verified: true, finalUrl: 'https://treatment.com/landing', presellId: 'p1', presellPublishedUrl: 'https://treatment.com/landing' } },
         lastError: null,
       });
 
@@ -612,9 +741,96 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
   });
 
   describe('Remediação final: saga durável, CAS, legado e atomicidade', () => {
+    test('reserva fresca nunca adota experimento remoto apenas por nome', async () => {
+      (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(null);
+      const fresh = {
+        id: 'fresh-exp', name: 'EXP-fresh', campaignId: 'c1', status: 'SETUP',
+        resourceName: null, arms: [], updatedAt: new Date(), variationConfig: currentConfig(),
+      };
+      (prisma.googleAdsExperiment.create as any).mockResolvedValue(fresh);
+      const deps = {
+        ...baseDeps,
+        reconcileExperiment: vi.fn().mockResolvedValue({
+          googleExperimentId: '999', resourceName: 'customers/1234567890/experiments/999',
+        }),
+      };
+
+      await setupExperiment({ userId: 'u1', payload: validPayload, deps });
+      expect(deps.reconcileExperiment).not.toHaveBeenCalled();
+      expect(deps.createExperiment).toHaveBeenCalledOnce();
+    });
+
+    test('UNKNOWN antigo + NOT_FOUND autoritativo recupera criação sob novo claim', async () => {
+      (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
+        resourceName: null, arms: [], updatedAt: new Date('2030-01-01T00:00:00Z'),
+        variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
+      });
+      const deps = {
+        ...baseDeps,
+        now: new Date('2030-01-01T00:10:00Z'),
+        reconcileExperiment: vi.fn().mockResolvedValue(null),
+      };
+
+      await setupExperiment({ userId: 'u1', payload: validPayload, deps });
+      expect(deps.createExperiment).toHaveBeenCalledOnce();
+    });
+
+    test('arms UNKNOWN antigos + NOT_FOUND autoritativo recuperam criação sob novo claim', async () => {
+      (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
+        resourceName: 'customers/1234567890/experiments/999', arms: [],
+        updatedAt: new Date('2030-01-01T00:00:00Z'),
+        variationConfig: currentConfig({ experiment: 'COMPLETE', arms: 'UNKNOWN' }),
+      });
+      const deps = {
+        ...baseDeps,
+        now: new Date('2030-01-01T00:10:00Z'),
+        reconcileArms: vi.fn().mockResolvedValue(null),
+      };
+
+      await setupExperiment({ userId: 'u1', payload: validPayload, deps });
+      expect(deps.createExperimentArms).toHaveBeenCalledOnce();
+    });
+
+    test('reconciliação rejeita resourceName de outro customer', async () => {
+      (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
+        resourceName: null, arms: [], updatedAt: new Date(),
+        variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
+      });
+      const deps = {
+        ...baseDeps,
+        reconcileExperiment: vi.fn().mockResolvedValue({
+          googleExperimentId: '999', resourceName: 'customers/9999999999/experiments/999',
+        }),
+      };
+
+      await expect(setupExperiment({ userId: 'u1', payload: validPayload, deps }))
+        .rejects.toMatchObject({ status: 502 });
+      expect(deps.createExperiment).not.toHaveBeenCalled();
+    });
+
+    test('variação UNKNOWN antiga é relida e concluída pelo mutator idempotente', async () => {
+      (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
+        resourceName: 'customers/1234567890/experiments/999', arms: armsFixture(),
+        updatedAt: new Date('2030-01-01T00:00:00Z'),
+        variationConfig: currentConfig({ experiment: 'COMPLETE', arms: 'COMPLETE', variation: 'UNKNOWN' }),
+      });
+      const deps = {
+        ...baseDeps,
+        now: new Date('2030-01-01T00:10:00Z'),
+        applyFinalUrlVariation: vi.fn().mockResolvedValue({ verified: true, alreadyApplied: true, adsModified: [] }),
+      };
+
+      await setupExperiment({ userId: 'u1', payload: validPayload, deps });
+      expect(deps.applyFinalUrlVariation).toHaveBeenCalledOnce();
+    });
+
     test('retry após createExperiment ambíguo + NOT_FOUND não repete mutate', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', status: 'SETUP',
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
         resourceName: null, arms: [], variationConfig: currentConfig({ experiment: 'UNKNOWN' }),
       });
       const deps = { ...baseDeps, reconcileExperiment: vi.fn().mockResolvedValue(null) };
@@ -626,7 +842,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     test('retry após createExperimentArms ambíguo + NOT_FOUND não repete mutate', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', status: 'SETUP',
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
         resourceName: 'customers/1234567890/experiments/exp1', arms: [],
         variationConfig: currentConfig({ experiment: 'COMPLETE', arms: 'UNKNOWN' }),
       });
@@ -639,7 +855,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     test('claim CAS perdido impede createExperiment concorrente', async () => {
       const existing = {
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', status: 'SETUP',
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
         resourceName: null, arms: [], updatedAt: new Date(), variationConfig: currentConfig(),
       };
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(existing);
@@ -672,7 +888,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValueOnce(null);
       (prisma.googleAdsExperiment.create as any).mockRejectedValueOnce(p2002);
       (prisma.googleAdsExperiment.findUniqueOrThrow as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', arms: [],
+        id: 'exp1', name: deterministicName, campaignId: 'c1', arms: [],
         variationConfig: {
           ...currentConfig(),
           setupPayload: { ...currentConfig().setupPayload, treatmentFinalUrl: 'https://different.example/path' },
@@ -687,7 +903,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
     test('retorno parcial de createExperimentArms não persiste nenhum arm', async () => {
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue(null);
       const fresh = {
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', arms: [],
+        id: 'exp1', name: deterministicName, campaignId: 'c1', arms: [],
         resourceName: null, updatedAt: new Date(), variationConfig: currentConfig(),
       };
       (prisma.googleAdsExperiment.create as any).mockResolvedValue(fresh);
@@ -714,7 +930,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
         remoteCreateInput: { startDate: '2026-08-01', endDate: '2026-08-31' },
       };
       (prisma.googleAdsExperiment.findUnique as any).mockResolvedValue({
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', status: 'SETUP',
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
         resourceName: null, arms: [], updatedAt: new Date(), variationConfig: fixedConfig,
       });
       (prisma.googleAdsExperiment.findUniqueOrThrow as any).mockResolvedValue({
@@ -732,7 +948,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
 
     test('claim de variação perdido impede updateAdFinalUrls concorrente', async () => {
       const existing = {
-        id: 'exp1', name: 'EXP-c1-validkey1234', campaignId: 'c1', status: 'SETUP',
+        id: 'exp1', name: deterministicName, campaignId: 'c1', status: 'SETUP',
         resourceName: 'customers/1234567890/experiments/exp1', arms: armsFixture(),
         updatedAt: new Date(), variationConfig: currentConfig({ experiment: 'COMPLETE', arms: 'COMPLETE' }),
       };
@@ -799,6 +1015,18 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
   // Sync: polling, redaction, changed:false, remoteStatusRaw, unknown status, P1-D
   // -----------------------------------------------------------------------------------------
   describe('Sync', () => {
+    test('sync legado deriva resourceName somente de customerId próprio e googleExperimentId numéricos', async () => {
+      (prisma.googleAdsExperiment.findFirst as any).mockResolvedValue({
+        id: 'legacy-exp', userId: 'u1', googleExperimentId: '987654321', resourceName: null,
+        status: 'RUNNING', updatedAt: new Date(), arms: [], operations: [],
+        variationConfig: { source: 'legacy-campaign-fields' },
+      });
+      await syncExperiment('legacy-exp', 'u1', baseDeps);
+      expect(baseDeps.fetchExperimentReport).toHaveBeenCalledWith(
+        'mock_access_token_123', mockConfig, 'customers/1234567890/experiments/987654321', expect.any(Object),
+      );
+    });
+
     test('redactSensitive oculta tokens em erros salvos e lançados', async () => {
       const deps = {
         ...baseDeps,
@@ -959,6 +1187,7 @@ describe('Google Ads Experiments Orchestration (recuperação Tarefa 10B)', () =
       }));
       expect(result.status).toBe('ENDED');
       expect(result.warnings).toContain('Observação remota obsoleta descartada por concorrência');
+      expect(baseDeps.upsertMetricSnapshot).not.toHaveBeenCalled();
     });
 
     test('reconcilia lifecycle UNKNOWN somente quando o status remoto comprova SCHEDULE', async () => {

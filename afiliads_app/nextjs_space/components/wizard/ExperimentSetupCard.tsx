@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FlaskConical,
   ShieldCheck,
@@ -31,15 +31,18 @@ import {
   getExperimentStatusBadge,
   type ExperimentSetupUIState,
 } from './experiment-setup-helpers';
+import { buildExperimentSchedulePayload, buildExperimentSetupPayload } from './experiment-api-contracts';
 
 interface ExperimentSetupCardProps {
   campaignId: string;
+  presellId?: string | null;
   controlPresellUrl?: string;
-  onExperimentUpdated?: () => void;
+  onExperimentUpdated?: (experimentId?: string) => void;
 }
 
 export function ExperimentSetupCard({
   campaignId,
+  presellId,
   controlPresellUrl,
   onExperimentUpdated,
 }: ExperimentSetupCardProps) {
@@ -47,6 +50,9 @@ export function ExperimentSetupCard({
   const [preparing, setPreparing] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [experiment, setExperiment] = useState<any>(null);
+  const [setupAuthorization, setSetupAuthorization] = useState<{ resourceId: string; revision: string } | null>(null);
+  const setupIdempotencyKey = useRef(`setup_${crypto.randomUUID().replace(/-/g, '')}`);
+  const scheduleIdempotencyKey = useRef(`schedule_${crypto.randomUUID().replace(/-/g, '')}`);
 
   // Form states
   const [trafficSplit, setTrafficSplit] = useState<number>(50);
@@ -66,6 +72,11 @@ export function ExperimentSetupCard({
         const data = await res.json();
         const exp = data.experiments?.[0] ?? null;
         setExperiment(exp);
+        if (typeof exp?.setupIdempotencyKey === 'string' && exp.setupIdempotencyKey) {
+          setupIdempotencyKey.current = exp.setupIdempotencyKey;
+        }
+        setSetupAuthorization(data.setupAuthorization ?? null);
+        if (exp?.id && onExperimentUpdated) onExperimentUpdated(exp.id);
         if (exp?.arms) {
           const treatment = exp.arms.find((a: any) => !a.isControl);
           if (treatment?.finalUrl) setTreatmentUrl(treatment.finalUrl);
@@ -84,6 +95,10 @@ export function ExperimentSetupCard({
   }, [campaignId]);
 
   const handlePrepare = async () => {
+    if (!presellId || !setupAuthorization) {
+      toast.error('Salve a campanha e gere a pré-sell antes de preparar o experimento');
+      return;
+    }
     const val = validateExperimentSetupForm(trafficSplit, treatmentUrl);
     if (!val.valid) {
       toast.error(val.error ?? 'Dados inválidos');
@@ -95,13 +110,15 @@ export function ExperimentSetupCard({
       const res = await fetch('/api/google-ads/experiments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(buildExperimentSetupPayload({
           campaignId,
+          presellId,
           name: `Experimento A/B - Pré-sell`,
-          variationType: 'PRESELL_URL',
-          treatmentUrl: treatmentUrl.trim(),
-          trafficSplit,
-        }),
+          treatmentFinalUrl: treatmentUrl.trim(),
+          trafficSplitTreatment: trafficSplit,
+          revision: setupAuthorization.revision,
+          idempotencyKey: setupIdempotencyKey.current,
+        })),
       });
 
       const data = await res.json();
@@ -112,7 +129,7 @@ export function ExperimentSetupCard({
 
       toast.success('Experimento A/B preparado com sucesso (Modo SETUP / Sem custo)');
       await loadExperiment();
-      if (onExperimentUpdated) onExperimentUpdated();
+      if (onExperimentUpdated) onExperimentUpdated(data.experiment?.id);
     } catch {
       toast.error('Erro de rede ao conectar com o servidor');
     } finally {
@@ -129,10 +146,19 @@ export function ExperimentSetupCard({
 
     setScheduling(true);
     try {
+      const revision = experiment?.mutationRevisions?.schedule;
+      if (!revision) {
+        toast.error('Revisão de agendamento indisponível; recarregue o experimento');
+        return;
+      }
       const res = await fetch(`/api/google-ads/experiments/${experiment.id}/schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmed: true }),
+        body: JSON.stringify(buildExperimentSchedulePayload({
+          experimentId: experiment.id,
+          revision,
+          idempotencyKey: scheduleIdempotencyKey.current,
+        })),
       });
 
       const data = await res.json();
@@ -145,7 +171,7 @@ export function ExperimentSetupCard({
       setShowScheduleModal(false);
       setHasConfirmedSpend(false);
       await loadExperiment();
-      if (onExperimentUpdated) onExperimentUpdated();
+      if (onExperimentUpdated) onExperimentUpdated(data.experiment?.id ?? experiment.id);
     } catch {
       toast.error('Erro de rede ao agendar experimento');
     } finally {

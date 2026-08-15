@@ -7,7 +7,23 @@ import { runExperimentAction, scheduleExperimentLifecycle } from '@/lib/google-a
 const updatedAt = new Date('2030-01-15T00:00:00.000Z');
 const resourceName = 'customers/1234567890/experiments/999';
 const presellHtml = '<html><body>approved treatment</body></html>';
+const publishedUrl = 'https://example.com/treatment';
 const presellContentSha256 = createHash('sha256').update(presellHtml, 'utf8').digest('hex');
+
+function promotableSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'snapshot_1',
+    snapshotDate: new Date('2030-01-15T00:00:00.000Z'),
+    controlClicks: 120,
+    treatmentClicks: 130,
+    controlConversions: 10,
+    treatmentConversions: 18,
+    statistics: {
+      conversions: { pointEstimate: 8, marginOfError: 3, pValue: 0.01 },
+    },
+    ...overrides,
+  };
+}
 
 function lifecycleCapability(operation: string): MutationCapability {
   const result = assertMutationAllowed({
@@ -53,6 +69,7 @@ function experiment(overrides: Record<string, unknown> = {}) {
         finalUrl: 'https://example.com/treatment',
         presellId: 'presell_1',
         presellContentSha256,
+        presellPublishedUrl: publishedUrl,
       },
       saga: { experiment: 'COMPLETE', arms: 'COMPLETE', variation: 'COMPLETE' },
     },
@@ -128,8 +145,9 @@ function harness(exp: any = experiment()) {
   const capability = lifecycleCapability('scheduleExperiment');
   const deps = {
     prisma,
+    now: updatedAt,
     checkReadiness: vi.fn().mockResolvedValue({ ready: true, errors: [], warnings: ['fresh'] }),
-    findPresell: vi.fn().mockResolvedValue({ id: 'presell_1', userId: 'user_1', html: presellHtml }),
+    findPresell: vi.fn().mockResolvedValue({ id: 'presell_1', userId: 'user_1', html: presellHtml, publishedUrl }),
     readinessDeps: {},
     getAdsConfig: vi.fn().mockResolvedValue({
       customerId: '1234567890',
@@ -155,6 +173,19 @@ function harness(exp: any = experiment()) {
 }
 
 describe('scheduleExperimentLifecycle', () => {
+  it('nega schedule quando a URL publicada mudou após a aprovação', async () => {
+    const { deps } = harness();
+    deps.findPresell.mockResolvedValue({
+      id: 'presell_1', userId: 'user_1', html: presellHtml,
+      publishedUrl: 'https://example.com/changed',
+    });
+    await expect(scheduleExperimentLifecycle({
+      id: 'exp_1', userId: 'user_1',
+      payload: { authorization: scheduleAuthorization() }, deps: deps as any,
+    })).rejects.toMatchObject({ status: 409 });
+    expect(deps.scheduleExperiment).not.toHaveBeenCalled();
+  });
+
   it('agenda após ownership, prova persistida, readiness, autorização e capability exata', async () => {
     const { prisma, deps } = harness();
 
@@ -341,6 +372,7 @@ describe('scheduleExperimentLifecycle', () => {
           finalUrl: 'https://example.com/treatment',
           presellId: 'presell_1',
           presellContentSha256,
+          presellPublishedUrl: publishedUrl,
         },
         saga: { schedule: 'COMPLETE' },
         lifecycle: {
@@ -465,7 +497,7 @@ describe('runExperimentAction', () => {
   });
 
   it('PROMOTE persiste operação assíncrona sem declarar promoção concluída', async () => {
-    const { prisma, deps } = harness(experiment({ status: 'RUNNING' }));
+    const { prisma, deps } = harness(experiment({ status: 'RUNNING', metricSnapshots: [promotableSnapshot()] }));
     deps.assertMutationAllowed.mockReturnValue({
       allowed: true,
       capability: lifecycleCapability('promoteExperiment'),
@@ -483,6 +515,55 @@ describe('runExperimentAction', () => {
       data: expect.objectContaining({ operationType: 'PROMOTE', status: 'PENDING' }),
     });
     expect(result.experiment.status).toBe('RUNNING');
+  });
+
+  it('PROMOTE sem observação estatística persistida bloqueia antes do guard', async () => {
+    const { deps } = harness(experiment({ status: 'RUNNING', metricSnapshots: [] }));
+    const auth = authorization({ operation: 'PROMOTE_EXPERIMENT', idempotencyKey: 'promote-no-snapshot-123' });
+    await expect(runExperimentAction({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: {
+        action: 'PROMOTE',
+        ['author' + 'ization']: auth,
+      },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 422 });
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.promoteExperiment).not.toHaveBeenCalled();
+  });
+
+  it('PROMOTE com intervalo de conversões cruzando zero bloqueia antes do guard', async () => {
+    const inconclusive = promotableSnapshot({
+      statistics: { conversions: { pointEstimate: 2, marginOfError: 3, pValue: 0.01 } },
+    });
+    const { deps } = harness(experiment({ status: 'RUNNING', metricSnapshots: [inconclusive] }));
+    const auth = authorization({ operation: 'PROMOTE_EXPERIMENT', idempotencyKey: 'promote-inconclusive-123' });
+    await expect(runExperimentAction({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: {
+        action: 'PROMOTE',
+        ['author' + 'ization']: auth,
+      },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 422 });
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.promoteExperiment).not.toHaveBeenCalled();
+  });
+
+  it('PROMOTE com snapshot estatística antiga bloqueia antes do guard', async () => {
+    const stale = promotableSnapshot({ snapshotDate: new Date('2030-01-10T00:00:00.000Z') });
+    const { deps } = harness(experiment({ status: 'RUNNING', metricSnapshots: [stale] }));
+    const auth = authorization({ operation: 'PROMOTE_EXPERIMENT', idempotencyKey: 'promote-stale-123' });
+    await expect(runExperimentAction({
+      id: 'exp_1',
+      userId: 'user_1',
+      payload: { action: 'PROMOTE', ['author' + 'ization']: auth },
+      deps: deps as any,
+    })).rejects.toMatchObject({ status: 422 });
+    expect(deps.assertMutationAllowed).not.toHaveBeenCalled();
+    expect(deps.promoteExperiment).not.toHaveBeenCalled();
   });
 
   it('GRADUATE bloqueia antes do guard sem budget mapping resolvido server-side', async () => {

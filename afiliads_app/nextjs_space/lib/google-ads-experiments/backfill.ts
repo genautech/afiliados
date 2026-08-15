@@ -70,10 +70,17 @@ export function clampTrafficSplit(value: number): number {
   return Math.min(99, Math.max(1, Math.round(value)));
 }
 
+export function hasLegacyExperimentEvidence(campaign: LegacyExperimentCampaign): boolean {
+  return campaign.isExperiment
+    || Boolean(campaign.experimentId)
+    || Boolean(campaign.googleTrialCampaignId);
+}
+
 export function mapLegacyCampaignToExperimentDraft(
   campaign: LegacyExperimentCampaign
 ): ExperimentDraft | null {
-  if (!campaign.isExperiment) return null;
+  if (!hasLegacyExperimentEvidence(campaign)) return null;
+  const legacyFlagInconsistent = !campaign.isExperiment;
 
   const treatmentSplit = clampTrafficSplit(campaign.experimentTrafficSplit);
   const controlSplit = 100 - treatmentSplit;
@@ -85,12 +92,14 @@ export function mapLegacyCampaignToExperimentDraft(
       campaignId: campaign.id,
       googleExperimentId: campaign.experimentId,
       name: `Backfill legado — ${campaign.id}`,
-      status: normalizeLegacyStatus(campaign.experimentStatus),
+      status: legacyFlagInconsistent ? 'SETUP' : normalizeLegacyStatus(campaign.experimentStatus),
       trafficAllocationType: "SEARCH_CUSTOM",
       variationType: normalizeLegacyVariationType(campaign.experimentVariationType),
       variationConfig: {
         source: "legacy-campaign-fields",
         rawVariationValue: campaign.experimentVariationValue,
+        legacyFlagInconsistent,
+        reconciliationRequired: legacyFlagInconsistent,
       },
     },
     arms: [

@@ -213,7 +213,16 @@ export async function googleAdsMutateRequest(
   capability: MutationCapability,
   options: Omit<GoogleAdsRequestOptions, 'retry'> = {}
 ): Promise<any> {
-  assertCapability(capability, resourcePath, undefined, config.customerId);
+  const operationByPath: Readonly<Record<string, string>> = {
+    'experiments:mutate': 'createExperiment',
+    'experimentArms:mutate': 'createExperimentArms',
+    'adGroupAds:mutate': 'updateAdFinalUrls',
+  };
+  const expectedOperation = operationByPath[resourcePath];
+  if (!expectedOperation) {
+    throw new Error(`Coleção de mutação Google Ads não autorizada: "${resourcePath}"`);
+  }
+  assertCapability(capability, resourcePath, expectedOperation, config.customerId);
   const { method = 'POST', body } = options;
   return executeRequest(
     buildApiUrl(config, resourcePath),

@@ -103,4 +103,20 @@ describe('POST /api/google-ads/create', () => {
     expect(checkGoogleAdsReadiness).toHaveBeenCalledWith('c1', 'u1', 'PREPARE', expect.any(Object));
     expect(createGoogleCampaign).not.toHaveBeenCalled();
   });
+
+  it('propaga campaignId ao gerador RSA para aplicar o Campaign Guard', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', vertical: 'health', keywords: [] });
+    (checkGoogleAdsReadiness as any).mockResolvedValue({
+      ready: true,
+      errors: [],
+      warnings: [],
+      data: {
+        campaignName: 'Test', budgetDaily: 100, geo: 'BR', finalUrl: 'https://test.com',
+        forbiddenTerms: [], selectedKeywords: [{ keyword: 'kw1' }],
+      },
+    });
+    (generateRsaCopy as any).mockResolvedValue({ titles: [], descriptions: [] });
+    await POST(createRequest({ campaignId: 'c1' }));
+    expect(generateRsaCopy).toHaveBeenCalledWith('u1', expect.objectContaining({ campaignId: 'c1' }));
+  });
 });
