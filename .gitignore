@@ -58,3 +58,9 @@ __pycache__/
 
 # Clone externo (github.com/AMAP-ML/SkillClaw), não faz parte deste repo
 /SkillClaw/
+
+# artefatos locais de agentes/ferramentas
+.claude/
+.firecrawl/
+**/.hallmark/
+afiliads_app/nextjs_space/tsconfig.tsbuildinfo
