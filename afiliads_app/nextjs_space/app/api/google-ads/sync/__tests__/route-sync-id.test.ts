@@ -20,6 +20,8 @@ vi.mock('@/lib/google-ads', () => ({
   fetchGoogleCampaign: vi.fn(),
   fetchGoogleAdsKeywordMetrics: vi.fn().mockResolvedValue([]),
   mutateGoogleCampaign: vi.fn(),
+  getGoogleAdsConfig: vi.fn().mockResolvedValue({ customerId: '1234567890', developerToken: 'mock' }),
+  isMockMode: vi.fn(() => true),
 }));
 
 vi.mock('next-auth', () => ({
@@ -34,6 +36,18 @@ import { POST } from '../route';
 import { NextRequest } from 'next/server';
 
 describe('POST /api/google-ads/sync - googleCampaignId handling', () => {
+  it('rejeita PUSH sem autorização de mutação', async () => {
+    vi.mocked(prisma.campaign.findFirst).mockResolvedValue({
+      id: 'camp-auth', userId: 'user-1', updatedAt: new Date(1234), googleCampaignId: '9876543210',
+    } as any);
+    const req = new NextRequest('http://localhost:3000/api/google-ads/sync', {
+      method: 'POST', body: JSON.stringify({ campaignId: 'camp-auth', direction: 'push', updates: { status: 'PAUSADO' } }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(mutateGoogleCampaign).not.toHaveBeenCalled();
+  });
+
   it('usa campaign.googleCampaignId diretamente em PUSH sem fazer fetch de busca quando o ID numérico já existe', async () => {
     vi.mocked(prisma.campaign.findFirst).mockResolvedValue({
       id: 'camp-1',
@@ -44,6 +58,7 @@ describe('POST /api/google-ads/sync - googleCampaignId handling', () => {
       status: 'EM_TESTE',
       budgetDaily: 50,
       loopEnabled: true,
+      updatedAt: new Date(1234),
     } as any);
 
     vi.mocked(mutateGoogleCampaign).mockResolvedValue({
@@ -59,6 +74,7 @@ describe('POST /api/google-ads/sync - googleCampaignId handling', () => {
         campaignId: 'camp-1',
         direction: 'push',
         updates: { status: 'PAUSADO' },
+        authorization: { confirmed: true, operation: 'MUTATE_CAMPAIGN', resourceId: 'camp-1', revision: '1234', idempotencyKey: 'sync_push_key' },
       }),
     });
 
@@ -68,7 +84,7 @@ describe('POST /api/google-ads/sync - googleCampaignId handling', () => {
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
     // Deve ter chamado mutateGoogleCampaign com o ID numérico '9876543210'
-    expect(mutateGoogleCampaign).toHaveBeenCalledWith('user-1', '9876543210', { status: 'PAUSED' });
+    expect(mutateGoogleCampaign).toHaveBeenCalledWith('user-1', '9876543210', { status: 'PAUSED' }, expect.objectContaining({ status: expect.anything() }));
     // Não deve ter chamado fetchGoogleCampaign porque o ID numérico já estava presente
     expect(fetchGoogleCampaign).not.toHaveBeenCalled();
   });

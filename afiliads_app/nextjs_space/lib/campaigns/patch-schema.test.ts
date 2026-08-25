@@ -47,7 +47,7 @@ describe('validateCampaignPatch', () => {
       postbackUrl: "https://postback.example",
       clickidToken: "{clickid}",
       presellHtml: "<html></html>",
-      pageType: "pre_sell",
+      pageType: "advertorial",
       popupGate: false,
       videoUrl: ""
     };
@@ -70,5 +70,20 @@ describe('validateCampaignPatch', () => {
   it('enforces status transitions', () => {
     expect(() => validateCampaignPatch({ status: 'ATIVA' }, 'ARQUIVADA')).toThrow(/Transição de status inválida/);
     expect(() => validateCampaignPatch({ status: 'EM_TESTE' }, 'RASCUNHO')).not.toThrow();
+  });
+
+  it('rejects non-HTTPS or credential-bearing URLs', () => {
+    expect(() => validateCampaignPatch({ presellUrl: 'http://example.com' }, 'RASCUNHO')).toThrow();
+    expect(() => validateCampaignPatch({ offerUrl: 'javascript:alert(1)' }, 'RASCUNHO')).toThrow();
+    expect(() => validateCampaignPatch({ flowpageUrl: 'https://user:pass@example.com' }, 'RASCUNHO')).toThrow();
+  });
+
+  it('normalizes DateTime fields before the Prisma update', () => {
+    const data = validateCampaignPatch({ launchedAt: '2026-08-25T12:00:00.000Z' }, 'RASCUNHO');
+    expect(data.launchedAt).toBeInstanceOf(Date);
+  });
+
+  it('fails closed for an unknown persisted status', () => {
+    expect(() => validateCampaignPatch({ name: 'x' }, 'UNKNOWN')).toThrow(/Status atual/);
   });
 });

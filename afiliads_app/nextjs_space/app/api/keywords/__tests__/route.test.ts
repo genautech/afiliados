@@ -11,6 +11,7 @@ const { mockPrisma } = vi.hoisted(() => ({
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
   },
@@ -81,6 +82,30 @@ describe('POST /api/keywords', () => {
       where: { id: 'kw-existing' },
       data: expect.not.objectContaining({ clicks: expect.anything(), conversions: expect.anything() }),
     });
+  });
+
+  it('reconcilia keywords desmarcadas sem apagar métricas', async () => {
+    mockPrisma.campaign.findMany.mockResolvedValueOnce([{ id: 'campaign-1' }]);
+    mockPrisma.keyword.findMany.mockResolvedValueOnce([
+      { id: 'kw-selected', campaignId: 'campaign-1', keyword: 'buy now', matchType: 'phrase', clicks: 4, conversions: 1 },
+      { id: 'kw-removed', campaignId: 'campaign-1', keyword: 'old term', matchType: 'phrase', clicks: 9, conversions: 2 },
+    ]);
+    mockPrisma.keyword.updateMany.mockResolvedValueOnce({ count: 2 });
+    mockPrisma.keyword.update.mockResolvedValueOnce({ id: 'kw-selected', isSelected: true });
+
+    const response = await POST(request({ keywords: [
+      { campaignId: 'campaign-1', keyword: 'buy now', matchType: 'phrase', isSelected: true },
+    ] }));
+
+    expect(response.status).toBe(201);
+    expect(mockPrisma.keyword.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', campaignId: { in: ['campaign-1'] } },
+      data: { isSelected: false },
+    });
+    expect(mockPrisma.keyword.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'kw-selected' },
+      data: expect.objectContaining({ isSelected: true }),
+    }));
   });
 
   it('falha fechado diante de duplicatas legadas sem apagar métricas', async () => {

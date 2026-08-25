@@ -23,6 +23,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/google-ads', () => ({
   createGoogleCampaign: vi.fn(),
   getGoogleAdsConfig: vi.fn(),
+  isMockMode: vi.fn(() => true),
 }));
 
 vi.mock('@/lib/rsa', () => ({
@@ -46,8 +47,17 @@ describe('POST /api/google-ads/create', () => {
     });
   }
 
+  it('bloqueia sem confirmação/autorização antes do readiness ou da mutação', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', updatedAt: new Date(1234), keywords: [] });
+    const res = await POST(createRequest({ campaignId: 'c1' }));
+    expect(res.status).toBe(400);
+    expect(checkGoogleAdsReadiness).not.toHaveBeenCalled();
+    expect(createGoogleCampaign).not.toHaveBeenCalled();
+  });
+
   it('passes PREPARE readiness and creates campaign if valid', async () => {
-    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', keywords: [] });
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', updatedAt: new Date(1234), keywords: [] });
+    (getGoogleAdsConfig as any).mockResolvedValue({ customerId: '1234567890', developerToken: 'mock' });
 
     // Readiness succeeds in PREPARE mode
     (checkGoogleAdsReadiness as any).mockResolvedValue({
@@ -72,7 +82,7 @@ describe('POST /api/google-ads/create', () => {
       logs: ['success']
     });
 
-    const req = createRequest({ campaignId: 'c1', headlines: ['H1'], descriptions: ['D1'] });
+    const req = createRequest({ campaignId: 'c1', headlines: ['H1'], descriptions: ['D1'], authorization: { confirmed: true, operation: 'CREATE_CAMPAIGN', resourceId: 'c1', revision: '1234', idempotencyKey: 'create_key_123' } });
     const res = await POST(req);
     const json = await res.json();
 
@@ -85,7 +95,8 @@ describe('POST /api/google-ads/create', () => {
   });
 
   it('blocks before createGoogleCampaign if readiness fails', async () => {
-    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', keywords: [] });
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', updatedAt: new Date(1234), keywords: [] });
+    (getGoogleAdsConfig as any).mockResolvedValue({ customerId: '1234567890', developerToken: 'mock' });
 
     // Readiness fails
     (checkGoogleAdsReadiness as any).mockResolvedValue({
@@ -94,7 +105,7 @@ describe('POST /api/google-ads/create', () => {
       warnings: [],
     });
 
-    const req = createRequest({ campaignId: 'c1' });
+    const req = createRequest({ campaignId: 'c1', authorization: { confirmed: true, operation: 'CREATE_CAMPAIGN', resourceId: 'c1', revision: '1234', idempotencyKey: 'create_key_123' } });
     const res = await POST(req);
     const json = await res.json();
 
@@ -104,8 +115,28 @@ describe('POST /api/google-ads/create', () => {
     expect(createGoogleCampaign).not.toHaveBeenCalled();
   });
 
+  it('não cria uma segunda campanha quando já existe ID remoto persistido', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({
+      id: 'c1', userId: 'u1', updatedAt: new Date(1234), keywords: [],
+      googleCampaignId: 'g-existing', googleAdGroupId: 'ga-existing',
+    });
+
+    const req = createRequest({
+      campaignId: 'c1',
+      authorization: { confirmed: true, operation: 'CREATE_CAMPAIGN', resourceId: 'c1', revision: '1234', idempotencyKey: 'create_retry_123' },
+    });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true, alreadyExists: true, googleCampaignId: 'g-existing', googleAdGroupId: 'ga-existing', launchState: 'CONFIGURING' });
+    expect(getGoogleAdsConfig).not.toHaveBeenCalled();
+    expect(createGoogleCampaign).not.toHaveBeenCalled();
+  });
+
   it('propaga campaignId ao gerador RSA para aplicar o Campaign Guard', async () => {
-    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', vertical: 'health', keywords: [] });
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', vertical: 'health', updatedAt: new Date(1234), keywords: [] });
+    (getGoogleAdsConfig as any).mockResolvedValue({ customerId: '1234567890', developerToken: 'mock' });
     (checkGoogleAdsReadiness as any).mockResolvedValue({
       ready: true,
       errors: [],
@@ -116,7 +147,7 @@ describe('POST /api/google-ads/create', () => {
       },
     });
     (generateRsaCopy as any).mockResolvedValue({ titles: [], descriptions: [] });
-    await POST(createRequest({ campaignId: 'c1' }));
+    await POST(createRequest({ campaignId: 'c1', authorization: { confirmed: true, operation: 'CREATE_CAMPAIGN', resourceId: 'c1', revision: '1234', idempotencyKey: 'create_key_123' } }));
     expect(generateRsaCopy).toHaveBeenCalledWith('u1', expect.objectContaining({ campaignId: 'c1' }));
   });
 });

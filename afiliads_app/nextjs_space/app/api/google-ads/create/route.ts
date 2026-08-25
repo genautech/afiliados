@@ -4,9 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { createGoogleCampaign, getGoogleAdsConfig } from '@/lib/google-ads';
+import { createGoogleCampaign, getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
 import { generateRsaCopy } from '@/lib/rsa';
 import { checkGoogleAdsReadiness } from '@/lib/google-ads/readiness';
+import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
+import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +23,37 @@ export async function POST(request: NextRequest) {
 
     const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, userId }, include: { keywords: true } });
     if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+
+    const authorization = authorizeMutation(
+      body?.authorization,
+      'CREATE_CAMPAIGN',
+      campaign.id,
+      String(campaign.updatedAt.getTime()),
+      userId,
+      campaign.userId,
+    );
+
+    // A persisted remote ID means the create boundary was already crossed.
+    // Retries and stale clients must never create a second remote campaign.
+    if (campaign.googleCampaignId) {
+      return NextResponse.json({
+        success: true,
+        alreadyExists: true,
+        googleCampaignId: campaign.googleCampaignId,
+        googleAdGroupId: campaign.googleAdGroupId ?? null,
+        launchState: deriveCampaignLaunchState(campaign),
+      });
+    }
+
+    const adsConfig = await getGoogleAdsConfig(userId);
+    if (!adsConfig) return NextResponse.json({ error: 'Configuração do Google Ads não encontrada' }, { status: 422 });
+    const mutation = assertMutationAllowed({
+      operation: 'createGoogleCampaign',
+      customerId: adsConfig.customerId,
+      isMock: isMockMode(adsConfig),
+      confirmed: authorization.operation === 'CREATE_CAMPAIGN',
+    });
+    if (!mutation.allowed) return NextResponse.json({ error: `Mutação bloqueada pelo guard: ${mutation.reason}` }, { status: 502 });
 
     const deps = {
       findCampaign: async (id: string, uid: string) => prisma.campaign.findFirst({ where: { id, userId: uid }, include: { keywords: true } }),
@@ -69,7 +103,7 @@ export async function POST(request: NextRequest) {
       })),
       headlines,
       descriptions,
-    });
+    }, mutation.capability);
 
     await prisma.campaign.update({
       where: { id: campaignId },
@@ -95,11 +129,13 @@ export async function POST(request: NextRequest) {
       mock: result.mock,
       googleCampaignId: result.googleCampaignId,
       googleAdGroupId: result.googleAdGroupId,
+      launchState: 'REMOTE_PAUSED',
       logs: result.logs,
       warnings: readiness.warnings,
     });
   } catch (err: any) {
     console.error('Google Ads create error:', err);
-    return NextResponse.json({ error: err?.message ?? 'Erro ao criar campanha no Google Ads' }, { status: 500 });
+    const status = err?.message?.startsWith('Falha de autorização') ? 400 : 500;
+    return NextResponse.json({ error: err?.message ?? 'Erro ao criar campanha no Google Ads' }, { status });
   }
 }

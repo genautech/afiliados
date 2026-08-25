@@ -4,12 +4,20 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { validateCampaignPatch } from '@/lib/campaigns/patch-schema';
+import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+type RouteContext = { params: { id: string } };
+
+function getUserId(session: { user?: unknown } | null): string | null {
+  const id = (session?.user as { id?: unknown } | undefined)?.id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = getUserId(session);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const campaign = await prisma.campaign.findFirst({
       where: { id: params?.id, userId },
       include: {
@@ -27,31 +35,34 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       },
     });
     if (!campaign) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
-    return NextResponse.json(campaign);
-  } catch (err: any) {
+    return NextResponse.json({ ...campaign, launchState: deriveCampaignLaunchState(campaign) });
+  } catch (err: unknown) {
     console.error('GET campaign error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
-    const body = await request.json();
+    const userId = getUserId(session);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    const body: unknown = await request.json().catch(() => null);
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Payload JSON inválido' }, { status: 400 });
+    }
     const existing = await prisma.campaign.findFirst({ where: { id: params?.id, userId } });
     if (!existing) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
 
     let validatedData;
     try {
       validatedData = validateCampaignPatch(body, existing.status || 'RASCUNHO');
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
+    } catch (e: unknown) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Payload inválido' }, { status: 400 });
     }
 
     const { productResearchId, ...rest } = validatedData;
-    const data: Record<string, any> = { ...rest };
+    const data: Record<string, unknown> = { ...rest };
 
     if (productResearchId !== undefined) {
       if (productResearchId === null) {
@@ -68,22 +79,22 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       data,
     });
     return NextResponse.json(updated);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('PATCH campaign error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = getUserId(session);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const existing = await prisma.campaign.findFirst({ where: { id: params?.id, userId } });
     if (!existing) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 });
     await prisma.campaign.delete({ where: { id: params?.id } });
     return NextResponse.json({ success: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('DELETE campaign error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

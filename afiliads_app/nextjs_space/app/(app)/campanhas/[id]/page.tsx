@@ -32,6 +32,14 @@ const statusLabels: Record<string, string> = {
   SCALE: 'Scale', PAUSADO: 'Pausado', KILL: 'Kill',
 };
 
+const launchStateLabels: Record<string, string> = {
+  CONFIGURING: 'Em configuração',
+  READY_FOR_REMOTE_CREATE: 'Pronta para criar no Google Ads',
+  REMOTE_PAUSED: 'Criada, mas PAUSED no Google Ads',
+  PAUSED: 'Pausada no Google Ads',
+  ACTIVE: 'Ativa e verificada no Google Ads',
+};
+
 interface AuditResult {
   audit_score: number;
   risk_level: string;
@@ -254,6 +262,11 @@ export default function CampaignDetailPage() {
             <h1 className="text-2xl font-display font-bold text-white">{campaign.name}</h1>
             <div className="flex items-center gap-2 mt-1">
               <Badge className={statusColors[campaign.status] ?? 'bg-slate-500/20 text-slate-400'}>{statusLabels[campaign.status] ?? campaign.status}</Badge>
+              {campaign.launchState && (
+                <Badge className="bg-purple-500/15 text-purple-300 border-purple-500/30">
+                  {launchStateLabels[campaign.launchState] ?? campaign.launchState}
+                </Badge>
+              )}
               <span className="text-xs text-slate-500">{campaign.platform} · {campaign.vertical} · {campaign.geo}</span>
             </div>
           </div>

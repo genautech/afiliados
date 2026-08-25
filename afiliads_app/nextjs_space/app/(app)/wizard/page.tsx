@@ -936,7 +936,10 @@ export default function WizardPage() {
   const saveKeywords = async (targetCampaignId?: string) => {
     const cid = targetCampaignId || campaignId || (await saveCampaign());
     if (!cid) throw new Error('Campanha ainda não foi salva');
-    const kws = selectedKeywords.filter(k => k.selected);
+    // Envia também as keywords desmarcadas: o endpoint reconcilia a seleção
+    // persistida, evitando que uma keyword removida do Passo 5 continue apta
+    // para o create do Google Ads no Passo 7.
+    const kws = selectedKeywords;
     if (kws.length > 0) {
       const response = await fetch('/api/keywords', {
         method: 'POST',
@@ -965,6 +968,22 @@ export default function WizardPage() {
     }
     if (step === 9) return GOLIVE_CHECKLIST.filter(i => i.critical).every(i => checksFor(9, goLiveChecks)[i.key]);
     return true;
+  };
+
+  const verifyServerWizardGate = async (targetCampaignId: string, targetStep: number): Promise<boolean> => {
+    if (targetStep !== 7 && targetStep !== 8) return true;
+    const response = await fetch(`/api/campaigns/${targetCampaignId}/wizard-gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: targetStep }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const pending = Array.isArray(data?.pending) && data.pending.length > 0 ? ` Pendências: ${data.pending.join(', ')}.` : '';
+      toast.error(data?.error ?? `Não é possível avançar do Passo ${targetStep}.${pending}`);
+      return false;
+    }
+    return data?.allowed === true;
   };
 
   // Passos com checklist 'auto' — precisam de verificação fresca do servidor antes de avançar
@@ -1008,6 +1027,7 @@ export default function WizardPage() {
       toast.error('Não é possível avançar: complete os itens críticos deste passo primeiro (use "Verificar automaticamente" ou marque os autoatestados pendentes).');
       return;
     }
+    if (!(await verifyServerWizardGate(savedId, step))) return;
     if (step < 9) setStep(step + 1);
   };
 
@@ -1045,10 +1065,12 @@ export default function WizardPage() {
       const launchResponse = await fetch(`/api/campaigns/${savedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'EM_TESTE', wizardCompleted: true, launchedAt: new Date().toISOString(), wizardStep: 9 }),
+        // Concluir o Wizard não ativa a campanha remota. A campanha só será
+        // considerada ACTIVE depois de um PUSH confirmado e sincronizado.
+        body: JSON.stringify({ status: 'EM_TESTE', wizardCompleted: true, wizardStep: 9 }),
       });
       await requireOk(launchResponse, 'Erro ao concluir lançamento');
-      toast.success('Campanha lançada com sucesso! 🚀');
+      toast.success('Configuração concluída. A campanha remota continua PAUSED até a ativação confirmada no Google Ads.');
       if (sourceProductResearchId) {
         router.push(`/trend-lab?campaignId=${savedId}&productResearchId=${sourceProductResearchId}`);
       } else {

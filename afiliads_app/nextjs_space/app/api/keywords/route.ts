@@ -80,6 +80,13 @@ export async function POST(request: NextRequest) {
         const existing = await tx.keyword.findMany({
           where: { userId, campaignId: { in: campaignIds } },
         });
+        // Reconcile selection as a set, not as append-only writes. This makes
+        // retries safe and ensures removed/unselected wizard keywords cannot
+        // leak into the Google Ads readiness query.
+        await tx.keyword.updateMany({
+          where: { userId, campaignId: { in: campaignIds } },
+          data: { isSelected: false },
+        });
         const existingByIdentity = new Map<string, typeof existing>();
         for (const row of existing) {
           if (!row.campaignId) continue;

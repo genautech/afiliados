@@ -4,6 +4,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
+import { getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
+import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
+import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,10 +49,10 @@ export async function POST(request: NextRequest) {
       let loopEnabled = campaign.loopEnabled;
 
       if (gadsData.status === 'PAUSED') {
-        localStatus = 'PAUSADO';
+        localStatus = 'PAUSADA';
         loopEnabled = false;
-      } else if (gadsData.status === 'ENABLED' && campaign.status === 'PAUSADO') {
-        localStatus = 'EM_TESTE';
+      } else if (gadsData.status === 'ENABLED') {
+        localStatus = 'ATIVA';
       }
 
       // Atualizar local
@@ -104,6 +108,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         campaign: updatedCampaign,
+        launchState: deriveCampaignLaunchState(updatedCampaign),
         keywordsUpdated,
         message: 'Dados importados do Google Ads com sucesso.',
       });
@@ -145,13 +150,42 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Nenhuma alteração válida para enviar.' }, { status: 400 });
       }
 
-      const res = await mutateGoogleCampaign(userId, gadsId, pushUpdates);
+      let statusCapability;
+      let budgetCapability;
+      const authorization = authorizeMutation(
+        body?.authorization,
+        'MUTATE_CAMPAIGN',
+        campaign.id,
+        String(campaign.updatedAt.getTime()),
+        userId,
+        campaign.userId,
+      );
+      const adsConfig = await getGoogleAdsConfig(userId);
+      if (!adsConfig) return NextResponse.json({ error: 'Configuração do Google Ads não encontrada' }, { status: 422 });
+      const issueCapability = (operation: 'mutateGoogleCampaign.status' | 'mutateGoogleCampaign.budget') => {
+        const result = assertMutationAllowed({
+          operation,
+          customerId: adsConfig.customerId,
+          isMock: isMockMode(adsConfig),
+          confirmed: authorization.operation === 'MUTATE_CAMPAIGN',
+        });
+        if (!result.allowed) throw new Error(`Mutação bloqueada pelo guard: ${result.reason}`);
+        return result.capability;
+      };
+      if (pushUpdates.status) statusCapability = issueCapability('mutateGoogleCampaign.status');
+      if (pushUpdates.budgetDaily !== undefined) budgetCapability = issueCapability('mutateGoogleCampaign.budget');
+
+      const res = await mutateGoogleCampaign(userId, gadsId, pushUpdates, { status: statusCapability, budget: budgetCapability });
 
       // Atualiza local se enviou com sucesso
       const updatedCampaign = await prisma.campaign.update({
         where: { id: campaignId },
         data: {
-          status: updates.status || campaign.status,
+          status: updates.status === 'ATIVO' || updates.status === 'EM_TESTE'
+            ? 'ATIVA'
+            : updates.status === 'PAUSADO' || updates.status === 'KILL'
+              ? 'PAUSADA'
+              : updates.status || campaign.status,
           budgetDaily: updates.budgetDaily !== undefined ? Number(updates.budgetDaily) : campaign.budgetDaily,
           loopEnabled: updates.status === 'PAUSADO' ? false : campaign.loopEnabled,
         },
@@ -170,6 +204,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         campaign: updatedCampaign,
+        launchState: deriveCampaignLaunchState(updatedCampaign),
         message: `Sincronização enviada ao Google Ads: ${res.log}.`,
       });
     }
@@ -177,6 +212,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Direção de sincronização inválida.' }, { status: 400 });
   } catch (err: any) {
     console.error('Google Ads Sync error:', err);
-    return NextResponse.json({ error: err?.message || 'Erro interno na sincronização.' }, { status: 500 });
+    const status = err?.message?.startsWith('Falha de autorização') ? 400 : 500;
+    return NextResponse.json({ error: err?.message || 'Erro interno na sincronização.' }, { status });
   }
 }
