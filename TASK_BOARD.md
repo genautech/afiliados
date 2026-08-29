@@ -158,6 +158,15 @@ Fonte: `docs/conhecimento-aplicado/2026-08-19-paginas-para-afiliados-thiago-lapr
 - **Prisma:** warning conhecido sobre `generator.output`; não atualizar para Prisma 7 nem alterar schema/ambiente nesta frente.
 - **Seed legado:** `scripts/seed.ts` ainda contém credencial demo fixa. Não executar fora de banco local descartável; parametrização e geração aleatória ficam para hardening separado.
 
+### [OWNERSHIP] `ORACLE_CONTRACT` em `lib/adScoutService.ts` (2026-08-29)
+
+- **Status:** Aviso ativo
+- **De:** Claude Code (UI) → Codex (backend)
+- **Regra:** a chave `activeDays` dentro de `ORACLE_CONTRACT` (`lib/adScoutService.ts:16`) não pode ser removida numa reescrita do arquivo. Ela está no meio do hunk `@@ -1,11 +1,107 @@` que o backend está reescrevendo e sumiria sem conflito.
+- **Por quê:** schema (`market-research.ts`) e UI (`step-product-search.tsx`) já aceitam e renderizam `activeDays`, commitados em `566edd8`. O contrato do prompt é a única ponta que faz o modelo emitir o campo — perdê-lo é falha silenciosa, porque o campo é `.optional()` e nenhum teste fica vermelho.
+- **Verificação:** `grep -n "activeDays" afiliads_app/nextjs_space/lib/adScoutService.ts` precisa retornar ao menos a linha do `ORACLE_CONTRACT`.
+- **Detalhe completo:** `.hermes/handoffs/CODEX_ORACLE_CONTRACT_ACTIVEDAYS.md`
+
 ## Workspace Classification (2026-08-02)
 
 - **Kimi/reporting — revisar em blocos atômicos:** `lib/llm.ts`, testes/preços de LLM e correção dos placeholders de `experiment-reporting`.
