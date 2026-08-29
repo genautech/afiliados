@@ -3,6 +3,7 @@ import { createGoogleCampaign, getGoogleAdsConfig, isMockMode } from './google-a
 import { assertMutationAllowed } from './google-ads/mutation-guard';
 import { checkGoogleAdsReadiness } from './google-ads/readiness';
 import { generateRsaCopy } from './rsa';
+import { evaluateClaimGate, type ClaimGateRow } from './subsidios/ebook-os/claim-gate';
 
 export type LaunchCheckpoint =
   | 'DRAFT'
@@ -48,6 +49,33 @@ export async function executeLaunchSaga(
 
   if (!campaign) {
     throw new Error('Campaign not found');
+  }
+
+  // Gate de claims (EBOOK-OS): uma campanha não sobe com afirmação que a operação
+  // não sustenta. Só a versão mais recente do ledger conta — versões antigas são
+  // histórico, não contrato vigente. bypassReadiness não libera este gate: ele
+  // existe para pular checagem de conta, não para publicar claim proibida.
+  const claimVersion = await prisma.claimLedgerEntry.aggregate({
+    where: { campaignId, userId },
+    _max: { version: true },
+  });
+  if (claimVersion._max.version !== null) {
+    const claims = await prisma.claimLedgerEntry.findMany({
+      where: { campaignId, userId, version: claimVersion._max.version },
+      select: { id: true, claim: true, status: true, source: true, allowedChannels: true },
+    });
+    const gate = evaluateClaimGate(claims as unknown as ClaimGateRow[]);
+    if (!gate.allowed) {
+      logs.push(`Claim gate bloqueou o lançamento: ${gate.issues.length} problema(s)`);
+      for (const issue of gate.issues) logs.push(`  [${issue.code}] ${issue.message}`);
+      return {
+        success: false,
+        checkpoint: (campaign.launchCheckpoint as LaunchCheckpoint) || 'DRAFT',
+        logs,
+        error: `Ledger de claims reprovado: ${gate.issues.map((i) => i.message).join('; ')}`,
+      };
+    }
+    logs.push(`Claim gate aprovado (${claims.length} claim(s), versão ${claimVersion._max.version})`);
   }
 
   // Idempotency check:

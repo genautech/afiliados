@@ -19,6 +19,10 @@ vi.mock('../prisma', () => ({
     campaignDecision: {
       create: vi.fn(),
     },
+    claimLedgerEntry: {
+      aggregate: vi.fn().mockResolvedValue({ _max: { version: null } }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     integration: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -44,6 +48,55 @@ vi.mock('../google-ads/mutation-guard', () => ({
 describe('Campaign Launch Saga', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks nao apaga implementacao: sem ledger por padrao, cada teste
+    // que quiser exercitar o gate reprograma estes dois.
+    (prisma.claimLedgerEntry.aggregate as any).mockResolvedValue({ _max: { version: null } });
+    (prisma.claimLedgerEntry.findMany as any).mockResolvedValue([]);
+  });
+
+  it('blocks launch when the claim ledger has a forbidden claim in copy', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({
+      id: 'campaign-claims',
+      userId: 'user-1',
+      platform: 'ClickBank',
+      launchCheckpoint: 'DRAFT',
+      keywords: [],
+    });
+    (prisma.claimLedgerEntry.aggregate as any).mockResolvedValue({ _max: { version: 2 } });
+    (prisma.claimLedgerEntry.findMany as any).mockResolvedValue([
+      { id: 'c1', claim: 'Cura em 7 dias', status: 'PROIBIDO', source: null, allowedChannels: ['landing'] },
+    ]);
+
+    const result = await executeLaunchSaga('campaign-claims', 'user-1', { isMockMode: true });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Ledger de claims reprovado');
+    expect(createGoogleCampaign).not.toHaveBeenCalled();
+    expect(prisma.claimLedgerEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ version: 2 }) }),
+    );
+  });
+
+  it('does not let bypassReadiness skip the claim gate', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({
+      id: 'campaign-claims',
+      userId: 'user-1',
+      platform: 'ClickBank',
+      launchCheckpoint: 'DRAFT',
+      keywords: [],
+    });
+    (prisma.claimLedgerEntry.aggregate as any).mockResolvedValue({ _max: { version: 1 } });
+    (prisma.claimLedgerEntry.findMany as any).mockResolvedValue([
+      { id: 'c1', claim: 'Ganho garantido', status: 'INFERENCIA', source: null, allowedChannels: ['google-ads'] },
+    ]);
+
+    const result = await executeLaunchSaga('campaign-claims', 'user-1', {
+      isMockMode: true,
+      bypassReadiness: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(createGoogleCampaign).not.toHaveBeenCalled();
   });
 
   it('should transition through checkpoints to SUCCESS during unified parallel launch', async () => {
