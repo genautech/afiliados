@@ -1,0 +1,114 @@
+# Copie para offer-architecture.yaml e substitua somente com dados autorizados.
+# Preserve PENDENTE quando uma decisão ou evidência ainda não existir.
+
+schema_version: "1.0"
+status: BLOQUEADO_POR_PENDENCIAS
+human_approval: PENDENTE
+
+scope:
+  workspace: .
+  ownership: produto-proprio-marca-propria
+  level: PRODUTO
+  objective: PENDENTE
+  channel: PENDENTE
+  campaign_operation: false
+  publication_authorized: false
+
+brand_level:
+  name: <marca>
+  role: PENDENTE
+  source_refs: []
+  used_as_sales_argument: false
+
+product_level:
+  id: PENDENTE
+  name: PENDENTE
+  version: PENDENTE
+  format: PENDENTE
+  audience: PENDENTE
+  context: PENDENTE
+  urgent_pain: PENDENTE
+  awareness_level: PENDENTE
+  transformation:
+    initial_state: PENDENTE
+    final_state: PENDENTE
+    mechanism: PENDENTE
+    first_win: PENDENTE
+    limit: PENDENTE
+
+inputs:
+  briefing:
+    path: PENDENTE
+    status: PENDENTE
+  claim_ledger:
+    path: PENDENTE
+    status: PENDENTE
+  commercial_contracts: []
+
+offer:
+  primary_promise:
+    text: PENDENTE
+    status: PENDENTE
+    source_refs: []
+    limit: PENDENTE
+  mechanism:
+    text: PENDENTE
+    status: PENDENTE
+    source_refs: []
+  deliverables:
+    status: PENDENTE
+    source_refs: []
+    items: []
+  observable_outcomes:
+    status: PENDENTE
+    source_refs: []
+    items: []
+  proof:
+    status: PENDENTE
+    items: []
+  terms:
+    price:
+      value: PENDENTE
+      currency: PENDENTE
+      source_refs: []
+    payment_conditions:
+      value: PENDENTE
+      source_refs: []
+    guarantee:
+      value: PENDENTE
+      source_refs: []
+    bonuses:
+      status: PENDENTE
+      source_refs: []
+      items: []
+    anchoring:
+      status: PENDENTE
+      reference_value: PENDENTE
+      source_refs: []
+    urgency_or_scarcity:
+      status: PENDENTE
+      value: PENDENTE
+      source_refs: []
+  objections: []
+  exclusions_and_non_promises: []
+  cta:
+    text: PENDENTE
+    action: PENDENTE
+    source_refs: []
+
+evidence_matrix: []
+# Cada item:
+# - element: primary_promise
+#   value: PENDENTE
+#   status: PENDENTE
+#   source_refs: []
+#   claim_ids: []
+#   evidence_limit: PENDENTE
+
+pending_items: []
+blocking_reasons: []
+
+review:
+  responsible_human: PENDENTE
+  decision: PENDENTE
+  notes: PENDENTE

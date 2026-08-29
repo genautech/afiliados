@@ -60,7 +60,11 @@ __pycache__/
 /SkillClaw/
 
 # artefatos locais de agentes/ferramentas
-.claude/
+.claude/settings.json
+.claude/settings.local.json
+.claude/history
+.claude/plans/
+.claude/logs/
 .firecrawl/
 **/.hallmark/
 afiliads_app/nextjs_space/tsconfig.tsbuildinfo
