@@ -1,0 +1,92 @@
+schema: 1
+gerado_em: 2026-08-29
+origem_repo:
+  path: /Users/genautech/infoprod
+  versionado: false
+  nota: O git de ~/infoprod rastreia apenas prospera-public. O corpo copiado era
+    arquivo solto, sem commit — não há SHA de origem. A procedência é o hash do
+    conteúdo abaixo.
+regra: Toda unidade precisa estar declarada em scripts/subsidios-manifest.ts.
+  Mudou o conteúdo? rode `yarn subsidios:manifest` e revise o diff do hash no
+  PR.
+unidades:
+  - destino: frameworks/ebook-os
+    origem: infoprod/frameworks/prospera-ebook-os
+    natureza: Schemas de produção e validador (product-brief, claim-ledger,
+      experiment-card, RACI)
+    nivel: metodo
+    arquivos: 72
+    hash: sha256:4d7cf69ea5f8a630f37fad9ce81b25613ab9f54b451f070a76dff9897e751576
+  - destino: frameworks/agentes-referencia
+    origem: infoprod/.agents/agents
+    natureza: Definições de agente em prosa; fonte da doutrina injetada nos prompts
+    nivel: prompt
+    arquivos: 6
+    hash: sha256:955e77ee2a6e3664e8c7950729f24cafe9dbd13057fd3fbcc73bca8de96abd79
+  - destino: frameworks/human-dna
+    origem: infoprod/protegido-ai-assistant/frameworks/Human DNA
+    natureza: Método de extração de DNA de marca a partir de fontes reais
+    nivel: metodo
+    arquivos: 38
+    hash: sha256:dc5844226a51d4b32318a83c9eab2ca54a41d27e88849ea98947b73b6aa9cd38
+  - destino: frameworks/human-carousel
+    origem: infoprod/protegido-ai-assistant/frameworks/Human Carroussel
+    natureza: Método de carrossel social
+    nivel: metodo
+    arquivos: 17
+    hash: sha256:74bc682b8b47ad7f74b0e0eeb340bf1a9557e77f4ce89607affc7e0de7e23c4c
+  - destino: frameworks/human-images
+    origem: infoprod/protegido-ai-assistant/frameworks/Human Images
+    natureza: Direção de imagem e prompt de geração
+    nivel: metodo
+    arquivos: 1
+    hash: sha256:b5ed0577bd1b77c8da8afb9196f29b7da8d4b7544131cf512511aaa57825256d
+  - destino: frameworks/human-motion
+    origem: infoprod/protegido-ai-assistant/frameworks/Human Motion
+    natureza: Vídeo curto e motion
+    nivel: metodo
+    arquivos: 1
+    hash: sha256:49cffd2948e93187873cc1c71dfeb14256b2b5df2be9ccbf108705c2d4442968
+  - destino: frameworks/human-social
+    origem: infoprod/protegido-ai-assistant/frameworks/Human Social
+    natureza: Distribuição social
+    nivel: metodo
+    arquivos: 6
+    hash: sha256:b105dd0f5ee5e7c48d1364a0dc084a273c9662d07877354695c10575623b8680
+  - destino: frameworks/human-cinematic
+    origem: infoprod/protegido-ai-assistant/frameworks/Human Cinematic
+    natureza: Peça cinematográfica
+    nivel: metodo
+    arquivos: 22
+    hash: sha256:b74660de3e546cc424706f27ab7be871cea201ed31d11fdf9f82a6e0b0d95ae3
+  - destino: frameworks/human-skills
+    origem: infoprod/protegido-ai-assistant/frameworks/Skills
+    natureza: Engine de skills
+    nivel: metodo
+    arquivos: 8
+    hash: sha256:76dd87d143ab220802acdbde91ac5ebfc4ae7f51fb23e397a547552262ae152c
+  - destino: .claude/skills
+    origem: infoprod/.agents/skills
+    natureza: Skills de produção de peça, com prefixo afiliads-
+    nivel: prompt
+    arquivos: 66
+    hash: sha256:25585acfac365235691ee43956daeb41d2608301d3e0cd6f0ec0a3683bca236e
+  - destino: subsidios/catalogo
+    origem: afiliados/lib/wizard-data.ts + lib/knowledge-data.ts (extração local)
+    natureza: Verticais, operação, glossário, manual e ajuda de campo, com
+      procedência por valor
+    nivel: catalogo
+    arquivos: 5
+    hash: sha256:e3a93d1dc2920680b76f2dafb88880440d640feab45df35fb31a07a04a8e1423
+  - destino: brandkit
+    origem: afiliados (criado aqui, em branco)
+    natureza: Template de identidade por campanha; nunca contém marca de terceiro
+    nivel: template
+    arquivos: 4
+    hash: sha256:872b5bf91c62c54f9feb26d395ecf25e12f265a56ab45942b05fac30f9446c83
+  - destino: research/youtube-lowticket-2026-08-26
+    origem: YouTube (URLs citadas no README da pasta)
+    natureza: Transcrições e insights de fonte externa, com âncora
+    nivel: dado
+    arquivos: 12
+    hash: sha256:93f81b9be990c1c9c018b26ccc4f6392043df2d29f4ae929ab151cb25951cf9a

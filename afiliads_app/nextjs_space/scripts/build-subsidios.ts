@@ -2,14 +2,14 @@
 // Lê subsidios/catalogo/*.yaml, valida contra lib/subsidios/schema.ts e gera
 // lib/generated/catalogo.ts. O app nunca lê YAML em runtime: no build da Vercel
 // o diretório subsidios/ está fora do bundle. O módulo gerado é o contrato.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { z } from 'zod';
 // Roda sob tsx (script subsidios:build), então o contrato vem do próprio schema TS —
 // não existe uma segunda cópia dele para sair de sincronia.
-import { CatalogoVerticaisSchema, CatalogoOperacaoSchema, GlossarioSchema, ManualSchema, AjudaCamposSchema } from '../lib/subsidios/schema';
+import { CatalogoVerticaisSchema, CatalogoOperacaoSchema, GlossarioSchema, ManualSchema, AjudaCamposSchema, OrigemDadoSchema } from '../lib/subsidios/schema';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = join(here, '..');
@@ -142,3 +142,28 @@ console.log(
   `catalogo-conhecimento.ts gerado: ${glossario.termos.length} termos, ` +
   `${manual.secoes.length} seções de manual, ${ajuda.campos.length} campos de ajuda`,
 );
+
+// --- Gate de procedência dos dados de campanha (subsidios/dados/**). ---
+const dadosDir = join(app, '../../subsidios/dados');
+if (existsSync(dadosDir)) {
+  const pendentes: string[] = [];
+  const anda = (d: string) => {
+    for (const nome of readdirSync(d)) {
+      const p = join(d, nome);
+      if (statSync(p).isDirectory()) { anda(p); continue; }
+      if (!nome.endsWith('.yaml') || nome.endsWith('.origem.yaml')) continue;
+      const irmao = p.replace(/\.yaml$/, '.origem.yaml');
+      if (!existsSync(irmao)) { pendentes.push(`${p}: falta ${nome.replace(/\.yaml$/, '.origem.yaml')}`); continue; }
+      const r = OrigemDadoSchema.safeParse(parse(readFileSync(irmao, 'utf8')));
+      if (!r.success) {
+        for (const i of r.error.issues) pendentes.push(`${irmao}: ${i.path.join('.') || '(raiz)'} — ${i.message}`);
+      }
+    }
+  };
+  anda(dadosDir);
+  if (pendentes.length) {
+    console.error('✗ dado sem procedência:');
+    for (const p of pendentes) console.error('  ' + p);
+    process.exit(1);
+  }
+}

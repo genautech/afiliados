@@ -121,3 +121,29 @@ export const AjudaCamposSchema = z.object({
 export type Glossario = z.infer<typeof GlossarioSchema>;
 export type Manual = z.infer<typeof ManualSchema>;
 export type AjudaCampos = z.infer<typeof AjudaCamposSchema>;
+
+// --- Dados de campanha em subsidios/dados/ (Fase G alimenta; a regra vale já). ---
+// Todo arquivo de dado precisa de um .origem.yaml irmão. Sem isso, número entra
+// no sistema sem quem responda por ele — que é exatamente o que o catálogo com
+// procedência existe para impedir.
+export const OrigemDadoSchema = z.object({
+  schema: z.literal(1),
+  fonte: z.enum(['dado-proprio', 'fonte-externa', 'heuristica-interna']),
+  // dado-proprio: conta, período e amostra. fonte-externa: url e data de acesso.
+  conta: z.string().min(1).optional(),
+  periodo: z.string().min(1).optional(),
+  amostra: z.string().min(1).optional(),
+  url: z.string().url().optional(),
+  acessado_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  responsavel: z.string().min(1),
+  nota: z.string().optional(),
+}).superRefine((v, ctx) => {
+  if (v.fonte === 'dado-proprio' && (!v.conta || !v.periodo || !v.amostra)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom,
+      message: 'fonte=dado-proprio exige conta, periodo e amostra' });
+  }
+  if (v.fonte === 'fonte-externa' && (!v.url || !v.acessado_em)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom,
+      message: 'fonte=fonte-externa exige url e acessado_em' });
+  }
+});

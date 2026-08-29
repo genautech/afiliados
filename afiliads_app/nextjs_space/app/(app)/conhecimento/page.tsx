@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BookOpen, Search, AlertTriangle, Target, BarChart3, FileText, CheckSquare, Lightbulb, GraduationCap, HelpCircle, Bot } from 'lucide-react';
+import { BookOpen, Search, AlertTriangle, Target, BarChart3, FileText, CheckSquare, Lightbulb, GraduationCap, HelpCircle, Bot, FileSearch } from 'lucide-react';
 import { GLOSSARY, SYSTEM_MANUAL } from '@/lib/knowledge-data';
 import { AGENT_REGISTRY } from '@/lib/agents';
+import { CATALOGO_VERTICAIS } from '@/lib/generated/catalogo';
+import { AGENT_DOCTRINE } from '@/lib/generated/agent-doctrine';
 
 const learningTypeBadge: Record<string, { label: string; cls: string }> = {
   teste: { label: 'Teste Kill/Scale', cls: 'bg-purple-500/20 text-purple-300' },
@@ -192,6 +194,9 @@ export default function ConhecimentoPage() {
               <TabsTrigger value="manual" className="text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-400 gap-1">
                 <HelpCircle className="h-3 w-3" /> Manual
               </TabsTrigger>
+              <TabsTrigger value="procedencia" className="text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-400 gap-1">
+                <FileSearch className="h-3 w-3" /> Procedência
+              </TabsTrigger>
             </TabsList>
             {Object.entries(KNOWLEDGE_BASE).map(([key, section]) => (
               <TabsContent key={key} value={key} className="space-y-4">
@@ -271,13 +276,75 @@ export default function ConhecimentoPage() {
               ))}
               <Card className="bg-[#1e293b] border-[#334155]">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base text-white flex items-center gap-2"><Bot className="h-4 w-4 text-green-400" /> Os 9 agentes, em uma linha cada</CardTitle>
+                  <CardTitle className="text-base text-white flex items-center gap-2"><Bot className="h-4 w-4 text-green-400" /> Os agentes, em uma linha cada</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {AGENT_REGISTRY.map(a => (
                     <div key={a.id} className="flex items-start gap-2 text-sm">
                       <span className="text-green-400 font-medium shrink-0">{a.name}:</span>
                       <span className="text-slate-300">{a.role} — em {a.pageLabel}.</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Procedência — de onde vem cada número que o sistema usa */}
+            <TabsContent value="procedencia" className="space-y-4">
+              <Card className="bg-[#1e293b] border-[#334155]">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-white">CVR por vertical</CardTitle>
+                  <p className="text-xs text-slate-400 pt-1">
+                    Esses valores entram no cálculo de EPC de break-even e de CPC máximo. Cada um
+                    declara de onde veio: heurística inicial, dado medido em campanha própria, ou
+                    fonte externa com URL. Editável em <span className="font-mono">subsidios/catalogo/verticais.yaml</span> —
+                    o build recusa número sem origem.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {CATALOGO_VERTICAIS.verticais
+                    .filter(v => filterContent(`${v.label} ${v.cvr_default.origem} ${v.cvr_default.nota ?? ''}`))
+                    .map(v => (
+                    <div key={v.id} className="flex items-start justify-between gap-3 text-sm border-b border-[#334155] pb-2 last:border-0">
+                      <div className="min-w-0">
+                        <span className="text-white font-medium">{v.label}</span>
+                        <span className="text-slate-400"> — CVR {v.cvr_default.valor}%</span>
+                        {v.cvr_default.nota && (
+                          <p className="text-xs text-slate-500 mt-0.5">{v.cvr_default.nota}</p>
+                        )}
+                        {v.cvr_default.amostra && (
+                          <p className="text-xs text-slate-500 mt-0.5">Amostra: {v.cvr_default.amostra}</p>
+                        )}
+                      </div>
+                      <Badge className={
+                        v.cvr_default.origem === 'dado-proprio' ? 'bg-green-600 shrink-0'
+                        : v.cvr_default.origem === 'fonte-externa' ? 'bg-blue-600 shrink-0'
+                        : 'bg-slate-600 shrink-0'
+                      }>
+                        {v.cvr_default.origem}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card className="bg-[#1e293b] border-[#334155]">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-white">Doutrina dos agentes</CardTitle>
+                  <p className="text-xs text-slate-400 pt-1">
+                    Estes agentes não trazem só o prompt escrito no código: o build injeta as regras
+                    do método em <span className="font-mono">frameworks/agentes-referencia/*.agent.md</span>.
+                    Mudar o documento muda o comportamento do agente — sem os dois saírem de sincronia.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {AGENT_DOCTRINE.filter(d => filterContent(`${d.name} ${d.binds.join(' ')}`)).map(d => (
+                    <div key={d.id} className="text-sm border-b border-[#334155] pb-2 last:border-0">
+                      <span className="text-white font-medium">{d.name}</span>
+                      <span className="text-slate-400">
+                        {' '}— {d.doctrine.length} seção(ões) de regra
+                        {d.binds.length > 0 ? `, aplicada a: ${d.binds.join(', ')}` : ', ainda sem agente do app ligado'}
+                      </span>
                     </div>
                   ))}
                 </CardContent>
