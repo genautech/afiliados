@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { CompetitorItemSchema } from '@/lib/validations/market-research';
 import {
   SCOUT_STAGES,
+  adMaturity,
   scoutStageIndex,
   saturationFromAdCount,
   isHighRisk,
@@ -57,5 +59,36 @@ describe('classificação de risco de claim', () => {
     expect(riskTone('HIGH')).toBe(RISK_TONE.HIGH);
     expect(riskTone('MEDIUM')).toBe(RISK_TONE.MEDIUM);
     expect(riskTone('qualquer coisa')).toBe(RISK_TONE.LOW);
+  });
+});
+
+describe('activeDays', () => {
+  const base = { name: 'Concorrente X', url: 'https://x.com/vsl', price: 47, angle: 'headline' };
+
+  it('é aceito pelo schema como inteiro não negativo', () => {
+    expect(CompetitorItemSchema.parse({ ...base, activeDays: 84 }).activeDays).toBe(84);
+    expect(CompetitorItemSchema.parse({ ...base, activeDays: 0 }).activeDays).toBe(0);
+  });
+
+  it('continua opcional: fonte sem data de início não quebra o parse', () => {
+    expect(CompetitorItemSchema.parse(base).activeDays).toBeUndefined();
+  });
+
+  it('recusa valor quebrado em vez de deixar a UI renderizar lixo', () => {
+    expect(CompetitorItemSchema.safeParse({ ...base, activeDays: -3 }).success).toBe(false);
+    expect(CompetitorItemSchema.safeParse({ ...base, activeDays: 2.5 }).success).toBe(false);
+    expect(CompetitorItemSchema.safeParse({ ...base, activeDays: '84' }).success).toBe(false);
+  });
+
+  it('mantém o strict: campo desconhecido segue rejeitado', () => {
+    expect(CompetitorItemSchema.safeParse({ ...base, activeDaysss: 84 }).success).toBe(false);
+  });
+
+  it('classifica a maturidade do anúncio pelo tempo no ar', () => {
+    expect(adMaturity(0)).toBe('novo');
+    expect(adMaturity(13)).toBe('novo');
+    expect(adMaturity(14)).toBe('validando');
+    expect(adMaturity(59)).toBe('validando');
+    expect(adMaturity(60)).toBe('consolidado');
   });
 });

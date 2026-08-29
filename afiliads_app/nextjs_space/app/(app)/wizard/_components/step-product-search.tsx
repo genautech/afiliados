@@ -23,12 +23,27 @@ import type {
   CompetitorItem,
 } from '@/lib/validations/market-research';
 
+/** `activeDays` é opcional no schema: fonte sem data de início entra sem histórico. */
+export type ScoutCompetitor = CompetitorItem;
+export type ScoutResult = AdScoutOracleOutput;
+
+export type AdMaturity = 'novo' | 'validando' | 'consolidado';
+
 /**
- * `activeDays` ainda não existe em CompetitorItemSchema (que é `.strict()`), então
- * chega opcional: a UI mostra o tempo no ar só quando o backend passar a enviá-lo.
+ * Tempo no ar é o proxy mais barato de anúncio que converte: ninguém paga 60 dias
+ * de mídia num criativo que não paga a conta.
  */
-export type ScoutCompetitor = CompetitorItem & { activeDays?: number };
-export type ScoutResult = Omit<AdScoutOracleOutput, 'competitors'> & { competitors: ScoutCompetitor[] };
+export function adMaturity(activeDays: number): AdMaturity {
+  if (activeDays < 14) return 'novo';
+  if (activeDays < 60) return 'validando';
+  return 'consolidado';
+}
+
+export const MATURITY_TONE: Record<AdMaturity, string> = {
+  novo: 'text-slate-400',
+  validando: 'text-amber-400',
+  consolidado: 'text-emerald-400',
+};
 
 /** Estágios reais do pipeline Firecrawl -> Meta -> Compliance. */
 export const SCOUT_STAGES = [
@@ -808,7 +823,12 @@ export function StepProductSearch({
                           {typeof comp.activeDays === 'number' && (
                             <div className="text-right">
                               <p className="font-mono text-[10px] uppercase text-slate-600">no ar</p>
-                              <p className="font-mono text-xs text-amber-400">{comp.activeDays}d</p>
+                              <p className={`font-mono text-xs ${MATURITY_TONE[adMaturity(comp.activeDays)]}`}>
+                                {comp.activeDays}d
+                              </p>
+                              <p className="font-mono text-[9px] text-slate-600">
+                                {adMaturity(comp.activeDays)}
+                              </p>
                             </div>
                           )}
                           <div className="text-right">

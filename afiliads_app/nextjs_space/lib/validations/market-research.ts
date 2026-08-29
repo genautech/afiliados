@@ -14,6 +14,9 @@ export const CompetitorItemSchema = z.object({
   url: z.string().url('A URL do concorrente deve ser um link válido.'),
   price: z.number().finite().nonnegative('O preço deve ser um valor numérico positivo.'),
   angle: z.string().min(1, 'O ângulo de vendas/headline do concorrente é obrigatório.'),
+  // Tempo no ar do anúncio, em dias. Opcional: nem toda fonte expõe a data de início,
+  // e um anúncio recém-detectado entra sem histórico.
+  activeDays: z.number().int().nonnegative('O tempo no ar deve ser um número inteiro de dias.').optional(),
 }).strict();
 export type CompetitorItem = z.infer<typeof CompetitorItemSchema>;
 
