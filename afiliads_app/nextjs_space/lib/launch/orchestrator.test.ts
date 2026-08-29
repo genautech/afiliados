@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   campaign: { findFirst: vi.fn(), update: vi.fn() },
-  channelLaunch: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+  channelLaunch: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   claimLedgerEntry: { aggregate: vi.fn(), findMany: vi.fn() },
   google: { preflight: vi.fn(), create: vi.fn(), compensate: vi.fn() },
   meta: { preflight: vi.fn(), create: vi.fn(), compensate: vi.fn() },
@@ -121,9 +121,25 @@ describe('executeLaunch', () => {
 
   it('corrida na mesma chave: P2002 no lock não vira criação duplicada', async () => {
     h.channelLaunch.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
+    h.channelLaunch.findFirst.mockResolvedValue({
+      channel: 'GOOGLE_ADS', status: 'FAILED', mode: 'MOCK',
+      externalIds: {}, error: 'falhou antes', logs: ['tentativa anterior'],
+    });
     const r = await executeLaunch(base);
     expect(h.google.create).not.toHaveBeenCalled();
     expect(h.meta.create).toHaveBeenCalledOnce();
+    // O canal travado pelo lock não some do painel: aparece com o que ficou gravado.
+    expect(r.channels.map(c => c.channel)).toEqual(['GOOGLE_ADS', 'META_ADS']);
+    const g = r.channels.find(c => c.channel === 'GOOGLE_ADS')!;
+    expect(g.status).toBe('FAILED');
+    expect(g.error).toBe('falhou antes');
+    expect(g.alreadyExisted).toBe(true);
+  });
+
+  it('P2002 com linha sumida não inventa canal no painel', async () => {
+    h.channelLaunch.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
+    h.channelLaunch.findFirst.mockResolvedValue(null);
+    const r = await executeLaunch(base);
     expect(r.channels.map(c => c.channel)).toEqual(['META_ADS']);
   });
 

@@ -195,7 +195,14 @@ export async function executeLaunch(input: LaunchInput): Promise<LaunchResult> {
       rowId = row.id;
     } catch (err: any) {
       if (err?.code === 'P2002') {
-        logs.push(`[${adapter.label}] já existe execução com essa chave; canal ignorado.`);
+        // Chave já usada neste canal. Não basta pular: o operador precisa ver o
+        // que aquela execução deixou, senão um replay parcial devolve painel
+        // vazio e um erro genérico. Reaproveita a linha existente como resultado.
+        logs.push(`[${adapter.label}] já existe execução com essa chave; devolvendo o resultado gravado.`);
+        const prev = await prisma.channelLaunch.findFirst({
+          where: { campaignId, channel: adapter.channel, idempotencyKey },
+        });
+        if (prev) outcomes.push({ ...toOutcome(prev), alreadyExisted: true });
         continue;
       }
       throw err;

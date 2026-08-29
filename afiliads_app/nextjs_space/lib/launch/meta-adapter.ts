@@ -122,6 +122,7 @@ async function create(ctx: ChannelContext): Promise<ChannelCreateResult> {
 
   let headline = ctx.overrides?.headlines?.[0];
   let description = ctx.overrides?.descriptions?.[0];
+  let rsaWarnings: string[] = [];
   if (!headline || !description) {
     const keyword = campaign.keywords?.[0]?.keyword ?? campaign.vertical ?? name;
     const rsa = await generateRsaCopy(ctx.userId, {
@@ -129,8 +130,12 @@ async function create(ctx: ChannelContext): Promise<ChannelCreateResult> {
     });
     headline = headline || rsa.titles?.[0];
     description = description || rsa.descriptions?.[0];
+    rsaWarnings = rsa.warnings ?? [];
   }
-  if (!headline || !description) throw new ChannelLaunchError('Sem copy para o anúncio do Meta.', 'NO_COPY');
+  if (!headline || !description) {
+    const motivo = rsaWarnings.length ? ` Motivo: ${rsaWarnings.join(' | ')}` : '';
+    throw new ChannelLaunchError(`Sem copy para o anúncio do Meta.${motivo}`, 'NO_COPY');
+  }
 
   // Criação em três passos. Cada ID é persistido assim que existe, para que
   // uma falha no passo seguinte deixe rastro compensável em vez de órfão.

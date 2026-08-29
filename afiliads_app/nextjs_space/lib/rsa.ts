@@ -63,13 +63,17 @@ Lembre: títulos max 30 chars, descrições max 90 chars. JSON puro.`;
   try {
     const res = await callAgent(userId, {
       agent: 'cro-copywriter', systemPrompt: SYSTEM_PROMPT, userPrompt,
+      // Sem json:true o callAgent devolve res.data como o texto cru e o
+      // validate abaixo nunca roda — quem consome recebia uma string onde
+      // esperava { titles, descriptions }.
+      json: true,
       campaignId: args.campaignId,
       campaignTarget: args.campaignId
         ? { kind: 'campaign', campaignId: args.campaignId }
         : { kind: 'non-campaign' },
       validate: validateRsa,
     });
-    result = res.data;
+    result = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
   } catch (e: any) {
     result = { titles: [], descriptions: [], warnings: [e?.message ?? 'Erro na geração'] };
   }

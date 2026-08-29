@@ -97,6 +97,7 @@ async function create(ctx: ChannelContext): Promise<ChannelCreateResult> {
 
   let headlines = ctx.overrides?.headlines;
   let descriptions = ctx.overrides?.descriptions;
+  let rsaWarnings: string[] = [];
   if (!headlines?.length || !descriptions?.length) {
     const rsa = await generateRsaCopy(ctx.userId, {
       campaignId: ctx.campaignId,
@@ -106,9 +107,13 @@ async function create(ctx: ChannelContext): Promise<ChannelCreateResult> {
     });
     headlines = rsa.titles;
     descriptions = rsa.descriptions;
+    rsaWarnings = rsa.warnings ?? [];
   }
   if (!headlines?.length || !descriptions?.length) {
-    throw new ChannelLaunchError('Não foi possível gerar os anúncios (RSA). Gere em /rsa e reenvie.', 'NO_COPY');
+    // generateRsaCopy engole a exceção e devolve o motivo em warnings; sem
+    // repassar isso o operador vê "não foi possível" e não sabe o que corrigir.
+    const motivo = rsaWarnings.length ? ` Motivo: ${rsaWarnings.join(' | ')}` : '';
+    throw new ChannelLaunchError(`Não foi possível gerar os anúncios (RSA). Gere em /rsa e reenvie.${motivo}`, 'NO_COPY');
   }
 
   if (forbiddenTerms.length) {
