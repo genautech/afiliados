@@ -8,6 +8,13 @@ export type ClaimRiskLevel = z.infer<typeof ClaimRiskLevel>;
 export const ProductTypeEnum = z.enum(['AFFILIATE', 'PROPRIETARY_LOW_TICKET', 'MENTORSHIP']);
 export type ProductTypeEnum = z.infer<typeof ProductTypeEnum>;
 
+// Meta Ads Library aceita ALL para pesquisa global ou o código ISO de um país.
+export const MarketResearchCountrySchema = z.string()
+  .trim()
+  .toUpperCase()
+  .refine((value) => value === 'ALL' || /^[A-Z]{2}$/.test(value), 'País inválido: use ALL ou um código ISO de 2 letras.');
+export type MarketResearchCountry = z.infer<typeof MarketResearchCountrySchema>;
+
 // Concorrente mapeado durante a pesquisa de mercado.
 export const CompetitorItemSchema = z.object({
   name: z.string().min(1, 'O nome do concorrente é obrigatório.'),
@@ -48,5 +55,6 @@ export const MarketResearchRequestSchema = z.object({
   productResearchId: z.string().optional(),
   campaignId: z.string().optional(),
   productType: ProductTypeEnum,
+  country: MarketResearchCountrySchema.default('BR'),
 }).strict();
 export type MarketResearchRequest = z.infer<typeof MarketResearchRequestSchema>;

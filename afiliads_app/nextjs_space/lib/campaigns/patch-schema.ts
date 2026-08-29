@@ -54,6 +54,9 @@ export const patchCampaignSchema = z.object({
   utmCampaign: z.string().max(255).optional(),
   utmString: z.string().max(2048).optional(),
   testDuration: z.string().max(255).optional(),
+  productType: z.string().max(255).optional(),
+  draftData: z.union([z.record(z.any()), z.null()]).optional(),
+  activeData: z.union([z.record(z.any()), z.null()]).optional(),
 }).strict();
 
 
@@ -67,6 +70,11 @@ export function validateCampaignPatch(body: unknown, currentStatus: string) {
   }
 
   const data = result.data;
+
+  // Atualização de draftData/activeData permitida apenas no status RASCUNHO
+  if ((data.draftData !== undefined || data.activeData !== undefined) && currentStatus !== 'RASCUNHO') {
+    throw new Error('Atualização de draftData/activeData permitida apenas no status RASCUNHO');
+  }
 
   // Regra explícita de status
   if (data.status && data.status !== currentStatus) {

@@ -11,6 +11,9 @@ export interface ModelPrice {
 // Chave = fragmento do nome do modelo (match por inclusão, do mais específico
 // para o mais genérico). Modelos Ollama (gpt-oss local/cloud) custam $0.
 const MODEL_PRICES: Array<{ match: string; price: ModelPrice }> = [
+  // Meta Muse Spark via OpenRouter (preços publicados pelo roteador)
+  { match: 'meta/muse-spark-1.2', price: { inputPer1M: 1.25, outputPer1M: 4.25 } },
+  { match: 'llama-3-70b-instruct', price: { inputPer1M: 0.9, outputPer1M: 0.9 } },
   // Anthropic
   { match: 'claude-opus-4-8', price: { inputPer1M: 5, outputPer1M: 25 } },
   { match: 'claude-opus-4-7', price: { inputPer1M: 5, outputPer1M: 25 } },

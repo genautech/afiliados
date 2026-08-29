@@ -102,6 +102,7 @@
     "formik": "2.4.5",
     "framer-motion": "10.18.0",
     "google-auth-library": "^10.9.0",
+    "google-trends-api": "^4.9.2",
     "gray-matter": "4.0.3",
     "input-otp": "1.2.4",
     "jotai": "2.6.0",
@@ -141,8 +142,5 @@
     "> 0.5%",
     "last 2 versions",
     "not dead"
-  ],
-  "overrides": {
-    "@typescript-eslint/parser": "6.21.0"
-  }
+  ]
 }

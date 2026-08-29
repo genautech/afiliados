@@ -18,7 +18,7 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   images: { unoptimized: true },
-  transpilePackages: ['lib/google-ads-experiments/orchestration', 'app/api/google-ads/experiments/route'],
+  transpilePackages: [],
   webpack: (config, { isServer, nextRuntime }) => {
     if (isServer) {
       config.externals = [...(config.externals || []), 'google-auth-library', 'gaxios'];

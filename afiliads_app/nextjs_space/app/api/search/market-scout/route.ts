@@ -147,7 +147,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 404 });
     }
     console.error('[market-scout] POST error:', message);
-    return NextResponse.json({ error: 'Erro ao processar pesquisa de mercado' }, { status: 500 });
+    const status = message.startsWith('Credenciais ausentes') ? 503 : /Firecrawl|OpenRouter/.test(message) ? 502 : 500;
+    return NextResponse.json({ error: 'Erro ao processar pesquisa de mercado', details: message }, { status });
   }
 }
 
