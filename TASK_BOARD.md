@@ -24,6 +24,18 @@ This board tracks high-level tasks and coordination points between various agent
 
 ## Tasks in Progress
 
+### [TASK-17] Integração Real do Trend-Scout e Ad-Scout (Zero Mocks) (2026-08-29)
+
+- **Status:** Concluída (Fase 5 completa)
+- **Assigned:** Codex (Backend) + Claude (UI) + Hermes (Orquestração & Validação)
+- **Goal:** Eliminar todos os mocks, simulações e fallbacks de dados de produção do Trend Scout e Ad Scout. Integrar Google Trends real via biblioteca npm, remover geração simulada e assegurar falhas explícitas com status HTTP coerentes (502/503).
+- **Entregas:**
+    - `lib/trendScoutService.ts` (Implementado Google Trends nativo de 90 dias com cálculo estatístico real de slope e mitigação a falhas com `trendSlope: null`).
+    - `lib/adScoutService.ts` (Scraping de Meta Ads/Google real, sem mocks de concorrência ou domínios falsos; contrato Zod estrito de `activeDays` para LLM omitir adequadamente quando desconhecido).
+    - `lib/campaigns/patch-schema.ts` (Restrição rígida que impede mutações de `draftData`/`activeData` fora do status `RASCUNHO`, evitando race conditions).
+    - `app/api/search/market-scout/route.ts` (Atualizado para responder com erros HTTP transparentes e mapeamento correto de status).
+- **Validação:** Sincronização do banco local via `prisma db push` concluída; 787 de 787 testes Vitest passando; compilação de tipos (`tsc`) e build de produção Next.js aprovados e sem erros. Subido para o repositório remoto no branch `feature/kimi-code-integration`.
+
 ### [TASK-10] Rotas e gates de mutação (2026-08-25)
 
 - **Status:** Concluída
