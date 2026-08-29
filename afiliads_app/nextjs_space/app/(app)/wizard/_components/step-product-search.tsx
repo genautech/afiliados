@@ -14,7 +14,8 @@ import type { ProductType } from './step-product-type';
 import {
   Search, Bot, Loader2, AlertTriangle, CheckCircle2, ArrowLeft, ArrowRight,
   TrendingUp, Tag, ShieldAlert, Target, Link2, Key, HelpCircle,
-  Sparkles, Magnet, ArrowUpRight, DollarSign, Download
+  Sparkles, Magnet, ArrowUpRight, DollarSign, Download,
+  TrendingDown, Minus, KeyRound, ServerCrash, Inbox
 } from 'lucide-react';
 import { PLATFORMS_EXTENDED, VERTICALS, GEOS, CHANNELS, ExtendedPlatform } from '@/lib/wizard-data';
 import type {
@@ -77,6 +78,151 @@ export function toScoutCountry(geoId: string | null | undefined): string {
 
 export type ScoutMode = 'ads' | 'idea';
 
+export type TrendSlope = 'positive' | 'stable' | 'negative' | null;
+
+export const TREND_PRESENTATION: Record<
+  'positive' | 'stable' | 'negative' | 'unknown',
+  { icon: typeof TrendingUp; label: string; tone: string }
+> = {
+  positive: {
+    icon: TrendingUp,
+    label: 'Nicho em forte crescimento no Google Trends',
+    tone: 'text-emerald-400',
+  },
+  stable: {
+    icon: Minus,
+    label: 'Demanda consolidada e estável no Google Trends',
+    tone: 'text-amber-400',
+  },
+  negative: {
+    icon: TrendingDown,
+    label: 'Demanda em declínio no Google Trends',
+    tone: 'text-rose-400',
+  },
+  unknown: {
+    icon: HelpCircle,
+    label: 'Dados de tendência indisponíveis no momento',
+    tone: 'text-muted-foreground',
+  },
+};
+
+export function trendPresentation(slope: TrendSlope) {
+  return TREND_PRESENTATION[slope ?? 'unknown'];
+}
+
+export type SourceStatus = 'live' | 'unavailable';
+
+export interface SourceReport {
+  metaAdsLibrary: SourceStatus;
+  googleTrends: SourceStatus;
+  googleAdsTransparency: SourceStatus;
+}
+
+const SOURCE_LABEL: Record<keyof SourceReport, string> = {
+  metaAdsLibrary: 'Meta Ads Library',
+  googleTrends: 'Google Trends',
+  googleAdsTransparency: 'Google Ads Transparency',
+};
+
+export const SOURCE_ORDER: Array<keyof SourceReport> = [
+  'metaAdsLibrary',
+  'googleTrends',
+  'googleAdsTransparency',
+];
+
+export function sourceLabel(key: keyof SourceReport): string {
+  return SOURCE_LABEL[key];
+}
+
+/**
+ * Só marcamos uma fonte como ativa quando a resposta prova que ela respondeu.
+ * `isMockMode: true` significa dado fabricado — nenhuma fonte é declarada viva,
+ * porque um selo de transparência em cima de mock é pior que selo nenhum.
+ */
+export function deriveSourceReport(raw: unknown): SourceReport {
+  const root = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const mock = root.isMockMode === true;
+  const declared = (root.sources && typeof root.sources === 'object' ? root.sources : {}) as Record<string, unknown>;
+
+  const read = (key: keyof SourceReport, proven: boolean): SourceStatus => {
+    if (mock) return 'unavailable';
+    const value = declared[key];
+    if (value === 'live' || value === true) return 'live';
+    if (value === 'unavailable' || value === false) return 'unavailable';
+    return proven ? 'live' : 'unavailable';
+  };
+
+  const slope = root.trendSlope;
+  const slopeIsReal = slope === 'positive' || slope === 'stable' || slope === 'negative';
+
+  return {
+    metaAdsLibrary: read('metaAdsLibrary', !mock),
+    googleTrends: read('googleTrends', slopeIsReal),
+    // Nenhuma rota consulta a Transparency ainda: não afirmamos que está viva.
+    googleAdsTransparency: read('googleAdsTransparency', false),
+  };
+}
+
+export function normalizeTrendSlope(raw: unknown): TrendSlope {
+  const root = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  // Mock não produz tendência: vira desconhecido, nunca "crescimento".
+  if (root.isMockMode === true) return null;
+  const slope = root.trendSlope;
+  return slope === 'positive' || slope === 'stable' || slope === 'negative' ? slope : null;
+}
+
+/** Etapas reais do pipeline de geração de oferta — sem "agentes virtuais". */
+export const IDEA_STAGES = [
+  'Buscando dados em tempo real no Meta Ads Library...',
+  'Avaliando interesse histórico no Google Trends...',
+  'Orquestrando inteligência de oferta com OpenRouter...',
+] as const;
+
+export type ScoutFailureKind = 'missing_keys' | 'unavailable' | 'unauthorized' | 'generic';
+
+export interface ScoutFailure {
+  kind: ScoutFailureKind;
+  title: string;
+  detail: string;
+}
+
+/**
+ * Converte a falha real do backend em algo acionável. Chave ausente e serviço fora
+ * do ar têm respostas diferentes: uma o usuário resolve, a outra ele espera.
+ */
+export function describeScoutFailure(status: number, serverMessage?: string | null): ScoutFailure {
+  const message = (serverMessage ?? '').toUpperCase();
+  const mentionsKey = message.includes('API_KEY') || message.includes('CHAVE') || message.includes('CREDENC');
+
+  if (status === 401 && !mentionsKey) {
+    return {
+      kind: 'unauthorized',
+      title: 'Sessão expirada',
+      detail: 'Faça login de novo para continuar a pesquisa.',
+    };
+  }
+  if (mentionsKey || status === 424) {
+    return {
+      kind: 'missing_keys',
+      title: 'Configuração incompleta',
+      detail: 'Defina FIRECRAWL_API_KEY e OPENROUTER_API_KEY no arquivo .env e reinicie o servidor.',
+    };
+  }
+  if (status === 503 || status === 502 || status === 504) {
+    return {
+      kind: 'unavailable',
+      title: 'Fontes temporariamente indisponíveis',
+      detail: 'Os scrapers não responderam agora. Tente de novo em alguns minutos ou busque um nicho mais amplo.',
+    };
+  }
+  return {
+    kind: 'generic',
+    title: `Falha na pesquisa (HTTP ${status})`,
+    detail: serverMessage?.trim() || 'O servidor não detalhou o motivo. Verifique os logs da rota.',
+  };
+}
+
+
 /** Ideia de produto próprio gerada pela IA a partir de um nicho. */
 export interface ProductIdea {
   /** id do ProductResearch criado — sem ele não dá para importar. */
@@ -125,26 +271,34 @@ export function normalizeProductIdea(raw: unknown): ProductIdea | null {
   );
   const node = (nestedSource ?? root) as Record<string, unknown>;
 
+  // O trend-scout persiste preço, isca e upsells dentro de `strategy` do ProductResearch.
+  const strategy = (node.strategy && typeof node.strategy === 'object' ? node.strategy : {}) as Record<string, unknown>;
+  const pricing = (() => {
+    const fromStrategy = strategy.pricing;
+    const fromNode = node.pricing;
+    const source = [fromStrategy, fromNode].find((v) => v && typeof v === 'object' && !Array.isArray(v));
+    return (source ?? {}) as Record<string, unknown>;
+  })();
+
   const name = pickString(node.name, node.nome, node.title, node.promessa);
   if (!name) return null;
 
-  const upsellList = Array.isArray(node.upsells)
-    ? node.upsells
-    : node.upsell !== undefined && node.upsell !== null
-      ? [node.upsell]
-      : [];
+  const rawUpsells = [pricing.upsells, node.upsells, strategy.upsells].find(Array.isArray);
+  const upsellList = rawUpsells ?? (
+    node.upsell !== undefined && node.upsell !== null ? [node.upsell] : []
+  );
 
-  const score = pickNumber(node.revenueScore, node.revenue_score, node.score) ?? 0;
+  const score = pickNumber(node.revenueScore, node.revenue_score, node.potentialScore, node.score) ?? 0;
 
   return {
     id: pickString(node.id, root.id, node.productResearchId, root.productResearchId),
     name,
     vertical: pickString(node.vertical, node.nicho) ?? '',
-    summary: pickString(node.summary, node.resumo, node.rationale, node.razao_de_compra),
+    summary: pickString(node.summary, strategy.vslHook, node.vslHook, node.resumo, node.rationale),
     revenueScore: Math.max(0, Math.min(100, Math.round(score))),
-    suggestedPrice: pickNumber(node.suggestedPrice, node.suggested_price, node.preco, node.price),
-    suggestedAov: pickNumber(node.suggestedAov, node.suggested_aov, node.aov),
-    leadMagnet: pickString(node.leadMagnet, node.lead_magnet, node.isca, node.iscaDigital),
+    suggestedPrice: pickNumber(pricing.suggestedPrice, node.suggestedPrice, node.suggested_price, node.preco, node.price),
+    suggestedAov: pickNumber(pricing.suggestedAov, node.suggestedAov, node.suggested_aov, node.aov),
+    leadMagnet: pickString(strategy.leadMagnet, node.leadMagnet, node.lead_magnet, node.isca),
     upsells: upsellList.map(toUpsellLabel).filter((v): v is string => v !== null),
   };
 }
@@ -251,6 +405,12 @@ interface StepProductSearchProps {
   runProductIdea: () => Promise<void>;
   /** Importa a ideia: roda o autofill e depois crava os valores que o card exibiu. */
   importProductIdea: (idea: ProductIdea) => Promise<void>;
+  ideaStage: string;
+  trendSlope: TrendSlope;
+  sourceReport: SourceReport | null;
+  ideaIsMock: boolean;
+  scoutFailure: ScoutFailure | null;
+  dismissScoutFailure: () => void;
   runAdScoutResearch: () => Promise<void>;
 
   onPrev: () => void;
@@ -305,6 +465,12 @@ export function StepProductSearch({
   generatingIdea,
   runProductIdea,
   importProductIdea,
+  ideaStage,
+  trendSlope,
+  sourceReport,
+  ideaIsMock,
+  scoutFailure,
+  dismissScoutFailure,
   runAdScoutResearch,
   onPrev,
   onNext,
@@ -765,7 +931,7 @@ export function StepProductSearch({
               <Select
                 value={scoutCountry}
                 onValueChange={(v: string) => setScoutCountry(toScoutCountry(v))}
-                disabled={busy || isIdeaMode}
+                disabled={busy}
               >
                 <SelectTrigger className="bg-[#0f172a] border-purple-500/30 text-white mt-1.5 font-mono">
                   <SelectValue />
@@ -783,6 +949,43 @@ export function StepProductSearch({
             </div>
           </div>
 
+          {scoutFailure && (
+            <div
+              className={`rounded-lg border p-3 ${
+                scoutFailure.kind === 'missing_keys'
+                  ? 'border-amber-500/30 bg-amber-500/[0.05]'
+                  : 'border-destructive/30 bg-destructive/[0.05]'
+              }`}
+              role="alert"
+            >
+              <div className="flex items-start gap-2.5">
+                {scoutFailure.kind === 'missing_keys' ? (
+                  <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                ) : scoutFailure.kind === 'unavailable' ? (
+                  <ServerCrash className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-foreground">{scoutFailure.title}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{scoutFailure.detail}</p>
+                  {scoutFailure.kind === 'missing_keys' && (
+                    <code className="mt-2 block rounded border border-border bg-card px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+                      FIRECRAWL_API_KEY=...{'\n'}OPENROUTER_API_KEY=...
+                    </code>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissScoutFailure}
+                  className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  fechar
+                </button>
+              </div>
+            </div>
+          )}
+
           <Button
             onClick={isIdeaMode ? runProductIdea : runAdScoutResearch}
             disabled={busy || !scoutQuery.trim()}
@@ -791,7 +994,7 @@ export function StepProductSearch({
             {busy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {isIdeaMode ? 'Desenhando a oferta...' : 'Analisando com múltiplos agentes...'}
+                {isIdeaMode ? 'Consultando fontes em tempo real...' : 'Raspando Meta Ads Library e orquestrando OpenRouter...'}
               </>
             ) : isIdeaMode ? (
               <>
@@ -805,6 +1008,31 @@ export function StepProductSearch({
               </>
             )}
           </Button>
+
+          {generatingIdea && (
+            <div className="mt-4 space-y-2 rounded-lg border border-border bg-card/40 p-4">
+              <p className="flex items-center gap-2 font-mono text-[11px] text-purple-300">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                {ideaStage || IDEA_STAGES[0]}
+              </p>
+              <ol className="space-y-1">
+                {IDEA_STAGES.map((stage) => {
+                  const done = IDEA_STAGES.indexOf(stage) < IDEA_STAGES.indexOf(ideaStage as typeof IDEA_STAGES[number]);
+                  const active = stage === ideaStage;
+                  return (
+                    <li
+                      key={stage}
+                      className={`text-[11px] ${
+                        done ? 'text-muted-foreground line-through' : active ? 'text-foreground' : 'text-muted-foreground/60'
+                      }`}
+                    >
+                      {stage}
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          )}
 
           {scoutLoading && !isIdeaMode && (
             <div className="mt-4 space-y-3 rounded-lg border border-purple-500/10 bg-purple-950/10 p-4">
@@ -895,6 +1123,53 @@ export function StepProductSearch({
 
               {productIdea.summary && (
                 <p className="mt-3 text-[11px] leading-relaxed text-slate-300">{productIdea.summary}</p>
+              )}
+
+              {ideaIsMock && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.05] p-3">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  <p className="text-[11px] leading-relaxed text-amber-200">
+                    O backend respondeu em modo simulado (<code className="font-mono">isMockMode</code>). Estes
+                    números não vieram de fonte nenhuma — não use para decidir oferta nem orçamento.
+                  </p>
+                </div>
+              )}
+
+              {/* Veredito de tendência: cinza quando não há dado, nunca otimista por omissão. */}
+              {(() => {
+                const trend = trendPresentation(trendSlope);
+                const TrendIcon = trend.icon;
+                return (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-card/40 p-2.5">
+                    <TrendIcon className={`h-4 w-4 shrink-0 ${trend.tone}`} />
+                    <span className={`text-[11px] font-medium ${trend.tone}`}>{trend.label}</span>
+                  </div>
+                );
+              })()}
+
+              {sourceReport && (
+                <div className="mt-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Fontes consultadas
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {SOURCE_ORDER.map((key) => {
+                      const live = sourceReport[key] === 'live';
+                      return (
+                        <Badge
+                          key={key}
+                          className={`text-[10px] font-normal ${
+                            live
+                              ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                              : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                          }`}
+                        >
+                          {sourceLabel(key)} {live ? '✓ Ativo' : '⚠️ Indisponível'}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1040,6 +1315,22 @@ export function StepProductSearch({
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Sem concorrentes: estado vazio instrutivo, nunca dado inventado. */}
+              {scoutResult.competitors.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-card/30 p-5 text-center">
+                  <Inbox className="mx-auto h-6 w-6 text-muted-foreground" />
+                  <p className="mt-2 text-xs font-semibold text-foreground">
+                    Nenhum anúncio ativo encontrado para este nicho
+                  </p>
+                  <p className="mx-auto mt-1.5 max-w-md text-[11px] leading-relaxed text-muted-foreground">
+                    Não inventamos concorrentes. Isso costuma significar nicho pouco explorado em{' '}
+                    <span className="font-mono">{scoutCountry}</span> — ou termo específico demais. Tente um
+                    termo mais amplo, troque o país da biblioteca, ou confirme na Meta Ads Library e no Google
+                    Ads Transparency Center se existe alguém anunciando hoje.
+                  </p>
                 </div>
               )}
 

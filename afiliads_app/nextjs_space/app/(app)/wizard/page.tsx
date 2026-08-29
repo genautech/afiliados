@@ -2,7 +2,9 @@
 import { StepProductType, ProductType } from './_components/step-product-type';
 import {
   StepProductSearch, SCOUT_STAGES, toScoutCountry, normalizeProductIdea,
-  type ScoutResult, type ScoutMode, type ProductIdea,
+  describeScoutFailure, deriveSourceReport, normalizeTrendSlope, IDEA_STAGES,
+  type ScoutResult, type ScoutMode, type ProductIdea, type ScoutFailure,
+  type SourceReport, type TrendSlope,
 } from './_components/step-product-search';
 import { EbookDraftPanel } from './_components/ebook-draft-panel';
 import { AICostDashboard } from './_components/ai-cost-dashboard';
@@ -62,8 +64,8 @@ const STEPS = [
 /** Um pouco acima do `maxDuration = 90` da rota, para o erro do servidor vencer quando houver um. */
 const SCOUT_CLIENT_TIMEOUT_MS = 100_000;
 
-/** Rota da geração de ideia de produto próprio; ainda não publicada pelo backend. */
-const PRODUCT_IDEA_ENDPOINT = '/api/products/idea';
+/** Rota real do Trend Scout: exige `{ niche, country }` e devolve o ProductResearch criado. */
+const PRODUCT_IDEA_ENDPOINT = '/api/search/trend-scout';
 
 export default function WizardPage() {
   const router = useRouter();
@@ -204,6 +206,11 @@ export default function WizardPage() {
   const [scoutMode, setScoutMode] = useState<ScoutMode>('ads');
   const [productIdea, setProductIdea] = useState<ProductIdea | null>(null);
   const [generatingIdea, setGeneratingIdea] = useState(false);
+  const [ideaStage, setIdeaStage] = useState('');
+  const [trendSlope, setTrendSlope] = useState<TrendSlope>(null);
+  const [sourceReport, setSourceReport] = useState<SourceReport | null>(null);
+  const [ideaIsMock, setIdeaIsMock] = useState(false);
+  const [scoutFailure, setScoutFailure] = useState<ScoutFailure | null>(null);
   const [scoutProductType, setScoutProductType] = useState<ProductType>('AFFILIATE');
 
   // Break-even calculations
@@ -647,31 +654,51 @@ export default function WizardPage() {
     ideaLock.current = true;
     setGeneratingIdea(true);
     setProductIdea(null);
+    setScoutFailure(null);
+    setSourceReport(null);
+    setTrendSlope(null);
+    setIdeaIsMock(false);
+    setIdeaStage(IDEA_STAGES[0]);
+    let stageIndex = 1;
+    const stageTimer = setInterval(() => {
+      if (stageIndex < IDEA_STAGES.length) setIdeaStage(IDEA_STAGES[stageIndex++]);
+    }, 8000);
     try {
       const response = await fetch(PRODUCT_IDEA_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          niche: scoutQuery.trim(),
-          campaignId: campaignId || undefined,
-          productType: 'PROPRIETARY_LOW_TICKET',
-        }),
+        body: JSON.stringify({ niche: scoutQuery.trim(), country: scoutCountry }),
         signal: AbortSignal.timeout(SCOUT_CLIENT_TIMEOUT_MS),
       });
       const data = await response.json().catch(() => null);
       if (response.status === 404 && !data?.error) {
-        toast.error(`A rota POST ${PRODUCT_IDEA_ENDPOINT} ainda não existe no app.`);
+        setScoutFailure({
+          kind: 'generic',
+          title: 'Rota de geração ausente',
+          detail: `POST ${PRODUCT_IDEA_ENDPOINT} ainda não existe no app.`,
+        });
         return;
       }
       if (!response.ok) {
-        toast.error(data?.error || `Geração da oferta falhou (HTTP ${response.status}).`);
+        const failure = describeScoutFailure(response.status, data?.error);
+        setScoutFailure(failure);
+        toast.error(`${failure.title}: ${failure.detail}`);
         return;
       }
       const idea = normalizeProductIdea(data);
       if (!idea) {
-        toast.error('A geração respondeu 200 sem uma ideia utilizável.');
+        setScoutFailure({
+          kind: 'generic',
+          title: 'Resposta sem oferta',
+          detail: 'O servidor respondeu com sucesso, mas o payload nao trouxe uma ideia utilizavel.',
+        });
         return;
       }
+      // A procedencia sai da propria resposta: mock nunca vira fonte "ativa".
+      const mock = data?.isMockMode === true;
+      setIdeaIsMock(mock);
+      setTrendSlope(normalizeTrendSlope(data));
+      setSourceReport(deriveSourceReport(data));
       setProductIdea(idea);
       try {
         const refreshed = await fetch('/api/products').then((r) => (r.ok ? r.json() : []));
@@ -679,15 +706,27 @@ export default function WizardPage() {
       } catch {
         /* a lista recarrega no próximo mount; não é motivo para falhar a geração */
       }
-      toast.success(
-        idea.id
-          ? 'Oferta desenhada. Revise e clique em Importar Produto.'
-          : 'Oferta desenhada, mas sem id persistido — não dá para importar.',
-      );
+      if (mock) {
+        toast.warning('O backend respondeu em modo simulado: a oferta não veio de fonte real.');
+      } else {
+        toast.success(
+          idea.id
+            ? 'Oferta desenhada. Revise e clique em Importar Produto.'
+            : 'Oferta desenhada, mas sem id persistido — não dá para importar.',
+        );
+      }
     } catch (error: unknown) {
       const aborted = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
-      toast.error(aborted ? 'A geração da oferta passou do tempo limite e foi cancelada.' : 'Erro de rede ao gerar a oferta.');
+      setScoutFailure({
+        kind: aborted ? 'unavailable' : 'generic',
+        title: aborted ? 'Tempo limite excedido' : 'Erro de rede',
+        detail: aborted
+          ? 'A geração passou do tempo limite e foi cancelada. Tente de novo ou reduza o escopo do nicho.'
+          : 'Não foi possível falar com o servidor. Confira se o app está no ar.',
+      });
     } finally {
+      clearInterval(stageTimer);
+      setIdeaStage('');
       ideaLock.current = false;
       setGeneratingIdea(false);
     }
@@ -724,6 +763,7 @@ export default function WizardPage() {
     }
     setScoutLoading(true);
     setScoutResult(null);
+    setScoutFailure(null);
     setScoutStage(SCOUT_STAGES[0]);
 
     // O pipeline Firecrawl -> Meta leva 15-45s: avançamos o stepper devagar e
@@ -757,7 +797,9 @@ export default function WizardPage() {
         toast.success('Pesquisa do Ad Scout consolidada com sucesso!');
       } else {
         const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || 'Erro ao processar pesquisa de mercado.');
+        const failure = describeScoutFailure(response.status, errorData?.error);
+        setScoutFailure(failure);
+        toast.error(`${failure.title}: ${failure.detail}`);
       }
     } catch (error: unknown) {
       clearInterval(interval);
@@ -1356,6 +1398,12 @@ export default function WizardPage() {
                 generatingIdea={generatingIdea}
                 runProductIdea={runProductIdea}
                 importProductIdea={importProductIdea}
+                ideaStage={ideaStage}
+                trendSlope={trendSlope}
+                sourceReport={sourceReport}
+                ideaIsMock={ideaIsMock}
+                scoutFailure={scoutFailure}
+                dismissScoutFailure={() => setScoutFailure(null)}
                 scoutCountry={scoutCountry}
                 setScoutCountry={(v: string) => { scoutCountryTouched.current = true; setScoutCountry(v); }}
                 runAdScoutResearch={runAdScoutResearch}
