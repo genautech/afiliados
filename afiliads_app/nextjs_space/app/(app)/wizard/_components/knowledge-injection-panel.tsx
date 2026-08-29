@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +29,6 @@ interface Proposal {
   id: string;
   explanation: string;
   proposedContent: any;
-  proposedCustomCode: string | null;
   applied: boolean;
   createdAt: string;
 }
@@ -52,40 +51,56 @@ export function KnowledgeInjectionPanel({ campaignId, onProposalApplied }: Knowl
   const [activeProposal, setActiveProposal] = useState<Proposal | null>(null);
   const [applyingProposalId, setApplyingProposalId] = useState<string | null>(null);
 
-  // Buscar conhecimentos do banco
-  const fetchKnowledges = async (silent = false) => {
+  // Requisição em voo: cancelada no unmount e usada para não empilhar polls.
+  const inFlight = useRef<AbortController | null>(null);
+
+  const fetchKnowledges = useCallback(async (silent = false) => {
     if (!campaignId) return;
+    // Um poll que ainda não voltou bloqueia o próximo: sem isto, resposta lenta
+    // faz as requisições se acumularem a cada 4s.
+    if (silent && inFlight.current) return;
+
+    const controller = new AbortController();
+    inFlight.current = controller;
     if (!silent) setLoadingList(true);
     try {
-      const res = await fetch(`/api/knowledge/inject?campaignId=${campaignId}`);
+      const res = await fetch(`/api/knowledge/inject?campaignId=${campaignId}`, {
+        signal: controller.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         setKnowledges(data.knowledges || []);
       }
     } catch (e) {
-      console.error('[knowledge-panel] Erro ao buscar conhecimentos:', e);
+      if ((e as Error)?.name !== 'AbortError') {
+        console.error('[knowledge-panel] Erro ao buscar conhecimentos:', e);
+      }
     } finally {
+      if (inFlight.current === controller) inFlight.current = null;
       if (!silent) setLoadingList(false);
     }
-  };
-
-  // Polling ativo se algum estiver processando
-  useEffect(() => {
-    fetchKnowledges();
   }, [campaignId]);
 
   useEffect(() => {
-    const hasActiveProcessing = knowledges.some(
-      k => k.status === 'PENDING' || k.status === 'PROCESSING'
-    );
+    void fetchKnowledges();
+    return () => {
+      inFlight.current?.abort();
+      inFlight.current = null;
+    };
+  }, [fetchKnowledges]);
+
+  // Só há trabalho em voo enquanto algum registro está PENDING/PROCESSING.
+  const hasActiveProcessing = knowledges.some(
+    k => k.status === 'PENDING' || k.status === 'PROCESSING'
+  );
+
+  useEffect(() => {
     if (!hasActiveProcessing) return;
-
-    const interval = setInterval(() => {
-      fetchKnowledges(true);
-    }, 4000);
-
+    // Depende do booleano, não do array: `knowledges` ganha referência nova a cada
+    // poll e reiniciaria o timer sem necessidade.
+    const interval = setInterval(() => { void fetchKnowledges(true); }, 4000);
     return () => clearInterval(interval);
-  }, [knowledges]);
+  }, [hasActiveProcessing, fetchKnowledges]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -387,7 +402,7 @@ export function KnowledgeInjectionPanel({ campaignId, onProposalApplied }: Knowl
               <div>
                 <h4 className="font-semibold text-slate-300 text-[11px] uppercase tracking-wider">Gancho Central / Headline</h4>
                 <div className="bg-[#0f172a] p-3 rounded border border-[#334155] mt-1 italic text-slate-100 font-medium">
-                  "{activeDossier.refinedMetadata?.headline}"
+                  &ldquo;{activeDossier.refinedMetadata?.headline}&rdquo;
                 </div>
               </div>
 
@@ -444,7 +459,7 @@ export function KnowledgeInjectionPanel({ campaignId, onProposalApplied }: Knowl
                 <div className="space-y-2">
                   {activeDossier.refinedMetadata?.frases_chave?.map((f: string, i: number) => (
                     <div key={i} className="bg-[#0f172a] p-2 rounded border border-[#334155] text-slate-300">
-                      "{f}"
+                      &ldquo;{f}&rdquo;
                     </div>
                   ))}
                 </div>
@@ -483,7 +498,7 @@ export function KnowledgeInjectionPanel({ campaignId, onProposalApplied }: Knowl
             <div className="p-5 overflow-y-auto space-y-4 text-xs">
               <div className="bg-[#0f172a] p-3.5 rounded border border-[#334155]">
                 <h4 className="font-semibold text-emerald-400 text-xs mb-1">Motivação & Explicação da IA</h4>
-                <p className="text-slate-300 leading-relaxed italic">"{activeProposal.explanation}"</p>
+                <p className="text-slate-300 leading-relaxed italic">&ldquo;{activeProposal.explanation}&rdquo;</p>
               </div>
 
               <div>
@@ -536,16 +551,6 @@ export function KnowledgeInjectionPanel({ campaignId, onProposalApplied }: Knowl
                     </div>
                   </div>
 
-                  {activeProposal.proposedCustomCode && (
-                    <div className="border border-[#334155] rounded overflow-hidden">
-                      <div className="bg-[#0f172a] px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase border-b border-[#334155]">
-                        Estilo CSS Customizado Adicional
-                      </div>
-                      <pre className="p-2.5 bg-[#0f172a] text-slate-400 font-mono text-[10px] overflow-x-auto max-h-[100px]">
-                        {activeProposal.proposedCustomCode}
-                      </pre>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

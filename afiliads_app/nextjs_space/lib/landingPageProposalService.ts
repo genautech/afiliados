@@ -3,15 +3,18 @@ import { callLLM } from './llm';
 import { logLearningToObsidian } from './obsidianSync';
 import { renderPresellHtml } from './presell';
 import type { PresellContent } from './presell';
+import {
+  RefinedInsightsSchema,
+  PresellContentSchema,
+  PresellProposalSchema,
+  zodIssuesToMessage,
+  type RefinedInsights,
+} from './validations/knowledge';
 
-export interface RefinedMarketingInsights {
-  title: string;
-  headline: string;
-  dores: string[];
-  desejos: string[];
-  objecoes: string[];
-  angulos: string[];
-  frases_chave: string[];
+export type RefinedMarketingInsights = RefinedInsights;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function processInjectedKnowledge(injectedKnowledgeId: string): Promise<void> {
@@ -27,11 +30,8 @@ export async function processInjectedKnowledge(injectedKnowledgeId: string): Pro
     throw new Error(`Conhecimento injetado com ID ${injectedKnowledgeId} não encontrado.`);
   }
 
-  // Atualizar para PROCESSING se ainda não estiver
-  await prisma.injectedKnowledge.update({
-    where: { id: injectedKnowledgeId },
-    data: { status: 'PROCESSING' },
-  });
+  // O claim PENDING -> PROCESSING é feito com CAS na rota, antes de chamar aqui:
+  // reescrever o status neste ponto anularia aquela exclusão mútua.
 
   try {
     const rawContent = knowledge.rawContent || '';
@@ -74,34 +74,30 @@ ${rawContent.slice(0, 45000)}
 
 Analise cuidadosamente e retorne as chaves JSON exatas. Não invente termos artificiais ou promessas absolutas.`;
 
-    const insightsLmlOptions = {
+    const insightsResponse = await callLLM(userId, {
       systemPrompt: insightsSystemPrompt,
       userPrompt: insightsUserPrompt,
-      campaignTarget: campaignId 
-        ? { kind: 'campaign' as const, campaignId } 
+      campaignTarget: campaignId
+        ? { kind: 'campaign' as const, campaignId }
         : { kind: 'non-campaign' as const },
       purpose: 'refine-knowledge-insights',
-    };
-
-    const insightsResponse = await callLLM(userId, insightsLmlOptions);
+      json: true,
+      // O runner re-pergunta ao modelo com o erro de validação junto (lib/llm.ts),
+      // em vez de persistir JSON incompleto e estourar depois no consumo.
+      validate: (data: unknown) => {
+        const parsed = RefinedInsightsSchema.safeParse(data);
+        return parsed.success ? null : zodIssuesToMessage(parsed.error);
+      },
+    });
     if (insightsResponse.error) {
       throw new Error(`Chamada LLM de insights retornou erro: ${insightsResponse.error}`);
     }
 
-    const insightsResponseText = insightsResponse.text;
-    
-    // Parse e validação básica do JSON retornado pela IA
-    let insights: RefinedMarketingInsights;
-    try {
-      const cleanJsonStr = insightsResponseText.substring(
-        insightsResponseText.indexOf('{'),
-        insightsResponseText.lastIndexOf('}') + 1
-      );
-      insights = JSON.parse(cleanJsonStr);
-    } catch (e: any) {
-      console.error('[proposal-service] Falha ao fazer parse do JSON de insights refinados do LLM:', insightsResponseText);
-      throw new Error(`Resposta do LLM de insights não era um JSON válido: ${e?.message}`);
+    const insightsParsed = RefinedInsightsSchema.safeParse(insightsResponse.data);
+    if (!insightsParsed.success) {
+      throw new Error(`Insights do LLM fora do contrato: ${zodIssuesToMessage(insightsParsed.error)}`);
     }
+    const insights: RefinedMarketingInsights = insightsParsed.data;
 
     // Atualizar os insights de marketing refinados no banco de dados
     await prisma.injectedKnowledge.update({
@@ -168,8 +164,7 @@ Responda APENAS um JSON válido contendo exatamente este formato:
     "pacotes": [{"nome":"...", "qtd":"...", "economia":"...", "badge":"..."}],
     "certificacoes": ["..."],
     "aviso_autenticidade": "Frase de alerta"
-  },
-  "proposedCustomCode": "Opcional: um bloco de código CSS customizado (dentro de uma tag <style>) ou JS se você quiser ajustar o estilo/fonte para dar um tom mais profissional ou focado (por exemplo, destacar seções, mudar cores para um tom médico/científico). Retorne string vazia se não for propor alteração visual."
+  }
 }`;
 
         const proposalUserPrompt = `Aqui estão as informações para realizar a redação da proposta de melhoria:
@@ -189,44 +184,37 @@ IDIOMA: ${presell.language || 'pt-BR'}
 
 Refine toda a pre-sell para que ela se conecte perfeitamente com os insights da ingestão. Responda estritamente o JSON solicitado.`;
 
-        const proposalLmlOptions = {
+        const proposalResponse = await callLLM(userId, {
           systemPrompt: proposalSystemPrompt,
           userPrompt: proposalUserPrompt,
           campaignTarget: { kind: 'campaign' as const, campaignId },
           purpose: 'generate-presell-proposal',
-        };
-
-        const proposalResponse = await callLLM(userId, proposalLmlOptions);
+          json: true,
+          validate: (data: unknown) => {
+            const parsed = PresellProposalSchema.safeParse(data);
+            return parsed.success ? null : zodIssuesToMessage(parsed.error);
+          },
+        });
         if (proposalResponse.error) {
           throw new Error(`Chamada LLM de proposta de pre-sell retornou erro: ${proposalResponse.error}`);
         }
 
-        const proposalResponseText = proposalResponse.text;
-        
-        let proposalPayload: {
-          explanation: string;
-          proposedContent: PresellContent;
-          proposedCustomCode?: string;
-        };
-
-        try {
-          const cleanJsonStr = proposalResponseText.substring(
-            proposalResponseText.indexOf('{'),
-            proposalResponseText.lastIndexOf('}') + 1
-          );
-          proposalPayload = JSON.parse(cleanJsonStr);
-        } catch (e: any) {
-          console.error('[proposal-service] Falha ao fazer parse do JSON da proposta do LLM:', proposalResponseText);
-          throw new Error(`Resposta do LLM de proposta não era um JSON válido: ${e?.message}`);
+        const proposalParsed = PresellProposalSchema.safeParse(proposalResponse.data);
+        if (!proposalParsed.success) {
+          throw new Error(`Proposta do LLM fora do contrato: ${zodIssuesToMessage(proposalParsed.error)}`);
         }
+        const proposalPayload = proposalParsed.data;
 
         // Criar o registro PresellProposal associando à pre-sell e ao conhecimento
         const proposal = await prisma.presellProposal.create({
           data: {
             injectedKnowledgeId,
             presellId: presell.id,
-            proposedContent: proposalPayload.proposedContent as any,
-            proposedCustomCode: proposalPayload.proposedCustomCode || '',
+            proposedContent: proposalPayload.proposedContent as unknown as object,
+            // Nunca código executável vindo do LLM: a entrada dele é página de concorrente
+            // e transcrição de terceiro, e {{CUSTOM_CODE}} entra CRU na presell publicada
+            // (lib/presell.ts). Seria injeção indireta de prompt virando XSS armazenado.
+            proposedCustomCode: '',
             explanation: proposalPayload.explanation,
             applied: false,
           },
@@ -271,17 +259,19 @@ _Processado de forma 100% real através do pipeline de conhecimento unificado do
 
     console.log(`[proposal-service] Processamento assíncrono concluído com absoluto sucesso para: ${injectedKnowledgeId}`);
 
-  } catch (error: any) {
-    console.error(`[proposal-service] Erro fatal ao processar o conhecimento injetado ${injectedKnowledgeId}:`, error?.message);
-    
-    // Marcar como FAILED no banco de dados para feedback na UI
+  } catch (error: unknown) {
+    const message = errorMessage(error);
+    console.error(`[proposal-service] Erro fatal ao processar o conhecimento injetado ${injectedKnowledgeId}:`, message);
+
+    // Marcar como FAILED no banco de dados para feedback na UI. Re-lançamos para que o
+    // chamador saiba que falhou; ele NÃO regrava o status (evita UPDATE duplicado).
     await prisma.injectedKnowledge.update({
       where: { id: injectedKnowledgeId },
       data: {
         status: 'FAILED',
-        errorMessage: error?.message || 'Erro desconhecido durante o processamento do LLM.',
+        errorMessage: message.slice(0, 2000) || 'Erro desconhecido durante o processamento do LLM.',
       },
-    }).catch(e => console.error('[proposal-service] Falha ao atualizar status de erro no banco:', e?.message));
+    }).catch((e: unknown) => console.error('[proposal-service] Falha ao atualizar status de erro no banco:', errorMessage(e)));
 
     throw error;
   }
@@ -309,7 +299,17 @@ export async function applyPresellProposal(proposalId: string, userId: string): 
     throw new Error('Pre-sell associado à proposta não foi encontrado ou pertence a outro usuário.');
   }
 
-  const proposedContent = proposal.proposedContent as unknown as PresellContent;
+  if (proposal.applied) {
+    throw new Error('Esta proposta já foi aplicada a esta pre-sell.');
+  }
+
+  // O JSON no banco pode ter sido gravado por uma versão anterior, sem validação.
+  // Renderizar conteúdo fora do contrato produziria HTML com "undefined" na página.
+  const contentParsed = PresellContentSchema.safeParse(proposal.proposedContent);
+  if (!contentParsed.success) {
+    throw new Error(`Conteúdo da proposta fora do contrato: ${zodIssuesToMessage(contentParsed.error)}`);
+  }
+  const proposedContent: PresellContent = contentParsed.data;
   
   // Renderizar o novo HTML real da pre-sell a partir do novo content e das configurações originais
   const isHealth = /health|sa[uú]de|nutra|beauty|beleza/i.test(`${presell.pageType} ${presell.productName}`);
@@ -321,7 +321,8 @@ export async function applyPresellProposal(proposalId: string, userId: string): 
     pageType: presell.pageType,
     popupGate: presell.popupGate,
     videoUrl: presell.videoUrl || undefined,
-    customCode: proposal.proposedCustomCode || presell.customCode,
+    // Preserva o customCode escrito pelo operador: a proposta não injeta código.
+    customCode: presell.customCode,
     isHealthNiche: isHealth,
     language: presell.language,
     presellId: presell.id,
@@ -332,8 +333,7 @@ export async function applyPresellProposal(proposalId: string, userId: string): 
     prisma.presell.update({
       where: { id: presell.id },
       data: {
-        content: proposedContent as any,
-        customCode: proposal.proposedCustomCode || presell.customCode,
+        content: proposedContent as unknown as object,
         html: updatedHtml,
       },
     }),

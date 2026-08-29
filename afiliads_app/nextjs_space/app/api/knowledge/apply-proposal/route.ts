@@ -41,8 +41,22 @@ export async function POST(request: NextRequest) {
       message: 'Proposta de pre-sell aplicada com sucesso! O HTML foi regenerado e atualizado.',
     });
 
-  } catch (error: any) {
-    console.error('[apply-proposal-api] Falha ao aplicar proposta:', error?.message);
-    return NextResponse.json({ error: error?.message || 'Erro interno ao aplicar proposta' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[apply-proposal-api] Falha ao aplicar proposta:', message);
+
+    // Erros de negócio são seguros e úteis ao operador; qualquer outra coisa pode carregar
+    // detalhe interno (nome de tabela, stack do Prisma) e vira mensagem genérica.
+    const esperado = [
+      'Proposta não encontrada.',
+      'Esta proposta já foi aplicada a esta pre-sell.',
+      'Pre-sell associado à proposta não foi encontrado ou pertence a outro usuário.',
+    ];
+    const seguro = esperado.includes(message) || message.startsWith('Conteúdo da proposta fora do contrato:');
+    if (seguro) {
+      const status = message === 'Esta proposta já foi aplicada a esta pre-sell.' ? 409 : 400;
+      return NextResponse.json({ error: message }, { status });
+    }
+    return NextResponse.json({ error: 'Erro interno ao aplicar proposta' }, { status: 500 });
   }
 }
