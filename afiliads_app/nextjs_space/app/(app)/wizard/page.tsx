@@ -1,6 +1,9 @@
 'use client';
 import { StepProductType, ProductType } from './_components/step-product-type';
-import { StepProductSearch, SCOUT_STAGES, type ScoutResult } from './_components/step-product-search';
+import {
+  StepProductSearch, SCOUT_STAGES, toScoutCountry, normalizeProductIdea,
+  type ScoutResult, type ScoutMode, type ProductIdea,
+} from './_components/step-product-search';
 import { EbookDraftPanel } from './_components/ebook-draft-panel';
 import { AICostDashboard } from './_components/ai-cost-dashboard';
 import { StepCalculator } from './_components/step-calculator';
@@ -55,6 +58,12 @@ const STEPS = [
   { num: 8, title: 'Tracking', icon: Radio },
   { num: 9, title: 'Go-live', icon: Rocket },
 ];
+
+/** Um pouco acima do `maxDuration = 90` da rota, para o erro do servidor vencer quando houver um. */
+const SCOUT_CLIENT_TIMEOUT_MS = 100_000;
+
+/** Rota da geração de ideia de produto próprio; ainda não publicada pelo backend. */
+const PRODUCT_IDEA_ENDPOINT = '/api/products/idea';
 
 export default function WizardPage() {
   const router = useRouter();
@@ -191,6 +200,10 @@ export default function WizardPage() {
   const [scoutLoading, setScoutLoading] = useState(false);
   const [scoutStage, setScoutStage] = useState('');
   const [scoutResult, setScoutResult] = useState<ScoutResult | null>(null);
+  const [scoutCountry, setScoutCountry] = useState('BR');
+  const [scoutMode, setScoutMode] = useState<ScoutMode>('ads');
+  const [productIdea, setProductIdea] = useState<ProductIdea | null>(null);
+  const [generatingIdea, setGeneratingIdea] = useState(false);
   const [scoutProductType, setScoutProductType] = useState<ProductType>('AFFILIATE');
 
   // Break-even calculations
@@ -622,6 +635,70 @@ export default function WizardPage() {
       .catch(() => {});
   }, [campaignId, sourceProductResearchId, vertical]);
 
+  const ideaLock = useRef(false);
+
+  const runProductIdea = async () => {
+    if (!scoutQuery || scoutQuery.trim().length < 2) {
+      toast.error('Descreva o nicho ou a ideia com pelo menos 2 caracteres.');
+      return;
+    }
+    // Mesma trava do autofill: gerar oferta é caro, dois cliques não podem pagar duas vezes.
+    if (ideaLock.current) return;
+    ideaLock.current = true;
+    setGeneratingIdea(true);
+    setProductIdea(null);
+    try {
+      const response = await fetch(PRODUCT_IDEA_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          niche: scoutQuery.trim(),
+          campaignId: campaignId || undefined,
+          productType: 'PROPRIETARY_LOW_TICKET',
+        }),
+        signal: AbortSignal.timeout(SCOUT_CLIENT_TIMEOUT_MS),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.status === 404 && !data?.error) {
+        toast.error(`A rota POST ${PRODUCT_IDEA_ENDPOINT} ainda não existe no app.`);
+        return;
+      }
+      if (!response.ok) {
+        toast.error(data?.error || `Geração da oferta falhou (HTTP ${response.status}).`);
+        return;
+      }
+      const idea = normalizeProductIdea(data);
+      if (!idea) {
+        toast.error('A geração respondeu 200 sem uma ideia utilizável.');
+        return;
+      }
+      setProductIdea(idea);
+      try {
+        const refreshed = await fetch('/api/products').then((r) => (r.ok ? r.json() : []));
+        if (Array.isArray(refreshed)) setResearchProducts(refreshed);
+      } catch {
+        /* a lista recarrega no próximo mount; não é motivo para falhar a geração */
+      }
+      toast.success(
+        idea.id
+          ? 'Oferta desenhada. Revise e clique em Importar Produto.'
+          : 'Oferta desenhada, mas sem id persistido — não dá para importar.',
+      );
+    } catch (error: unknown) {
+      const aborted = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      toast.error(aborted ? 'A geração da oferta passou do tempo limite e foi cancelada.' : 'Erro de rede ao gerar a oferta.');
+    } finally {
+      ideaLock.current = false;
+      setGeneratingIdea(false);
+    }
+  };
+
+  const scoutCountryTouched = useRef(false);
+  useEffect(() => {
+    if (scoutCountryTouched.current) return;
+    setScoutCountry(toScoutCountry(geo));
+  }, [geo]);
+
   const runAdScoutResearch = async () => {
     if (!scoutQuery || scoutQuery.trim().length < 2) {
       toast.error('Digite uma palavra-chave válida de no mínimo 2 caracteres.');
@@ -647,7 +724,11 @@ export default function WizardPage() {
           productResearchId: sourceProductResearchId || undefined,
           campaignId: campaignId || undefined,
           productType: scoutProductType,
+          country: scoutCountry,
         }),
+        // O servidor tem maxDuration=90s. Sem este teto, um corte de timeout na
+        // borda deixa a promise pendurada e o stepper girando para sempre.
+        signal: AbortSignal.timeout(SCOUT_CLIENT_TIMEOUT_MS),
       });
 
       clearInterval(interval);
@@ -660,9 +741,14 @@ export default function WizardPage() {
         const errorData = await response.json().catch(() => ({}));
         toast.error(errorData.error || 'Erro ao processar pesquisa de mercado.');
       }
-    } catch {
+    } catch (error: unknown) {
       clearInterval(interval);
-      toast.error('Erro de rede ao falar com o Ad Scout.');
+      const aborted = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      toast.error(
+        aborted
+          ? `A pesquisa passou de ${Math.round(SCOUT_CLIENT_TIMEOUT_MS / 1000)}s e foi cancelada. A biblioteca da Meta pode estar lenta — tente de novo ou reduza o escopo do país.`
+          : 'Erro de rede ao falar com o Ad Scout.',
+      );
     } finally {
       setScoutLoading(false);
       setScoutStage('');
@@ -1246,6 +1332,13 @@ export default function WizardPage() {
                 scoutResult={scoutResult}
                 scoutProductType={scoutProductType}
                 setScoutProductType={setScoutProductType}
+                scoutMode={scoutMode}
+                setScoutMode={setScoutMode}
+                productIdea={productIdea}
+                generatingIdea={generatingIdea}
+                runProductIdea={runProductIdea}
+                scoutCountry={scoutCountry}
+                setScoutCountry={(v: string) => { scoutCountryTouched.current = true; setScoutCountry(v); }}
                 runAdScoutResearch={runAdScoutResearch}
                 onPrev={() => setShowProductTypeSelection(true)}
                 onNext={next}

@@ -3,6 +3,7 @@ import { CompetitorItemSchema } from '@/lib/validations/market-research';
 import {
   SCOUT_STAGES,
   adMaturity,
+  toScoutCountry,
   scoutStageIndex,
   saturationFromAdCount,
   isHighRisk,
@@ -90,5 +91,30 @@ describe('activeDays', () => {
     expect(adMaturity(14)).toBe('validando');
     expect(adMaturity(59)).toBe('validando');
     expect(adMaturity(60)).toBe('consolidado');
+  });
+});
+
+describe('toScoutCountry', () => {
+  it('traduz o UK do catálogo para o ISO real GB', () => {
+    // O regex do schema aceita UK, mas a Meta Ads Library devolve vazio sem erro.
+    expect(toScoutCountry('UK')).toBe('GB');
+  });
+
+  it('mantém os códigos que já são ISO', () => {
+    expect(toScoutCountry('BR')).toBe('BR');
+    expect(toScoutCountry('us')).toBe('US');
+    expect(toScoutCountry(' de ')).toBe('DE');
+  });
+
+  it('preserva ALL para varredura global', () => {
+    expect(toScoutCountry('ALL')).toBe('ALL');
+    expect(toScoutCountry('all')).toBe('ALL');
+  });
+
+  it('cai em BR no vazio ou no que não é código de 2 letras', () => {
+    expect(toScoutCountry('')).toBe('BR');
+    expect(toScoutCountry(null)).toBe('BR');
+    expect(toScoutCountry(undefined)).toBe('BR');
+    expect(toScoutCountry('Brasil')).toBe('BR');
   });
 });

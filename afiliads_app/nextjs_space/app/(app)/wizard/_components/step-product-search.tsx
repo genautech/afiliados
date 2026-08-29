@@ -13,7 +13,8 @@ import { KnowledgeInjector } from './knowledge-injector';
 import type { ProductType } from './step-product-type';
 import {
   Search, Bot, Loader2, AlertTriangle, CheckCircle2, ArrowLeft, ArrowRight,
-  TrendingUp, Tag, ShieldAlert, Target, Link2, Key, HelpCircle
+  TrendingUp, Tag, ShieldAlert, Target, Link2, Key, HelpCircle,
+  Sparkles, Magnet, ArrowUpRight, DollarSign, Download
 } from 'lucide-react';
 import { PLATFORMS_EXTENDED, VERTICALS, GEOS, CHANNELS, ExtendedPlatform } from '@/lib/wizard-data';
 import type {
@@ -58,6 +59,104 @@ export type ScoutStage = (typeof SCOUT_STAGES)[number];
 export function scoutStageIndex(stage: string): number {
   return SCOUT_STAGES.indexOf(stage as ScoutStage);
 }
+
+/**
+ * O catálogo de geos usa `UK`, que não é ISO 3166-1 alpha-2. O regex do schema
+ * (`/^[A-Z]{2}$/`) aceita, mas a Meta Ads Library devolve vazio sem erro — então
+ * traduzimos antes de mandar.
+ */
+const GEO_TO_ISO: Record<string, string> = { UK: 'GB' };
+
+export function toScoutCountry(geoId: string | null | undefined): string {
+  const raw = (geoId ?? '').trim().toUpperCase();
+  if (!raw) return 'BR';
+  if (raw === 'ALL') return 'ALL';
+  const iso = GEO_TO_ISO[raw] ?? raw;
+  return /^[A-Z]{2}$/.test(iso) ? iso : 'BR';
+}
+
+export type ScoutMode = 'ads' | 'idea';
+
+/** Ideia de produto próprio gerada pela IA a partir de um nicho. */
+export interface ProductIdea {
+  /** id do ProductResearch criado — sem ele não dá para importar. */
+  id: string | null;
+  name: string;
+  vertical: string;
+  summary: string | null;
+  /** 0-100. */
+  revenueScore: number;
+  suggestedPrice: number | null;
+  suggestedAov: number | null;
+  leadMagnet: string | null;
+  upsells: string[];
+}
+
+function pickString(...values: unknown[]): string | null {
+  const found = values.find((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  return found ? found.trim() : null;
+}
+
+function pickNumber(...values: unknown[]): number | null {
+  const found = values.find((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  return found ?? null;
+}
+
+/** Aceita string solta ou o formato {name, value} do offer-architect. */
+function toUpsellLabel(entry: unknown): string | null {
+  if (typeof entry === 'string') return entry.trim() || null;
+  if (!entry || typeof entry !== 'object') return null;
+  const row = entry as Record<string, unknown>;
+  const name = pickString(row.name, row.nome, row.title, row.label);
+  if (!name) return null;
+  const value = pickNumber(row.value, row.preco, row.price);
+  return value !== null ? `${name} · R$ ${value.toFixed(2)}` : name;
+}
+
+/**
+ * A rota de ideia ainda não existe: normalizamos as formas plausíveis (raiz,
+ * `idea`, `product`) e o `upsell` singular do offer-architect.
+ */
+export function normalizeProductIdea(raw: unknown): ProductIdea | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const root = raw as Record<string, unknown>;
+  const nestedSource = [root.idea, root.product, root.productResearch].find(
+    (v) => v && typeof v === 'object' && !Array.isArray(v),
+  );
+  const node = (nestedSource ?? root) as Record<string, unknown>;
+
+  const name = pickString(node.name, node.nome, node.title, node.promessa);
+  if (!name) return null;
+
+  const upsellList = Array.isArray(node.upsells)
+    ? node.upsells
+    : node.upsell !== undefined && node.upsell !== null
+      ? [node.upsell]
+      : [];
+
+  const score = pickNumber(node.revenueScore, node.revenue_score, node.score) ?? 0;
+
+  return {
+    id: pickString(node.id, root.id, node.productResearchId, root.productResearchId),
+    name,
+    vertical: pickString(node.vertical, node.nicho) ?? '',
+    summary: pickString(node.summary, node.resumo, node.rationale, node.razao_de_compra),
+    revenueScore: Math.max(0, Math.min(100, Math.round(score))),
+    suggestedPrice: pickNumber(node.suggestedPrice, node.suggested_price, node.preco, node.price),
+    suggestedAov: pickNumber(node.suggestedAov, node.suggested_aov, node.aov),
+    leadMagnet: pickString(node.leadMagnet, node.lead_magnet, node.isca, node.iscaDigital),
+    upsells: upsellList.map(toUpsellLabel).filter((v): v is string => v !== null),
+  };
+}
+
+export function revenueScoreTone(score: number): string {
+  if (score > 80) return 'text-emerald-400';
+  if (score > 50) return 'text-amber-400';
+  return 'text-slate-400';
+}
+
+/** Passado o limite, o stepper avisa que está fora da janela normal. */
+export const SCOUT_SLOW_AFTER_SECONDS = 60;
 
 export type SaturationLevel = 'baixa' | 'moderada' | 'alta' | 'saturado';
 
@@ -142,6 +241,14 @@ interface StepProductSearchProps {
   scoutResult: ScoutResult | null;
   scoutProductType: ProductType;
   setScoutProductType: (v: ProductType) => void;
+  /** ALL para varredura global ou código ISO de 2 letras. */
+  scoutCountry: string;
+  setScoutCountry: (v: string) => void;
+  scoutMode: ScoutMode;
+  setScoutMode: (v: ScoutMode) => void;
+  productIdea: ProductIdea | null;
+  generatingIdea: boolean;
+  runProductIdea: () => Promise<void>;
   runAdScoutResearch: () => Promise<void>;
 
   onPrev: () => void;
@@ -188,6 +295,13 @@ export function StepProductSearch({
   scoutResult,
   scoutProductType,
   setScoutProductType,
+  scoutCountry,
+  setScoutCountry,
+  scoutMode,
+  setScoutMode,
+  productIdea,
+  generatingIdea,
+  runProductIdea,
   runAdScoutResearch,
   onPrev,
   onNext,
@@ -206,6 +320,8 @@ export function StepProductSearch({
   }, [scoutResult]);
   const saturation = saturationFromAdCount(scoutResult?.adCount ?? 0);
 
+  const isIdeaMode = scoutMode === 'idea';
+  const busy = scoutLoading || generatingIdea;
   const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
   React.useEffect(() => {
     if (!scoutLoading) { setElapsedSeconds(0); return; }
@@ -602,45 +718,82 @@ export function StepProductSearch({
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             <div className="sm:col-span-3">
               <Label className="text-slate-300 text-xs font-medium">Palavra-chave ou Nicho para Pesquisa</Label>
               <Input
                 value={scoutQuery}
                 onChange={(e: any) => setScoutQuery(e?.target?.value ?? '')}
-                placeholder="Ex: weight loss supplements, emagrecer rapido, etc."
+                placeholder={
+                  isIdeaMode
+                    ? 'Descreva o nicho ou ideia (ex: jejum intermitente, automação de planilhas)...'
+                    : 'Ex: weight loss supplements, emagrecer rapido, etc.'
+                }
                 className="bg-[#0f172a] border-purple-500/30 text-white placeholder:text-slate-500 focus:border-purple-500 focus:ring-purple-500/10 mt-1.5"
-                disabled={scoutLoading}
+                disabled={busy}
               />
             </div>
             <div>
               <Label className="text-slate-300 text-xs font-medium">Tipo de Varredura</Label>
               <Select
-                value={scoutProductType}
-                onValueChange={(v: ProductType) => setScoutProductType(v)}
-                disabled={scoutLoading}
+                value={scoutMode === 'idea' ? 'IDEA' : scoutProductType}
+                onValueChange={(v: string) => {
+                  if (v === 'IDEA') { setScoutMode('idea'); return; }
+                  setScoutMode('ads');
+                  setScoutProductType(v as ProductType);
+                }}
+                disabled={busy}
               >
                 <SelectTrigger className="bg-[#0f172a] border-purple-500/30 text-white mt-1.5">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-[#1e293b] border-[#334155]">
+                  <SelectItem value="IDEA" className="text-purple-300 font-medium">
+                    ✨ Criar Ideia de Produto Próprio (IA Ads Scout)
+                  </SelectItem>
                   <SelectItem value="AFFILIATE" className="text-white">Afiliado / Arbitragem</SelectItem>
                   <SelectItem value="PROPRIETARY_LOW_TICKET" className="text-white">Infoproduto Próprio</SelectItem>
                   <SelectItem value="MENTORSHIP" className="text-white">Mentoria / Alto Ticket</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="text-slate-300 text-xs font-medium">País da biblioteca</Label>
+              <Select
+                value={scoutCountry}
+                onValueChange={(v: string) => setScoutCountry(toScoutCountry(v))}
+                disabled={busy || isIdeaMode}
+              >
+                <SelectTrigger className="bg-[#0f172a] border-purple-500/30 text-white mt-1.5 font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1e293b] border-[#334155]">
+                  <SelectItem value="ALL" className="text-white font-mono">ALL — global</SelectItem>
+                  {GEOS.map((geo) => (
+                    <SelectItem key={geo} value={geo} className="text-white font-mono">
+                      {toScoutCountry(geo)}
+                      {toScoutCountry(geo) !== geo ? ` (${geo})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <Button
-            onClick={runAdScoutResearch}
-            disabled={scoutLoading || !scoutQuery.trim()}
+            onClick={isIdeaMode ? runProductIdea : runAdScoutResearch}
+            disabled={busy || !scoutQuery.trim()}
             className="bg-purple-600 hover:bg-purple-700 text-white gap-2 w-full sm:w-auto text-xs font-semibold py-2.5 transition-all"
           >
-            {scoutLoading ? (
+            {busy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Analisando com múltiplos agentes...
+                {isIdeaMode ? 'Desenhando a oferta...' : 'Analisando com múltiplos agentes...'}
+              </>
+            ) : isIdeaMode ? (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Gerar Oferta com IA ✨
               </>
             ) : (
               <>
@@ -650,14 +803,21 @@ export function StepProductSearch({
             )}
           </Button>
 
-          {scoutLoading && (
+          {scoutLoading && !isIdeaMode && (
             <div className="mt-4 space-y-3 rounded-lg border border-purple-500/10 bg-purple-950/10 p-4">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-mono text-purple-300">
                   {scoutStage || SCOUT_STAGES[0]}
                 </span>
-                <span className="font-mono text-[11px] text-slate-500">
-                  {elapsedSeconds}s <span className="text-slate-600">/ ~15–45s</span>
+                <span
+                  className={`font-mono text-[11px] ${
+                    elapsedSeconds > SCOUT_SLOW_AFTER_SECONDS ? 'text-amber-400' : 'text-slate-500'
+                  }`}
+                >
+                  {elapsedSeconds}s{' '}
+                  <span className="text-slate-600">
+                    {elapsedSeconds > SCOUT_SLOW_AFTER_SECONDS ? '· acima da janela normal' : '/ ~15–45s'}
+                  </span>
                 </span>
               </div>
 
@@ -706,8 +866,95 @@ export function StepProductSearch({
             </div>
           )}
 
+          {/* Ideia de produto próprio gerada pela IA */}
+          {isIdeaMode && productIdea && (
+            <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-950/10 p-4 shadow-lg shadow-purple-900/10">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-purple-400">
+                    <Sparkles className="h-3 w-3" /> Ideia de produto próprio
+                  </p>
+                  <h3 className="mt-1 text-base font-semibold text-white">{productIdea.name}</h3>
+                  {productIdea.vertical && (
+                    <p className="font-mono text-[11px] text-slate-500">{productIdea.vertical}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    Potencial de receita
+                  </p>
+                  <p className={`font-mono text-2xl font-bold ${revenueScoreTone(productIdea.revenueScore)}`}>
+                    {productIdea.revenueScore}
+                    <span className="text-sm text-slate-600">/100</span>
+                  </p>
+                </div>
+              </div>
+
+              {productIdea.summary && (
+                <p className="mt-3 text-[11px] leading-relaxed text-slate-300">{productIdea.summary}</p>
+              )}
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a]/60 p-3">
+                  <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    <DollarSign className="h-3 w-3" /> Preço sugerido / AOV
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-emerald-400">
+                    {productIdea.suggestedPrice !== null ? `R$ ${productIdea.suggestedPrice.toFixed(2)}` : '—'}
+                    <span className="text-slate-600"> / </span>
+                    {productIdea.suggestedAov !== null ? `R$ ${productIdea.suggestedAov.toFixed(2)}` : '—'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a]/60 p-3">
+                  <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    <Magnet className="h-3 w-3" /> Isca digital recomendada
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                    {productIdea.leadMagnet ?? 'não sugerida'}
+                  </p>
+                </div>
+              </div>
+
+              {productIdea.upsells.length > 0 && (
+                <div className="mt-3">
+                  <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    <ArrowUpRight className="h-3 w-3" /> Upsells sugeridos
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {productIdea.upsells.map((upsell, idx) => (
+                      <Badge
+                        key={`${upsell}-${idx}`}
+                        className="bg-purple-500/15 text-[10px] font-normal text-purple-200 hover:bg-purple-500/25"
+                      >
+                        {upsell}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-purple-500/15 pt-3">
+                <Button
+                  size="sm"
+                  onClick={() => { if (productIdea.id) void loadFromResearch(productIdea.id); }}
+                  disabled={!productIdea.id || autofilling}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+                >
+                  {autofilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  Importar Produto
+                </Button>
+                {!productIdea.id && (
+                  <span className="text-[10px] text-amber-400/80">
+                    a ideia não foi persistida: sem id não há o que importar
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Scout Results Rendering */}
-          {scoutResult && (
+          {scoutResult && !isIdeaMode && (
             <div className="space-y-6 mt-6 pt-6 border-t border-[#334155]/40">
               {/* Grid de métricas */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
