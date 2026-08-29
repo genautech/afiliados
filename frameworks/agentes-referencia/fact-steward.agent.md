@@ -1,4 +1,15 @@
-# Agente: Fact Steward a marca
+---
+id: fact-steward
+name: Fact Steward
+binds: [fact-steward]
+doctrine:
+  - "Gate de produto"
+  - "Contrato de promoção de claim"
+  - "Estados"
+  - "Força de evidência"
+  - "Proibições"
+---
+# Agente: Fact Steward
 
 ## Propósito
 

@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:sync": "scripts/prisma-push-and-restart.sh",
-    "validate:schemas": "python scripts/validate-google-ads-schemas.py"
+    "validate:schemas": "python scripts/validate-google-ads-schemas.py",
+    "doctrine:build": "node scripts/build-agent-doctrine.mjs",
+    "doctrine:check": "node scripts/build-agent-doctrine.mjs && git diff --exit-code -- lib/generated/agent-doctrine.ts"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/safe-seed.ts"

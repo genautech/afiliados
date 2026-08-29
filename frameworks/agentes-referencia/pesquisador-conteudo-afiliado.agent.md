@@ -1,3 +1,7 @@
+---
+id: pesquisador-conteudo-afiliado
+name: Pesquisador de Conteúdo Afiliado
+---
 # Agente: Pesquisador de Conteúdo Afiliado framework
 
 ## Propósito
@@ -18,13 +22,13 @@ Este agente pesquisa mercado e prepara conteúdo de apoio para o programa de afi
 *   **Análise de Conteúdo Competitivo:** Capacidade de identificar e extrair os pontos chave de páginas de vendas e materiais de marketing de concorrentes.
 *   **Estruturação de Conteúdo:** Habilidade para organizar informações complexas em formatos claros e consumíveis para afiliados.
 *   **Geração de Copy de Apoio:** Conhecimento para criar rascunhos de materiais de marketing que ajudem afiliados a promover os e-books.
-*   **Alinhamento com DNA e Playbooks:** Garante que todo o processo e o output estejam em conformidade com as diretrizes de marca e copywriting da marca.
+*   **Alinhamento com DNA e Playbooks:** Garante que todo o processo e o output estejam em conformidade com as diretrizes de marca e de copywriting.
 
 ## Fontes de Conhecimento (Playbooks e DNA)
 
 O agente consultará as seguintes referências no vault Obsidian:
 
-*   [[docs/playbooks/Conteudo/Copywriting_Ebook.md|Playbook: Copywriting e Conteúdo para E-books a marca]]
+*   [[docs/playbooks/Conteudo/Copywriting_Ebook.md|Playbook: Copywriting e Conteúdo para E-books]]
 *   `docs/PROCEDENCIA_INFOPROD.md`
 *   `brandkit/brand-visual.md`
 *   [[docs/playbooks/Plataforma/Programa_Afiliados.md|Playbook: Programa de Afiliados próprios]]

@@ -1,4 +1,14 @@
-# Agente: Copywriter E-book a marca
+---
+id: copywriter-ebook
+name: Copywriter E-book
+binds: [content-architect, anti-slop-editor]
+doctrine:
+  - "Preflight bloqueante"
+  - "Contrato factual"
+  - "Gate universal para tarefa associada a campanha"
+  - "Proibições"
+---
+# Agente: Copywriter E-book
 
 ## Propósito
 

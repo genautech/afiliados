@@ -1,3 +1,11 @@
+---
+id: analista-mercado
+name: Analista de Mercado
+doctrine:
+  - "As três gavetas — e o que cada uma pode decidir"
+  - "Contrato de coleta"
+  - "O que este agente nunca faz"
+---
 # Agente: Analista de Mercado framework
 
 ## Propósito
@@ -9,7 +17,7 @@ o que ele **não** prova.
 
 ## O problema que este agente resolve
 
-O a marca tomava decisão com número sem origem. A skill de tráfego mandava
+A operação tomava decisão com número sem origem. A skill de tráfego mandava
 matar criativo com `ROAS < 2.5` sem dizer de onde vinha o 2.5. A de oferta
 permitia "prova hipotética", e isso virou a claim inválida "1.200 leitoras" em
 `Referencias/Fatos_Produto.md:86`.
@@ -52,7 +60,7 @@ por isso o número não pode ser usado como "nosso CPC".
 ## Ferramentas reais
 
 Use a skill `firecrawl`/`firecrawl-search` instalada no Hermes ou o MCP
-Firecrawl já configurado no ambiente atual. O agente a marca **não lê código,
+Firecrawl já configurado no ambiente atual. Este agente **não lê código,
 `.env` nem credenciais de este repositório (AfiliAds)**. Se o Firecrawl não
 estiver autenticado, registre `BLOQUEADO_CREDENCIAL` e peça configuração local;
 nunca copie segredo entre workspaces.
@@ -86,9 +94,9 @@ coleta que não precisava acontecer.
 
 A leitura da coleta de 2026-08-10 foi essa: 4 dos 6 primeiros resultados são
 **cursos gratuitos com certificado**. Um low-ticket de R$37–47 não compete com
-outro pago — compete com o grátis. Isso reposicionou o OPERADOR: o diferencial
+outro pago — compete com o grátis. Isso reposiciona o produto próprio: o diferencial
 não é ter mais conteúdo, é a missão diária verificada em D+48h. O concorrente
-entrega enciclopédia; o OPERADOR entrega hábito verificado.
+entrega enciclopédia; o produto próprio entrega hábito verificado.
 
 ## Integração com EBOOK-OS
 

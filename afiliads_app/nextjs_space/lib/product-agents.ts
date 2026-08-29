@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { callAgent } from './llm';
+import { doctrinePrompt } from './generated/agent-doctrine';
 import type { PersistFn, PersistResult } from './product-agent-persistence';
 import {
   resolveScope,
@@ -471,7 +472,9 @@ export async function runProductAgent<I extends z.ZodTypeAny, O extends z.ZodTyp
 
   const res = await callAgent(userId, {
     agent: spec.agent,
-    systemPrompt: spec.systemPrompt,
+    // A doutrina vem dos .agent.md de frameworks/agentes-referencia (via build). Ficar fora
+    // do literal do prompt é o que impede a regra de divergir do documento revisado.
+    systemPrompt: spec.systemPrompt + doctrinePrompt(spec.agent),
     userPrompt: spec.buildUserPrompt(input),
     json: true,
     campaignId,
