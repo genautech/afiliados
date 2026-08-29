@@ -16,6 +16,68 @@ import {
   TrendingUp, Tag, ShieldAlert, Target, Link2, Key, HelpCircle
 } from 'lucide-react';
 import { PLATFORMS_EXTENDED, VERTICALS, GEOS, CHANNELS, ExtendedPlatform } from '@/lib/wizard-data';
+import type {
+  AdScoutOracleOutput,
+  AnalyzedClaimItem,
+  ClaimRiskLevel,
+  CompetitorItem,
+} from '@/lib/validations/market-research';
+
+/**
+ * `activeDays` ainda não existe em CompetitorItemSchema (que é `.strict()`), então
+ * chega opcional: a UI mostra o tempo no ar só quando o backend passar a enviá-lo.
+ */
+export type ScoutCompetitor = CompetitorItem & { activeDays?: number };
+export type ScoutResult = Omit<AdScoutOracleOutput, 'competitors'> & { competitors: ScoutCompetitor[] };
+
+/** Estágios reais do pipeline Firecrawl -> Meta -> Compliance. */
+export const SCOUT_STAGES = [
+  'Raspando anúncios...',
+  'Interagindo com a biblioteca...',
+  'Orquestrando IA da Meta...',
+  'Validando Compliance...',
+] as const;
+export type ScoutStage = (typeof SCOUT_STAGES)[number];
+
+/** -1 quando o rótulo não é um estágio conhecido (ex.: string vazia). */
+export function scoutStageIndex(stage: string): number {
+  return SCOUT_STAGES.indexOf(stage as ScoutStage);
+}
+
+export type SaturationLevel = 'baixa' | 'moderada' | 'alta' | 'saturado';
+
+export function saturationFromAdCount(adCount: number): SaturationLevel {
+  if (!Number.isFinite(adCount) || adCount < 5) return 'baixa';
+  if (adCount < 15) return 'moderada';
+  if (adCount < 30) return 'alta';
+  return 'saturado';
+}
+
+export const SATURATION_TONE: Record<SaturationLevel, string> = {
+  baixa: 'text-emerald-400',
+  moderada: 'text-sky-400',
+  alta: 'text-amber-400',
+  saturado: 'text-rose-400',
+};
+
+/** O schema só emite LOW/MEDIUM/HIGH, mas toleramos o rótulo PT que já circulou. */
+export function isHighRisk(claim: Pick<AnalyzedClaimItem, 'riskLevel'> | { riskLevel: string }): boolean {
+  const level = String(claim.riskLevel).toUpperCase();
+  return level === 'HIGH' || level === 'ALTO';
+}
+
+export const RISK_TONE: Record<ClaimRiskLevel, { chip: string; border: string }> = {
+  HIGH: { chip: 'bg-rose-500/15 text-rose-300', border: 'border-rose-500/25 bg-rose-500/[0.04]' },
+  MEDIUM: { chip: 'bg-amber-500/15 text-amber-300', border: 'border-amber-500/20 bg-amber-500/[0.03]' },
+  LOW: { chip: 'bg-slate-500/20 text-slate-300', border: 'border-[#334155] bg-[#0f172a]' },
+};
+
+export function riskTone(level: string): { chip: string; border: string } {
+  const key = String(level).toUpperCase();
+  if (key === 'HIGH' || key === 'ALTO') return RISK_TONE.HIGH;
+  if (key === 'MEDIUM' || key === 'MEDIO' || key === 'MÉDIO') return RISK_TONE.MEDIUM;
+  return RISK_TONE.LOW;
+}
 
 interface StepProductSearchProps {
   campaignId?: string | null;
@@ -62,7 +124,7 @@ interface StepProductSearchProps {
   setScoutQuery: (v: string) => void;
   scoutLoading: boolean;
   scoutStage: string;
-  scoutResult: any;
+  scoutResult: ScoutResult | null;
   scoutProductType: ProductType;
   setScoutProductType: (v: ProductType) => void;
   runAdScoutResearch: () => Promise<void>;
@@ -116,6 +178,26 @@ export function StepProductSearch({
   onNext,
 }: StepProductSearchProps) {
   const inputCls = 'bg-[#0f172a] border-[#334155] text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-emerald-500/10';
+
+  const highRiskClaims = React.useMemo(
+    () => (scoutResult ? scoutResult.analyzedClaims.filter(isHighRisk) : []),
+    [scoutResult],
+  );
+  // Alto risco primeiro: é o que trava a campanha, não pode ficar embaixo da lista.
+  const sortedClaims = React.useMemo(() => {
+    if (!scoutResult) return [];
+    const weight = (level: string) => (isHighRisk({ riskLevel: level }) ? 0 : String(level).toUpperCase() === 'MEDIUM' ? 1 : 2);
+    return [...scoutResult.analyzedClaims].sort((a, b) => weight(a.riskLevel) - weight(b.riskLevel));
+  }, [scoutResult]);
+  const saturation = saturationFromAdCount(scoutResult?.adCount ?? 0);
+
+  const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
+  React.useEffect(() => {
+    if (!scoutLoading) { setElapsedSeconds(0); return; }
+    const startedAt = Date.now();
+    const timer = setInterval(() => setElapsedSeconds(Math.round((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [scoutLoading]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -554,13 +636,57 @@ export function StepProductSearch({
           </Button>
 
           {scoutLoading && (
-            <div className="space-y-2 mt-4 p-4 rounded-lg bg-purple-950/10 border border-purple-500/10">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-mono text-purple-300">{scoutStage}</span>
-                <span className="animate-pulse text-purple-400">Varrendo web...</span>
+            <div className="mt-4 space-y-3 rounded-lg border border-purple-500/10 bg-purple-950/10 p-4">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-mono text-purple-300">
+                  {scoutStage || SCOUT_STAGES[0]}
+                </span>
+                <span className="font-mono text-[11px] text-slate-500">
+                  {elapsedSeconds}s <span className="text-slate-600">/ ~15–45s</span>
+                </span>
               </div>
-              <Progress className="h-2 bg-slate-900 overflow-hidden">
-                <div className="h-full bg-purple-500 rounded animate-progressBar" />
+
+              <ol className="space-y-1.5">
+                {SCOUT_STAGES.map((stage, index) => {
+                  const current = scoutStageIndex(scoutStage);
+                  const done = current > index;
+                  const active = current === index || (current === -1 && index === 0);
+                  return (
+                    <li key={stage} className="flex items-center gap-2 text-[11px]">
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] ${
+                          done
+                            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                            : active
+                              ? 'border-purple-500/50 bg-purple-500/15 text-purple-300'
+                              : 'border-slate-700 bg-slate-900 text-slate-600'
+                        }`}
+                      >
+                        {done ? <CheckCircle2 className="h-2.5 w-2.5" /> : index + 1}
+                      </span>
+                      <span
+                        className={
+                          done ? 'text-slate-500 line-through' : active ? 'text-purple-200' : 'text-slate-600'
+                        }
+                      >
+                        {stage}
+                      </span>
+                      {active && <Loader2 className="h-3 w-3 animate-spin text-purple-400" />}
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <Progress className="h-1.5 bg-slate-900 overflow-hidden">
+                <div
+                  className="h-full rounded bg-purple-500 transition-all duration-700"
+                  style={{
+                    width: `${Math.min(
+                      95,
+                      ((Math.max(scoutStageIndex(scoutStage), 0) + 1) / SCOUT_STAGES.length) * 100,
+                    )}%`,
+                  }}
+                />
               </Progress>
             </div>
           )}
@@ -568,75 +694,127 @@ export function StepProductSearch({
           {/* Scout Results Rendering */}
           {scoutResult && (
             <div className="space-y-6 mt-6 pt-6 border-t border-[#334155]/40">
-              {/* Quick Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <Card className="bg-[#0f172a]/60 border-[#334155] p-3 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Anúncios Concorrentes</p>
-                  <p className="text-xl font-bold text-white font-mono mt-1">{scoutResult.adCount}</p>
-                </Card>
-                <Card className="bg-[#0f172a]/60 border-[#334155] p-3 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Preço Médio do Funil</p>
-                  <p className="text-xl font-bold text-emerald-400 font-mono mt-1">
-                    ${typeof scoutResult.avgPrice === 'number' ? scoutResult.avgPrice.toFixed(2) : parseFloat(scoutResult.avgPrice || '0').toFixed(2)}
+              {/* Grid de métricas */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a]/60 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Anúncios ativos</p>
+                  <p className="mt-1 font-mono text-xl font-bold text-white">{scoutResult.adCount}</p>
+                  <p className="text-[10px] text-slate-600">concorrentes na praça</p>
+                </div>
+
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a]/60 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Preço médio</p>
+                  <p className="mt-1 font-mono text-xl font-bold text-emerald-400">
+                    R$ {scoutResult.avgPrice.toFixed(2)}
                   </p>
-                </Card>
-                <Card className="bg-[#0f172a]/60 border-[#334155] p-3 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Concorrentes Diretos</p>
-                  <p className="text-xl font-bold text-purple-400 font-mono mt-1">{scoutResult.competitors?.length || 0}</p>
-                </Card>
-                <Card className="bg-[#0f172a]/60 border-[#334155] p-3 text-center">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Claims de Alto Risco</p>
-                  <p className="text-xl font-bold text-rose-500 font-mono mt-1">
-                    {scoutResult.analyzedClaims?.filter((c: any) => c.riskLevel === 'HIGH' || c.riskLevel === 'ALTO')?.length || 0}
+                  <p className="text-[10px] text-slate-600">praticado no nicho</p>
+                </div>
+
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a]/60 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Saturação</p>
+                  <p className={`mt-1 font-mono text-xl font-bold capitalize ${SATURATION_TONE[saturation]}`}>
+                    {saturation}
                   </p>
-                </Card>
+                  <p className="text-[10px] text-slate-600">{scoutResult.competitors.length} mapeados</p>
+                </div>
+
+                <div
+                  className={`rounded-lg border p-3 ${
+                    highRiskClaims.length > 0 ? 'border-rose-500/25 bg-rose-500/[0.04]' : 'border-[#334155] bg-[#0f172a]/60'
+                  }`}
+                >
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Risco compliance</p>
+                  <p
+                    className={`mt-1 font-mono text-xl font-bold ${
+                      highRiskClaims.length > 0 ? 'text-rose-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {highRiskClaims.length}
+                  </p>
+                  <p className="text-[10px] text-slate-600">
+                    claim(s) de alto risco em {scoutResult.analyzedClaims.length}
+                  </p>
+                </div>
               </div>
 
-              {/* Kill Switch Warning */}
-              {(scoutResult.analyzedClaims?.filter((c: any) => c.riskLevel === 'HIGH' || c.riskLevel === 'ALTO')?.length || 0) > 0 && (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-4 flex items-start gap-3 shadow-inner">
-                  <ShieldAlert className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-rose-300 uppercase tracking-wider font-mono">
-                      🚨 Kill Switch de Compliance Ativado
-                    </p>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      O Ad Scout mapeou claims proibidas de <strong>Alto Risco</strong> no mercado. O nosso compliance robot irá remover e mascarar estas declarações da pré-sell automaticamente para proteger sua conta do Google Ads contra bloqueios imediatos.
-                    </p>
-                    <div className="mt-3 grid grid-cols-1 gap-2">
-                      {scoutResult.analyzedClaims
-                        .filter((c: any) => c.riskLevel === 'HIGH' || c.riskLevel === 'ALTO')
-                        .map((c: any, idx: number) => (
-                          <div key={idx} className="text-[11px] text-slate-300 bg-slate-950 p-2.5 rounded border border-rose-500/20 font-mono">
-                            <span className="text-rose-400 font-semibold uppercase text-[10px] block mb-1">Claim proibida de alto risco:</span>
-                            "{c.claim}"
-                            <p className="text-[10px] text-slate-500 mt-1">Fonte: {c.sourceCompetitor} — {c.justification}</p>
+              {/* Dossiê de compliance */}
+              {scoutResult.analyzedClaims.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />
+                    Dossiê de compliance
+                    {highRiskClaims.length > 0 && (
+                      <Badge className="bg-rose-500/15 text-[10px] text-rose-300 hover:bg-rose-500/25">
+                        {highRiskClaims.length} de alto risco
+                      </Badge>
+                    )}
+                  </h3>
+                  <div className="space-y-2">
+                    {sortedClaims.map((claim, idx) => {
+                      const tone = riskTone(claim.riskLevel);
+                      const high = isHighRisk(claim);
+                      return (
+                        <div key={`${claim.claim}-${idx}`} className={`rounded-lg border p-3 ${tone.border}`}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {high && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />}
+                            <Badge className={`${tone.chip} font-mono text-[9px] uppercase hover:opacity-90`}>
+                              {claim.riskLevel}
+                            </Badge>
+                            <span className="font-mono text-[10px] text-slate-500">
+                              via {claim.sourceCompetitor}
+                            </span>
                           </div>
-                        ))}
-                    </div>
+                          <p className="mt-2 font-mono text-[11px] leading-relaxed text-slate-200">
+                            &ldquo;{claim.claim}&rdquo;
+                          </p>
+                          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+                            <span className="text-slate-600">Por quê: </span>
+                            {claim.justification}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Competitors List */}
-              {scoutResult.competitors && scoutResult.competitors.length > 0 && (
+              {/* Concorrentes */}
+              {scoutResult.competitors.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">Benchmarking de Concorrentes Mapeados</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {scoutResult.competitors.map((comp: any, idx: number) => (
-                      <div key={idx} className="bg-slate-900/50 p-3 rounded-lg border border-[#334155]/60 flex flex-col justify-between gap-2 hover:border-purple-500/30 transition-all">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-white truncate">{comp.name}</span>
-                            <span className="text-xs font-mono font-bold text-emerald-400">${comp.price}</span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 italic">"{comp.angle}"</p>
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-[#334155]/30">
-                          <span className="text-[10px] text-slate-500 font-mono truncate max-w-[150px]">{comp.url}</span>
-                          <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-purple-400 flex items-center gap-1 hover:text-purple-300">
-                            Espionar LP ➜
+                  <h3 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <Target className="h-3.5 w-3.5 text-purple-400" />
+                    Concorrentes mapeados
+                  </h3>
+                  <div className="divide-y divide-[#1e293b] overflow-hidden rounded-lg border border-[#334155]">
+                    {scoutResult.competitors.map((comp, idx) => (
+                      <div
+                        key={`${comp.url}-${idx}`}
+                        className="flex flex-wrap items-start justify-between gap-3 bg-[#0f172a]/60 p-3 transition-colors hover:bg-[#0f172a]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <a
+                            href={comp.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300"
+                          >
+                            {comp.name}
+                            <Link2 className="h-3 w-3 shrink-0" />
                           </a>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{comp.angle}</p>
+                          <p className="mt-0.5 truncate font-mono text-[10px] text-slate-600">{comp.url}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          {typeof comp.activeDays === 'number' && (
+                            <div className="text-right">
+                              <p className="font-mono text-[10px] uppercase text-slate-600">no ar</p>
+                              <p className="font-mono text-xs text-amber-400">{comp.activeDays}d</p>
+                            </div>
+                          )}
+                          <div className="text-right">
+                            <p className="font-mono text-[10px] uppercase text-slate-600">preço</p>
+                            <p className="font-mono text-xs text-emerald-400">R$ {comp.price.toFixed(2)}</p>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -644,30 +822,40 @@ export function StepProductSearch({
                 </div>
               )}
 
-              {/* Audience Pain points */}
-              {scoutResult.audiencePain && scoutResult.audiencePain.length > 0 && (
+              {/* Dores da audiência */}
+              {scoutResult.audiencePain.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">Dores Sentimentais Mapeadas (Reddit / Fóruns)</h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    {scoutResult.audiencePain.map((pain: string, idx: number) => (
-                      <div key={idx} className="flex items-start gap-2.5 bg-slate-950 p-2.5 rounded border border-[#334155]/40 text-xs text-slate-300">
-                        <span className="text-purple-400 font-bold font-mono text-[10px] mt-0.5">#{idx + 1}</span>
-                        <p className="leading-relaxed">{pain}</p>
+                  <h3 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                    Dores reais capturadas
+                  </h3>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {scoutResult.audiencePain.map((pain, idx) => (
+                      <div
+                        key={`${pain}-${idx}`}
+                        className="rounded border border-[#334155] bg-[#0f172a] p-2.5 text-[11px] leading-relaxed text-slate-300"
+                      >
+                        {pain}
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Angles Suggested */}
-              {scoutResult.anglesSuggested && scoutResult.anglesSuggested.length > 0 && (
+              {/* Ângulos sugeridos */}
+              {scoutResult.anglesSuggested.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">Ângulos de Anúncio Sugeridos (Alta Conversão)</h3>
+                  <h3 className="flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <Tag className="h-3.5 w-3.5 text-sky-400" />
+                    Ângulos de anúncio sugeridos
+                  </h3>
                   <div className="grid grid-cols-1 gap-2">
-                    {scoutResult.anglesSuggested.map((angle: string, idx: number) => (
-                      <div key={idx} className="flex items-start gap-2.5 bg-emerald-500/5 p-2.5 rounded border border-emerald-500/10 text-xs text-emerald-200">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                        <p className="leading-relaxed">{angle}</p>
+                    {scoutResult.anglesSuggested.map((angle, idx) => (
+                      <div
+                        key={`${angle}-${idx}`}
+                        className="rounded border border-sky-500/20 bg-sky-500/[0.04] p-2.5 text-[11px] leading-relaxed text-slate-200"
+                      >
+                        {angle}
                       </div>
                     ))}
                   </div>

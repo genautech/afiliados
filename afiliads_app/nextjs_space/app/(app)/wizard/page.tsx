@@ -1,6 +1,6 @@
 'use client';
 import { StepProductType, ProductType } from './_components/step-product-type';
-import { StepProductSearch } from './_components/step-product-search';
+import { StepProductSearch, SCOUT_STAGES, type ScoutResult } from './_components/step-product-search';
 import { EbookDraftPanel } from './_components/ebook-draft-panel';
 import { AICostDashboard } from './_components/ai-cost-dashboard';
 import { StepCalculator } from './_components/step-calculator';
@@ -10,7 +10,7 @@ import { StepLaunch } from './_components/step-launch';
 import { ProductStudio } from './_components/product-studio';
 import { AgentHelp, ChecklistItemRow, applyEnumIfValid, AutofillContext } from './_components/agent-help';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,7 @@ export default function WizardPage() {
   const [experimentId, setExperimentId] = useState<string | null>(null);
 
   const [autofilling, setAutofilling] = useState(false);
+  const autofillLock = useRef(false);
   const [autofillRationale, setAutofillRationale] = useState<Record<string, string>>({});
   const [autofillSummary, setAutofillSummary] = useState<string | null>(null);
   const [aiNegatives, setAiNegatives] = useState<string[] | null>(null);
@@ -189,7 +190,7 @@ export default function WizardPage() {
   const [scoutQuery, setScoutQuery] = useState('');
   const [scoutLoading, setScoutLoading] = useState(false);
   const [scoutStage, setScoutStage] = useState('');
-  const [scoutResult, setScoutResult] = useState<any>(null);
+  const [scoutResult, setScoutResult] = useState<ScoutResult | null>(null);
   const [scoutProductType, setScoutProductType] = useState<ProductType>('AFFILIATE');
 
   // Break-even calculations
@@ -509,6 +510,8 @@ export default function WizardPage() {
   };
 
   const runAutofill = async (params: { productResearchId?: string; campaignId?: string; baseline?: Record<string, any>; existingKeywordsCount?: number }) => {
+    if (autofillLock.current) return;
+    autofillLock.current = true;
     setAutofilling(true);
     try {
       const res = await fetch('/api/wizard-autofill', {
@@ -530,6 +533,7 @@ export default function WizardPage() {
     } catch {
       toast.error('Erro de rede ao consultar o agente.');
     } finally {
+      autofillLock.current = false;
       setAutofilling(false);
     }
   };
@@ -625,21 +629,14 @@ export default function WizardPage() {
     }
     setScoutLoading(true);
     setScoutResult(null);
-    setScoutStage('Iniciando comunicação com a Google Agent Platform...');
+    setScoutStage(SCOUT_STAGES[0]);
 
-    const stages = [
-      'Acessando Google Search API oficial...',
-      'Mapeando concorrentes e temperatura de leilão...',
-      'Escavando fóruns de dor do usuário (Reddit)...',
-      'Analisando claims enganosas e riscos de compliance...',
-      'Sincronizando relatórios e gerando insights de copy...'
-    ];
-    let i = 0;
+    // O pipeline Firecrawl -> Meta leva 15-45s: avançamos o stepper devagar e
+    // seguramos o último estágio até a resposta chegar, em vez de estourar em 4s.
+    let i = 1;
     const interval = setInterval(() => {
-      if (i < stages.length) {
-        setScoutStage(stages[i++]);
-      }
-    }, 800);
+      if (i < SCOUT_STAGES.length) setScoutStage(SCOUT_STAGES[i++]);
+    }, 6000);
 
     try {
       const response = await fetch('/api/search/market-scout', {
@@ -656,7 +653,7 @@ export default function WizardPage() {
       clearInterval(interval);
 
       if (response.ok) {
-        const resData = await response.json();
+        const resData = (await response.json()) as ScoutResult;
         setScoutResult(resData);
         toast.success('Pesquisa do Ad Scout consolidada com sucesso!');
       } else {
@@ -684,8 +681,16 @@ export default function WizardPage() {
   };
 
   const loadFromResearch = async (id: string) => {
-    if (!id) return;
-    const product = await requireConfirmedProduct(id);
+    // A checagem do vendor é um fetch: sem esta trava, dois cliques rápidos
+    // disparam dois autofills concorrentes antes de `autofilling` virar true.
+    if (!id || autofillLock.current) return;
+    autofillLock.current = true;
+    let product: ProductResearch | null = null;
+    try {
+      product = await requireConfirmedProduct(id);
+    } finally {
+      autofillLock.current = false;
+    }
     if (!product?.confirmedAt) {
       toast.error('Confirme as regras do vendor na Busca de Produtos antes de carregar este produto.');
       router.push(`/busca-produtos?productId=${id}`);
