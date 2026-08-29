@@ -9,6 +9,16 @@ import { GLOSSARY, SYSTEM_MANUAL } from '@/lib/knowledge-data';
 import { AGENT_REGISTRY } from '@/lib/agents';
 import { CATALOGO_VERTICAIS } from '@/lib/generated/catalogo';
 import { AGENT_DOCTRINE } from '@/lib/generated/agent-doctrine';
+import { PLAYBOOKS, ERROS_COMUNS, PLAYBOOKS_ATUALIZADO_EM, type IconePlaybook } from '@/lib/generated/catalogo-conhecimento';
+
+// O YAML guarda o nome lógico do ícone; o componente Lucide fica aqui.
+const ICONE_PLAYBOOK: Record<IconePlaybook, typeof Target> = {
+  target: Target,
+  grafico: BarChart3,
+  documento: FileText,
+  ideia: Lightbulb,
+  checklist: CheckSquare,
+};
 
 const learningTypeBadge: Record<string, { label: string; cls: string }> = {
   teste: { label: 'Teste Kill/Scale', cls: 'bg-purple-500/20 text-purple-300' },
@@ -17,126 +27,11 @@ const learningTypeBadge: Record<string, { label: string; cls: string }> = {
   produto: { label: 'Produto', cls: 'bg-yellow-500/20 text-yellow-300' },
 };
 
-const KNOWLEDGE_BASE = {
-  estrategias: {
-    title: 'Estratégias',
-    icon: Target,
-    sections: [
-      {
-        title: 'Seleção de Ofertas',
-        content: `**ClickBank:** Gravity (oferta viva), EPC de referência, avg sale, upsells. Ler Vendor Terms: geo, tráfego, trademark, claims. Testar LP/VSL no mobile. HopLink + UTMs.\n\n**BuyGoods:** Payout vs CPC esperado no geo. Criativos oficiais + ângulos próprios sem violar claims. Confirmar se exige bridge / proíbe direct / landing approval.\n\n**MaxWeb:** Vertical + payout (CPL vs CPA vs RevShare). Smartlink para descoberta; offer fixa após vencedor. Nunca escalar sem postback validado. Monitorar held/rejected/clawback semanalmente.\n\n**Hotmart/Eduzz/Monetizze:** Comissão %, qualidade da página, calendário de lançamento. Materiais oficiais + ângulo da sua audiência.\n\n**Shortlist:** 2–3 CB/BuyGoods + 1 path MaxWeb + 1 BR`,
-      },
-      {
-        title: 'Funis',
-        content: `1. **Direct** — anúncio → hop/smartlink (teste rápido)\n2. **Bridge / Review** — anúncio → sua página → CTA afiliado (padrão Google)\n3. **Search Intent** — keyword problema/solução → RSA → bridge\n4. **YouTube / Demand Gen** — UGC/talking-head → bridge ou SL\n5. **PMax** — só após conversões estáveis\n6. **Lançamento BR** — conteúdo/lista → carrinho\n7. **MaxWeb Smartlink** — tráfego → SL → pin na offer vencedora`,
-      },
-      {
-        title: 'Métricas e Decisão',
-        content: `| Métrica | Uso |\n|---------|-----|\n| EPC | Receita líquida / cliques |\n| eCPA | Gasto / conversões |\n| ROAS | Receita / gasto |\n| CVR | Conv / cliques |\n\n**SCALE:** EPC ≥ 1,3 × CPC ou eCPA < payout líquido com margem\n**KILL:** sem conversão com gasto ≥ orçamento de teste\n**OTIMIZAR:** perto do break-even`,
-      },
-    ],
-  },
-  googleads: {
-    title: 'Google Ads',
-    icon: BarChart3,
-    sections: [
-      {
-        title: 'Arquitetura de Conta',
-        content: `1 campanha = 1 rede × 1 vertical × 1 geo × 1 canal × 1 funil\nNaming: [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_vN\n\nExemplos:\nCB_WL_US_SEARCH_BRIDGE_v1\nMW_NUTRA_BR_YT_SL_v1\nBG_BEAUTY_US_DGEN_REVIEW_v2`,
-      },
-      {
-        title: 'Search para Afiliados',
-        content: `**Quando usar:** Intent alto, problema claro, comparação.\n\n**Estrutura:** Campanha por tema/oferta. Ad groups por cluster de intenção.\nMatch: exact + phrase no começo.\n\n**RSA:** 10-15 títulos, 4 descrições. Alinhar H1 da bridge à keyword.\nEvitar claims absolutos. CTA: "veja como funciona", "compare".\n\n**Lances:** Início manual CPC. Com 30+ conv/mês: tCPA.`,
-      },
-      {
-        title: 'YouTube, Demand Gen e PMax',
-        content: `**YouTube:** Hook 0-3s; problema; mecanismo; CTA para bridge. Remarketing viewers.\n\n**Demand Gen:** Criativos feed + vídeo curto. Bridge obrigatória.\n\n**PMax:** SÓ DEPOIS de conversões confiáveis e Search/YT já lucrativos. Segmente por oferta.`,
-      },
-      {
-        title: 'Compliance Google × Redes',
-        content: `| Risco | Ação |\n|-------|------|\n| Claims saúde/renda | Linguagem condicional, sem garantia |\n| Trademark | Respeitar Vendor Terms + políticas Google |\n| Cloaking | Proibido |\n| Vertical restrita | Verificar certificação |\n| Destino | Página útil, não só hop opaco |\n\n**Regra de ouro:** anúncio approvável no Google E permitido nos terms da oferta`,
-      },
-    ],
-  },
-  playbooks: {
-    title: 'Playbooks',
-    icon: FileText,
-    sections: [
-      {
-        title: 'Tipos de Página para Afiliados (Mercado Internacional)',
-        content: `**Regra geral:** no mercado internacional (US, CA, AU, UK, EU) você precisa de uma **página própria** entre o anúncio do Google e o produtor. Links de afiliado criptografados (hop links) não são aceitos como URL final no Google Ads desde ~2022/2023.\n\n**VSL (Video Sales Letter)**\n- Página centrada em vídeo de vendas.\n- Use só se o produtor não liberar outra página ou se o vídeo for muito forte.\n- Não é o primeiro na lista de prioridades.\n\n**TSL (Text Sales Letter)**\n- Página longa de texto com botões de compra.\n- Funciona bem se a TSL oficial for atrativa: botões visíveis, imagem do produto, informações claras.\n- Se a TSL oficial for "feia" (botões escondidos, design ruim), prefira uma página própria.\n\n**Cookie / Popup**\n- Página simples para marcar o cookie do afiliado e redirecionar para a página oficial.\n- É o formato mais usado por afiliados iniciantes e intermediários.\n- Rápido de criar, funciona para produtos com marca já pesquisada.\n\n**Review / Robusta**\n- Artigo review com comparação, prós/contras, depoimentos, FAQ e CTA.\n- Melhor para quem já domina taxa de fuga, usa heatmap (Microsoft Clarity) e quer ranquear no Google.\n- Mais trabalho, mas tende a converter melhor a longo prazo.\n\n**Como escolher:**\n1. Iniciante → Cookie/Popup ou TSL boa do produtor.\n2. Intermediário → TSL otimizada ou Review simples.\n3. Avançado com dados → Review/Robusta + testes A/B.`,
-      },
-      {
-        title: 'Playbook Search + ClickBank/BuyGoods (72h)',
-        content: `1. BreakEven: comissão, refund 5-15%, CVR 1-2%\n2. 1 campanha, 2-3 ad groups, 3-5 RSA, bridge única\n3. Orçamento = 1-2× comissão média por dia\n4. Dia 1-2: matar keywords com gasto alto zero conv\n5. Dia 3: se EPC ≥ 1,3× CPC → SCALE +20-30%`,
-      },
-      {
-        title: 'Playbook YT/DGen + MaxWeb SL',
-        content: `1. Postback OK + 3 criativos (hooks diferentes)\n2. Orçamento até 100-300 cliques ou 10-20 leads\n3. eCPA vs payout: se eCPA < 70-80% → escalar\n4. Held alto → cortar fonte/criativo`,
-      },
-      {
-        title: 'Diagnóstico Rápido',
-        content: `| Sintoma | Causa | Ação |\n|---------|-------|------|\n| CTR baixo | RSA fraco, keyword ampla | Reescrever; apertar match |\n| CPC alto | Competição, QS baixo | Bridge melhor; exact; negativas |\n| CTR ok, zero vendas | LP fraca, offer morta | Trocar offer; melhorar bridge |\n| Google conv ≠ rede | Postback/UTM | Corrigir tracking |\n| Ban/disapprove | Claims, cloaking | Reescrever; bridge limpa |`,
-      },
-    ],
-  },
-  templates: {
-    title: 'Templates',
-    icon: Lightbulb,
-    sections: [
-      {
-        title: 'Template Bridge (Google-friendly)',
-        content: `H1 alinhado à keyword\nSubhead benefício específico\nEmpatia (problema)\nO que é a solução (sem milagre)\nProva realista\nPrós e contras\nPara quem é / não é\nCTA → hop / smartlink\nFAQ + garantia do produto\nDisclaimer afiliado + "resultados variam"\nPrivacidade / contato`,
-      },
-      {
-        title: 'RSA Esqueleto',
-        content: `Títulos: {Keyword} Guia 2026 | Como Funciona | Compare Antes | Opção Que Estão Testando\nDescrições: Entenda prós e contras. Conteúdo informativo + oferta oficial. Resultados individuais variam.`,
-      },
-      {
-        title: 'Hipótese de Teste',
-        content: `Se eu usar o ângulo [X] no canal [Search/YT] para a oferta [Y] no geo [Z],\nentão EPC sobe para ≥ 1,3× CPC em [N] cliques,\nporque [motivo].`,
-      },
-      {
-        title: 'UTMs Obrigatórios',
-        content: `?utm_source=google\n&utm_medium=cpc\n&utm_campaign=[NAMING]\n&utm_content={creative}\n&utm_term={keyword}\n\nMaxWeb: adicionar clickid/subid nos tokens da rede`,
-      },
-    ],
-  },
-  checklists: {
-    title: 'Checklists',
-    icon: CheckSquare,
-    sections: [
-      {
-        title: 'Checklist Pré-escala Google + MaxWeb',
-        content: `☐ Terms da oferta lidos (geo, trademark, claims)\n☐ Bridge com disclaimer, privacidade, mobile OK\n☐ Conversões Google testadas (fire real)\n☐ MaxWeb: postback + clickid + 1 conv teste\n☐ UTMs = Campanha_ID\n☐ Break-even calculado; CPC alvo definido\n☐ Negativas base + exclusões\n☐ Orçamento de teste definido\n☐ Plano B de criativo/ângulo\n☐ Lucro medido pela rede`,
-      },
-      {
-        title: 'Checklists Gerais',
-        content: `☐ Contas: CB, BuyGoods, MaxWeb, BR, Google Ads\n☐ Planilha de tracking preenchida\n☐ Shortlist de ofertas com terms OK\n☐ Funil escolhido por campanha\n☐ Compliance revisado\n☐ Kill/scale documentado\n☐ Reserva para refund/clawback`,
-      },
-      {
-        title: 'Referência Rápida Break-even',
-        content: `Comissão líquida = Comissão × (1 − refund%)\nEPC break-even = Comissão líquida × CVR\nCPC máx ≈ EPC break-even\nCPC SCALE ≈ CPC máx / 1,3\neCPA máx ≈ Comissão líquida`,
-      },
-    ],
-  },
-};
-
-const COMMON_ERRORS = [
-  'Google direct link em vertical restrita',
-  'MaxWeb sem postback',
-  'Escalar no lucro do dia 1 ignorando refund',
-  'EPC do marketplace ≠ seu EPC',
-  'PMax no dia 1 sem conversão confiável',
-  'Misturar redes/ofertas sem naming',
-  'Claims agressivos (ban)',
-  'Um criativo só até fadiga',
-  'Usar HopLink criptografado como URL final do anúncio',
-  'Confundir URL do produtor com link de afiliado',
-  'Rodar "Maximizar conversões" sem estratégia madura',
-];
-
 export default function ConhecimentoPage() {
+  // Placar honesto: quantas CVRs saíram da heurística para medição de verdade.
+  const validados = CATALOGO_VERTICAIS.verticais.filter(
+    (v) => v.cvr_default.origem !== 'heuristica-interna',
+  ).length;
   const [searchQuery, setSearchQuery] = useState('');
   const [learnings, setLearnings] = useState<any[]>([]);
   const [learningsLoading, setLearningsLoading] = useState(true);
@@ -164,7 +59,12 @@ export default function ConhecimentoPage() {
           <h1 className="text-2xl font-display font-bold text-white tracking-tight flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-green-400" /> Base de Conhecimento
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Estratégias, playbooks e referências para afiliados</p>
+          <p className="text-slate-400 text-sm mt-1">
+            Estratégias, playbooks e referências para afiliados ·{' '}
+            <span className="font-mono text-slate-500">
+              catálogo revisado em {PLAYBOOKS_ATUALIZADO_EM}
+            </span>
+          </p>
         </div>
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -175,13 +75,13 @@ export default function ConhecimentoPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Main content */}
         <div className="lg:col-span-3">
-          <Tabs defaultValue="estrategias" className="space-y-4">
+          <Tabs defaultValue={PLAYBOOKS[0]?.id ?? 'estrategias'} className="space-y-4">
             <TabsList className="bg-[#1e293b] border border-[#334155] flex-wrap h-auto gap-1 p-1">
-              {Object.entries(KNOWLEDGE_BASE).map(([key, section]) => {
-                const Icon = section.icon;
+              {PLAYBOOKS.map((grupo) => {
+                const Icon = ICONE_PLAYBOOK[grupo.icone];
                 return (
-                  <TabsTrigger key={key} value={key} className="text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-400 gap-1">
-                    <Icon className="h-3 w-3" /> {section.title}
+                  <TabsTrigger key={grupo.id} value={grupo.id} className="text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white text-slate-400 gap-1">
+                    <Icon className="h-3 w-3" /> {grupo.titulo}
                   </TabsTrigger>
                 );
               })}
@@ -198,18 +98,29 @@ export default function ConhecimentoPage() {
                 <FileSearch className="h-3 w-3" /> Procedência
               </TabsTrigger>
             </TabsList>
-            {Object.entries(KNOWLEDGE_BASE).map(([key, section]) => (
-              <TabsContent key={key} value={key} className="space-y-4">
-                {section.sections.filter(s => filterContent(s.title + ' ' + s.content)).map((s, i) => (
-                  <Card key={i} className="bg-[#1e293b] border-[#334155]">
-                    <CardHeader className="pb-2"><CardTitle className="text-base text-white">{s.title}</CardTitle></CardHeader>
-                    <CardContent>
-                      <div className="text-sm text-slate-300 whitespace-pre-line leading-relaxed">{s.content}</div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </TabsContent>
-            ))}
+            {PLAYBOOKS.map((grupo) => {
+              const secoes = grupo.secoes.filter((sec) => filterContent(sec.titulo + ' ' + sec.conteudo));
+              return (
+                <TabsContent key={grupo.id} value={grupo.id} className="space-y-4">
+                  {secoes.length === 0 ? (
+                    <p className="text-sm text-slate-500">Nada em {grupo.titulo} casa com a busca.</p>
+                  ) : (
+                    secoes.map((sec) => (
+                      <Card key={sec.titulo} className="bg-[#1e293b] border-[#334155]">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base text-white">{sec.titulo}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-sm text-slate-300 whitespace-pre-line leading-relaxed">
+                            {sec.conteudo}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </TabsContent>
+              );
+            })}
 
             {/* Glossário */}
             <TabsContent value="glossario" className="space-y-4">
@@ -300,6 +211,14 @@ export default function ConhecimentoPage() {
                     fonte externa com URL. Editável em <span className="font-mono">subsidios/catalogo/verticais.yaml</span> —
                     o build recusa número sem origem.
                   </p>
+                  <div className="mt-2 rounded border border-amber-500/25 bg-amber-500/[0.05] p-2.5">
+                    <p className="text-xs text-amber-200">
+                      <span className="font-semibold">{validados} de {CATALOGO_VERTICAIS.verticais.length} validados.</span>{' '}
+                      O resto é estimativa da operação, não medição. Trate como ponto de partida do
+                      cálculo e substitua por <span className="font-mono">dado-proprio</span> assim que
+                      houver campanha com volume.
+                    </p>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {CATALOGO_VERTICAIS.verticais
@@ -314,6 +233,27 @@ export default function ConhecimentoPage() {
                         )}
                         {v.cvr_default.amostra && (
                           <p className="text-xs text-slate-500 mt-0.5">Amostra: {v.cvr_default.amostra}</p>
+                        )}
+                        {v.cvr_default.referencias && v.cvr_default.referencias.length > 0 && (
+                          <div className="mt-1.5 space-y-1.5 border-l-2 border-[#334155] pl-2.5">
+                            {v.cvr_default.referencias.map((ref) => (
+                              <div key={ref.url} className="text-xs">
+                                <a
+                                  href={ref.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sky-400 hover:text-sky-300 underline underline-offset-2"
+                                >
+                                  {ref.titulo}
+                                </a>
+                                <span className="text-slate-600"> · acesso {ref.acessado_em}</span>
+                                <p className="text-slate-500">
+                                  {ref.valor_citado} <span className="text-slate-600">({ref.metrica})</span>
+                                </p>
+                                <p className="text-amber-400/70">Não substitui: {ref.por_que_nao_substitui}</p>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                       <Badge className={
@@ -362,7 +302,7 @@ export default function ConhecimentoPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {COMMON_ERRORS.map((error, i) => (
+              {ERROS_COMUNS.map((error, i) => (
                 <div key={i} className="flex items-start gap-2 text-xs">
                   <span className="text-red-400 font-bold shrink-0">{i + 1}.</span>
                   <span className="text-slate-300">{error}</span>

@@ -5,6 +5,16 @@
 export type Origem = 'heuristica-interna' | 'dado-proprio' | 'fonte-externa';
 export type Confianca = 'baixa' | 'media' | 'alta';
 
+/** Benchmark público que contextualiza o número sem ser a origem dele. */
+export interface ReferenciaExterna {
+  url: string;
+  titulo: string;
+  acessado_em: string;
+  metrica: string;
+  valor_citado: string;
+  por_que_nao_substitui: string;
+}
+
 export interface Procedencia {
   origem: Origem;
   confianca: Confianca;
@@ -12,6 +22,7 @@ export interface Procedencia {
   amostra?: string;
   url?: string;
   revisar_em?: string;
+  referencias?: ReferenciaExterna[];
 }
 
 export interface NumeroComProcedencia extends Procedencia { valor: number; unidade: string }
@@ -51,7 +62,25 @@ export const CATALOGO_VERTICAIS: { schema: 1; atualizado_em: string; verticais: 
         "origem": "heuristica-interna",
         "confianca": "baixa",
         "nota": "Estimativa de CVR de clique-para-venda usada como default da calculadora do wizard. Não foi medida: substitua por dado-proprio assim que houver campanha com volume.",
-        "revisar_em": "2026-11-29"
+        "revisar_em": "2026-11-29",
+        "referencias": [
+          {
+            "url": "https://www.dtcpages.com/blog/ecommerce-conversion-rate-benchmarks-2026",
+            "titulo": "Ecommerce Conversion Rate Benchmarks 2026 — dados de 21 lojas Shopify",
+            "acessado_em": "2026-08-29",
+            "metrica": "pedidos / sessões da loja própria, 179M+ sessões, jan/2025 a jun/2026",
+            "valor_citado": "mediana 2,07% no geral; 2,42% na faixa de AOV abaixo de US$ 60",
+            "por_que_nao_substitui": "Mede tráfego misturado da loja do próprio dono da oferta (orgânico, direto, recorrente). Aqui o número é venda de tráfego pago frio atravessando uma bridge até a página de um terceiro, que converte bem abaixo disso."
+          },
+          {
+            "url": "https://www.fyresite.com/ecommerce-conversion-rate-by-industry-benchmarks/",
+            "titulo": "Ecommerce Conversion Rate by Industry — Health & Wellness",
+            "acessado_em": "2026-08-29",
+            "metrica": "compras / sessões, média combinada de canais e dispositivos",
+            "valor_citado": "Health & Wellness entre 1,5% e 2,5%",
+            "por_que_nao_substitui": "A própria fonte não declara de onde tirou os números e adverte que a média crua esconde variação por canal. Serve de teto plausível, não de medição."
+          }
+        ]
       },
       "keywords": {
         "A": [
@@ -109,7 +138,25 @@ export const CATALOGO_VERTICAIS: { schema: 1; atualizado_em: string; verticais: 
         "origem": "heuristica-interna",
         "confianca": "baixa",
         "nota": "Estimativa de CVR de clique-para-venda usada como default da calculadora do wizard. Não foi medida: substitua por dado-proprio assim que houver campanha com volume.",
-        "revisar_em": "2026-11-29"
+        "revisar_em": "2026-11-29",
+        "referencias": [
+          {
+            "url": "https://www.dtcpages.com/blog/ecommerce-conversion-rate-benchmarks-2026",
+            "titulo": "Ecommerce Conversion Rate Benchmarks 2026 — dados de 21 lojas Shopify",
+            "acessado_em": "2026-08-29",
+            "metrica": "pedidos / sessões da loja própria, 179M+ sessões, jan/2025 a jun/2026",
+            "valor_citado": "mediana 2,07% no geral; 2,42% na faixa de AOV abaixo de US$ 60",
+            "por_que_nao_substitui": "Mede tráfego misturado da loja do próprio dono da oferta (orgânico, direto, recorrente). Aqui o número é venda de tráfego pago frio atravessando uma bridge até a página de um terceiro, que converte bem abaixo disso."
+          },
+          {
+            "url": "https://www.fyresite.com/ecommerce-conversion-rate-by-industry-benchmarks/",
+            "titulo": "Ecommerce Conversion Rate by Industry — Health & Wellness",
+            "acessado_em": "2026-08-29",
+            "metrica": "compras / sessões, média combinada de canais e dispositivos",
+            "valor_citado": "Health & Wellness entre 1,5% e 2,5%",
+            "por_que_nao_substitui": "A própria fonte não declara de onde tirou os números e adverte que a média crua esconde variação por canal. Serve de teto plausível, não de medição."
+          }
+        ]
       },
       "keywords": {
         "A": [
@@ -277,7 +324,25 @@ export const CATALOGO_VERTICAIS: { schema: 1; atualizado_em: string; verticais: 
         "origem": "heuristica-interna",
         "confianca": "baixa",
         "nota": "Estimativa de CVR de clique-para-venda usada como default da calculadora do wizard. Não foi medida: substitua por dado-proprio assim que houver campanha com volume.",
-        "revisar_em": "2026-11-29"
+        "revisar_em": "2026-11-29",
+        "referencias": [
+          {
+            "url": "https://www.dtcpages.com/blog/ecommerce-conversion-rate-benchmarks-2026",
+            "titulo": "Ecommerce Conversion Rate Benchmarks 2026 — dados de 21 lojas Shopify",
+            "acessado_em": "2026-08-29",
+            "metrica": "pedidos / sessões da loja própria, 179M+ sessões, jan/2025 a jun/2026",
+            "valor_citado": "mediana 2,07% no geral; 2,42% na faixa de AOV abaixo de US$ 60",
+            "por_que_nao_substitui": "Mede tráfego misturado da loja do próprio dono da oferta (orgânico, direto, recorrente). Aqui o número é venda de tráfego pago frio atravessando uma bridge até a página de um terceiro, que converte bem abaixo disso."
+          },
+          {
+            "url": "https://www.fyresite.com/ecommerce-conversion-rate-by-industry-benchmarks/",
+            "titulo": "Ecommerce Conversion Rate by Industry — Health & Wellness",
+            "acessado_em": "2026-08-29",
+            "metrica": "compras / sessões, média combinada de canais e dispositivos",
+            "valor_citado": "Health & Wellness entre 1,5% e 2,5%",
+            "por_que_nao_substitui": "A própria fonte não declara de onde tirou os números e adverte que a média crua esconde variação por canal. Serve de teto plausível, não de medição."
+          }
+        ]
       },
       "negativas": {
         "termos": [
@@ -302,7 +367,25 @@ export const CATALOGO_VERTICAIS: { schema: 1; atualizado_em: string; verticais: 
         "origem": "heuristica-interna",
         "confianca": "baixa",
         "nota": "Estimativa de CVR de clique-para-venda usada como default da calculadora do wizard. Não foi medida: substitua por dado-proprio assim que houver campanha com volume.",
-        "revisar_em": "2026-11-29"
+        "revisar_em": "2026-11-29",
+        "referencias": [
+          {
+            "url": "https://www.dtcpages.com/blog/ecommerce-conversion-rate-benchmarks-2026",
+            "titulo": "Ecommerce Conversion Rate Benchmarks 2026 — dados de 21 lojas Shopify",
+            "acessado_em": "2026-08-29",
+            "metrica": "pedidos / sessões da loja própria, 179M+ sessões, jan/2025 a jun/2026",
+            "valor_citado": "mediana 2,07% no geral; 2,42% na faixa de AOV abaixo de US$ 60",
+            "por_que_nao_substitui": "Mede tráfego misturado da loja do próprio dono da oferta (orgânico, direto, recorrente). Aqui o número é venda de tráfego pago frio atravessando uma bridge até a página de um terceiro, que converte bem abaixo disso."
+          },
+          {
+            "url": "https://www.fyresite.com/ecommerce-conversion-rate-by-industry-benchmarks/",
+            "titulo": "Ecommerce Conversion Rate by Industry — Beauty",
+            "acessado_em": "2026-08-29",
+            "metrica": "compras / sessões, média combinada de canais e dispositivos",
+            "valor_citado": "Beauty entre 2,5% e 3,5%",
+            "por_que_nao_substitui": "Faixa puxada por recompra e assinatura de marca própria. Afiliado com tráfego frio não herda a base recorrente que produz esse número."
+          }
+        ]
       },
       "negativas": {
         "termos": [
@@ -327,7 +410,17 @@ export const CATALOGO_VERTICAIS: { schema: 1; atualizado_em: string; verticais: 
         "origem": "heuristica-interna",
         "confianca": "baixa",
         "nota": "Estimativa de CVR de clique-para-venda usada como default da calculadora do wizard. Não foi medida: substitua por dado-proprio assim que houver campanha com volume.",
-        "revisar_em": "2026-11-29"
+        "revisar_em": "2026-11-29",
+        "referencias": [
+          {
+            "url": "https://www.dtcpages.com/blog/ecommerce-conversion-rate-benchmarks-2026",
+            "titulo": "Ecommerce Conversion Rate Benchmarks 2026 — dados de 21 lojas Shopify",
+            "acessado_em": "2026-08-29",
+            "metrica": "pedidos / sessões da loja própria, 179M+ sessões, jan/2025 a jun/2026",
+            "valor_citado": "mediana 2,07% no geral; 2,42% na faixa de AOV abaixo de US$ 60",
+            "por_que_nao_substitui": "Mede tráfego misturado da loja do próprio dono da oferta (orgânico, direto, recorrente). Aqui o número é venda de tráfego pago frio atravessando uma bridge até a página de um terceiro, que converte bem abaixo disso."
+          }
+        ]
       },
       "negativas": {
         "termos": [

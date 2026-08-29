@@ -61,6 +61,94 @@ secoes:
       • Conhecimento — esta base: estratégias, playbooks, glossário, aprendizados e este manual.
 
       • Configurações — chaves de API (provedores de IA, AnswerThePublic, redes de afiliados).
+  - titulo: Produto próprio low-ticket (a segunda esteira)
+    conteudo: >-
+      O AfiliAds deixou de ser só operação de afiliado de terceiro. A segunda esteira
+      cria e vende produto seu — e-book de R$ 29 a 97 — do nicho ao checkout.
+
+
+      COMO COMEÇA: no Passo 2 do wizard, o seletor de varredura tem o modo "Criar Ideia
+      de Produto Próprio". Você descreve o nicho e o Trend Scout raspa a Meta Ads Library
+      pelo Firecrawl, mede o interesse histórico no Google Trends e pede ao OpenRouter uma
+      oferta com nome, preço sugerido, AOV, isca digital e upsells. O resultado vira um
+      ProductResearch de verdade no banco, importável para o formulário com um clique.
+
+
+      COMO CONTINUA: o rascunho do e-book e da landing são gerados pelos agentes e ficam
+      em draftData. Nada é empacotado antes de você aprovar no Passo 6 — o botão só libera
+      quando existe rascunho, e reaprovar o mesmo rascunho não faz nada, porque a promoção
+      é idempotente.
+
+
+      COMO TERMINA: o Passo 9 dispara o empacotamento — PDF do e-book, .zip estático da
+      landing e o checkout. A partir daí a campanha some da lista que pode consumir LLM:
+      status ready_for_deploy não está entre os que o guard libera. É proposital, mas
+      significa que reabrir a esteira exige voltar o status na mão.
+  - titulo: De onde vêm os dados de concorrência (e onde eles faltam)
+    conteudo: >-
+      O Ad Scout raspa a Meta Ads Library com o Firecrawl e passa o material bruto para o
+      OpenRouter, que devolve concorrentes, preço médio, dores da audiência, ângulos e
+      claims analisadas. São 15 a 45 segundos de pipeline real — não há resposta pronta em
+      cache nem dado de exemplo.
+
+
+      O QUE É REAL: contagem de anúncios ativos, preço praticado, headline do concorrente e
+      as claims classificadas em LOW/MEDIUM/HIGH pelo Compliance Sentinel. O tempo no ar
+      (activeDays) aparece quando a fonte expõe a data de início do anúncio.
+
+
+      O QUE NÃO É CONSULTADO: o Google Ads Transparency Center. A badge dele aparece sempre
+      como indisponível na interface, e isso é literal — nenhuma rota do app consulta essa
+      fonte hoje. Marcar como ativa seria inventar procedência.
+
+
+      QUANDO NÃO VEM NADA: lista de concorrentes vazia não vira dado fabricado. A tela diz
+      que não encontrou anúncio ativo e sugere ampliar o termo ou trocar o país da
+      biblioteca. Zero concorrente é uma informação: ou o nicho é virgem, ou o termo é
+      específico demais.
+  - titulo: Tendência do Google Trends
+    conteudo: >-
+      O Trend Scout compara os últimos 90 dias de interesse com o período anterior e devolve
+      um de quatro estados. Positivo é nicho em crescimento; estável é demanda consolidada;
+      negativo é demanda em queda.
+
+
+      O quarto estado é o que importa entender: quando a API do Google Trends falha ou não
+      devolve pontos suficientes, o campo volta nulo e a interface mostra cinza —
+      "dados de tendência indisponíveis". Não existe fallback otimista. Um nicho sem dado
+      nunca aparece como se estivesse crescendo.
+  - titulo: Custo de IA por campanha
+    conteudo: >-
+      Cada chamada de modelo grava um AICostLog com provedor, modelo, tokens de entrada e
+      saída, custo em dólar e o objetivo da chamada. O painel no Passo 6 soma o gasto da
+      campanha, mostra o rateio por etapa (ingestão de vídeo, geração de cópia, geração de
+      PDF, geração de imagem) e avisa acima do teto — US$ 2,00 por padrão.
+
+
+      O valor aparece só em dólar enquanto o backend não enviar cotação. Não há câmbio
+      chutado na interface: número convertido por taxa inventada é pior que número em moeda
+      estrangeira.
+
+
+      Antes de rodar agente em cima de campanha, o campaign-guard decide se vale gastar. Ele
+      bloqueia campanha em status que não consome LLM e registra a decisão. É a diferença
+      entre um teto e um freio.
+  - titulo: Tracking de conversão (Pixel e CAPI)
+    conteudo: >-
+      Pixel ID e access token da Meta ficam em integrações, num registro só, usado tanto
+      pelo Passo 4 quanto pelo Passo 9 — o mesmo pixel não pode ter duas fontes de verdade.
+      O token é gravado criptografado e volta mascarado da API; a interface nunca reexibe o
+      valor salvo.
+
+
+      O console de eventos mostra o par que todo Purchase produz: o evento do servidor
+      (CAPI) com o status HTTP real, e o do browser com o mesmo event_id, marcado como
+      desduplicado. Se o servidor falha, os dois lados aparecem como falha — não faz sentido
+      "desduplicar" um evento que nunca chegou.
+
+
+      ATENÇÃO: o botão de simular compra dispara o webhook de teste da Kiwify de verdade.
+      Ele grava a venda e muda o status da campanha para ATIVA. Não é um mock inofensivo.
   - titulo: Regras de governança (não negociáveis)
     conteudo: >-
       • Créditos AnswerThePublic: toda busca paga exige SUA aprovação explícita

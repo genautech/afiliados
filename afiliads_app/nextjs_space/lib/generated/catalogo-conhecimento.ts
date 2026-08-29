@@ -356,6 +356,90 @@ export const GLOSSARIO: TermoGlossario[] = [
     "categoria": "afiliados",
     "definicao": "Momento da oferta no mercado: subindo (gravity crescendo), estável, saturando ou morrendo.",
     "por_que_importa": "Entrar em oferta morrendo é pagar CPC de leilão cheio por conversão em queda. O Caçador de Produtos avalia isso."
+  },
+  {
+    "termo": "Meta Ads Library",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Biblioteca pública da Meta com todos os anúncios ativos, pesquisável por termo e por país.",
+    "por_que_importa": "É a fonte que o Ad Scout raspa para contar concorrentes, ler headline e medir preço praticado. Anúncio que está lá há meses é anúncio que paga a conta — por isso o tempo no ar vale mais que a quantidade."
+  },
+  {
+    "termo": "Firecrawl",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Serviço de scraping que renderiza a página, espera o conteúdo carregar e devolve markdown limpo.",
+    "por_que_importa": "Sem ele a Meta Ads Library volta como casca de JavaScript. É o elo que transforma página dinâmica em texto que o modelo consegue analisar — e o primeiro a falhar quando a pesquisa passa do tempo limite."
+  },
+  {
+    "termo": "Tendência do Nicho",
+    "sigla": "trendSlope",
+    "categoria": "afiliados",
+    "definicao": "Comparação dos últimos 90 dias de interesse no Google Trends contra o período anterior. Positivo, estável, negativo — ou nulo quando a API não responde.",
+    "por_que_importa": "Nicho em queda encarece a aquisição a cada mês. E nulo não é neutro nem positivo; significa que ninguém mediu, e a interface mostra cinza justamente para você não ler ausência de dado como sinal verde."
+  },
+  {
+    "termo": "Tempo no Ar do Anúncio",
+    "sigla": "activeDays",
+    "categoria": "afiliados",
+    "definicao": "Há quantos dias o anúncio do concorrente está rodando, quando a fonte expõe a data de início.",
+    "por_que_importa": "É o proxy mais barato de oferta que converte — ninguém paga 60 dias de mídia num criativo que não se paga. Abaixo de 14 dias o anúncio ainda não provou nada."
+  },
+  {
+    "termo": "API de Conversões",
+    "sigla": "CAPI",
+    "categoria": "google-ads",
+    "definicao": "Envio de conversão direto do seu servidor para a Meta, em vez de depender só do pixel no browser.",
+    "por_que_importa": "Bloqueador de anúncio e restrição de cookie derrubam parte do pixel. Com o mesmo event_id nos dois caminhos, a Meta desduplica e você para de perder conversão que aconteceu de verdade."
+  },
+  {
+    "termo": "Desduplicação de Evento",
+    "sigla": null,
+    "categoria": "google-ads",
+    "definicao": "Quando o mesmo evento chega pelo servidor e pelo browser com o mesmo identificador, a plataforma conta uma vez só.",
+    "por_que_importa": "Sem isso, rodar pixel e CAPI juntos dobra a contagem de venda e envenena o otimizador — que passa a mirar um ROAS que não existe."
+  },
+  {
+    "termo": "Isca Digital",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Entrega gratuita e pequena (checklist, template, aula) que captura o contato antes da oferta paga.",
+    "por_que_importa": "No low-ticket ela paga o tráfego que não comprou na hora. Sem isca, o visitante que sai custou dinheiro e não deixou nada."
+  },
+  {
+    "termo": "Potencial de Receita",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Nota de 0 a 100 que o Trend Scout atribui à ideia de produto próprio, combinando demanda, concorrência e faixa de preço.",
+    "por_que_importa": "É triagem, não previsão. Serve para ordenar ideias entre si — acima de 80 vale desenhar a oferta, abaixo de 50 quase sempre é nicho sem demanda paga."
+  },
+  {
+    "termo": "Rascunho e Versão Ativa",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Todo produto próprio tem duas cópias no banco — a que os agentes escrevem (draftData) e a que vale para empacotar (activeData).",
+    "por_que_importa": "Separar as duas é o que permite agente trabalhar em segundo plano sem alterar o que está no ar. Nada atravessa de um lado para o outro sem aprovação explícita, e aprovar o mesmo rascunho duas vezes não produz efeito nenhum."
+  },
+  {
+    "termo": "Custo de IA por Campanha",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Soma em dólar de todas as chamadas de modelo feitas para uma campanha, com provedor, modelo, tokens e objetivo de cada uma.",
+    "por_que_importa": "Agente que reprocessa a mesma fonte queima orçamento em silêncio. O rateio por etapa mostra qual parte do pipeline está cara antes de a fatura chegar."
+  },
+  {
+    "termo": "Modo Simulado",
+    "sigla": "isMockMode",
+    "categoria": "afiliados",
+    "definicao": "Sinal que o backend envia quando a resposta não veio de fonte real.",
+    "por_que_importa": "Quando ele é verdadeiro, a interface derruba todas as badges de fonte para indisponível e apaga o veredito de tendência. Selo de transparência em cima de dado fabricado é pior que selo nenhum."
+  },
+  {
+    "termo": "Empacotamento do Produto",
+    "sigla": null,
+    "categoria": "afiliados",
+    "definicao": "Etapa final do produto próprio — gera o PDF do e-book, o .zip estático da landing e o link de checkout.",
+    "por_que_importa": "Roda sobre a versão aprovada, nunca sobre o rascunho. É idempotente; disparar de novo com o manifesto completo devolve os mesmos artefatos em vez de reprocessar e cobrar duas vezes."
   }
 ];
 
@@ -371,6 +455,26 @@ export const MANUAL: SecaoManual[] = [
   {
     "titulo": "As telas, uma a uma",
     "conteudo": "• Dashboard — visão geral: gasto, receita, ROI e campanhas ativas.\n• Nova Campanha (Wizard) — criação guiada em etapas com checklist.\n• Agentes — sala de controle: o que cada agente faz, teste individual com tarefa real e consumo de tokens de cada um.\n• Busca de Produtos — pipeline de análise multi-agente + dossiê completo por produto (keywords, estratégia, compliance, página de afiliado) + chat contextual.\n• Campanhas — lista e detalhe de cada campanha: economia, checklist, decisões, análise de presell e auditoria.\n• Diário — lançamentos diários por campanha (gasto, cliques, hops, conversões).\n• Keywords — biblioteca de keywords por camada com match type e CPC estimado.\n• Pesquisa ATP — AnswerThePublic integrado: saldo de créditos, busca com aprovação, report por buckets e análise econômica.\n• Gerador RSA — copy de anúncios com contagem de caracteres garantida.\n• Planilhas — visão tabular de tudo (ofertas com link de marketplace, campanhas, diário, testes kill/scale, financeiro).\n• Conhecimento — esta base: estratégias, playbooks, glossário, aprendizados e este manual.\n• Configurações — chaves de API (provedores de IA, AnswerThePublic, redes de afiliados)."
+  },
+  {
+    "titulo": "Produto próprio low-ticket (a segunda esteira)",
+    "conteudo": "O AfiliAds deixou de ser só operação de afiliado de terceiro. A segunda esteira cria e vende produto seu — e-book de R$ 29 a 97 — do nicho ao checkout.\n\nCOMO COMEÇA: no Passo 2 do wizard, o seletor de varredura tem o modo \"Criar Ideia de Produto Próprio\". Você descreve o nicho e o Trend Scout raspa a Meta Ads Library pelo Firecrawl, mede o interesse histórico no Google Trends e pede ao OpenRouter uma oferta com nome, preço sugerido, AOV, isca digital e upsells. O resultado vira um ProductResearch de verdade no banco, importável para o formulário com um clique.\n\nCOMO CONTINUA: o rascunho do e-book e da landing são gerados pelos agentes e ficam em draftData. Nada é empacotado antes de você aprovar no Passo 6 — o botão só libera quando existe rascunho, e reaprovar o mesmo rascunho não faz nada, porque a promoção é idempotente.\n\nCOMO TERMINA: o Passo 9 dispara o empacotamento — PDF do e-book, .zip estático da landing e o checkout. A partir daí a campanha some da lista que pode consumir LLM: status ready_for_deploy não está entre os que o guard libera. É proposital, mas significa que reabrir a esteira exige voltar o status na mão."
+  },
+  {
+    "titulo": "De onde vêm os dados de concorrência (e onde eles faltam)",
+    "conteudo": "O Ad Scout raspa a Meta Ads Library com o Firecrawl e passa o material bruto para o OpenRouter, que devolve concorrentes, preço médio, dores da audiência, ângulos e claims analisadas. São 15 a 45 segundos de pipeline real — não há resposta pronta em cache nem dado de exemplo.\n\nO QUE É REAL: contagem de anúncios ativos, preço praticado, headline do concorrente e as claims classificadas em LOW/MEDIUM/HIGH pelo Compliance Sentinel. O tempo no ar (activeDays) aparece quando a fonte expõe a data de início do anúncio.\n\nO QUE NÃO É CONSULTADO: o Google Ads Transparency Center. A badge dele aparece sempre como indisponível na interface, e isso é literal — nenhuma rota do app consulta essa fonte hoje. Marcar como ativa seria inventar procedência.\n\nQUANDO NÃO VEM NADA: lista de concorrentes vazia não vira dado fabricado. A tela diz que não encontrou anúncio ativo e sugere ampliar o termo ou trocar o país da biblioteca. Zero concorrente é uma informação: ou o nicho é virgem, ou o termo é específico demais."
+  },
+  {
+    "titulo": "Tendência do Google Trends",
+    "conteudo": "O Trend Scout compara os últimos 90 dias de interesse com o período anterior e devolve um de quatro estados. Positivo é nicho em crescimento; estável é demanda consolidada; negativo é demanda em queda.\n\nO quarto estado é o que importa entender: quando a API do Google Trends falha ou não devolve pontos suficientes, o campo volta nulo e a interface mostra cinza — \"dados de tendência indisponíveis\". Não existe fallback otimista. Um nicho sem dado nunca aparece como se estivesse crescendo."
+  },
+  {
+    "titulo": "Custo de IA por campanha",
+    "conteudo": "Cada chamada de modelo grava um AICostLog com provedor, modelo, tokens de entrada e saída, custo em dólar e o objetivo da chamada. O painel no Passo 6 soma o gasto da campanha, mostra o rateio por etapa (ingestão de vídeo, geração de cópia, geração de PDF, geração de imagem) e avisa acima do teto — US$ 2,00 por padrão.\n\nO valor aparece só em dólar enquanto o backend não enviar cotação. Não há câmbio chutado na interface: número convertido por taxa inventada é pior que número em moeda estrangeira.\n\nAntes de rodar agente em cima de campanha, o campaign-guard decide se vale gastar. Ele bloqueia campanha em status que não consome LLM e registra a decisão. É a diferença entre um teto e um freio."
+  },
+  {
+    "titulo": "Tracking de conversão (Pixel e CAPI)",
+    "conteudo": "Pixel ID e access token da Meta ficam em integrações, num registro só, usado tanto pelo Passo 4 quanto pelo Passo 9 — o mesmo pixel não pode ter duas fontes de verdade. O token é gravado criptografado e volta mascarado da API; a interface nunca reexibe o valor salvo.\n\nO console de eventos mostra o par que todo Purchase produz: o evento do servidor (CAPI) com o status HTTP real, e o do browser com o mesmo event_id, marcado como desduplicado. Se o servidor falha, os dois lados aparecem como falha — não faz sentido \"desduplicar\" um evento que nunca chegou.\n\nATENÇÃO: o botão de simular compra dispara o webhook de teste da Kiwify de verdade. Ele grava a venda e muda o status da campanha para ATIVA. Não é um mock inofensivo."
   },
   {
     "titulo": "Regras de governança (não negociáveis)",
@@ -553,5 +657,189 @@ export const AJUDA_CAMPOS: Record<string, AjudaCampo> = {
     "o_que": "O orçamento diário real a aplicar no Google Ads quando a campanha for confirmada para SCALE (depois de validada no teste).",
     "por_que": "Separa a etapa de risco controlado (teste) da etapa de investimento sério — evita escalar orçamento por engano e dá ao agente um número pra planejar CPC de scale e cobertura de keywords.",
     "como": "1. Só defina depois (ou junto) de ver os resultados do teste.\n2. Regra prática: 3x a 5x o budget diário de teste, se o EPC/CPC estiver saudável.\n3. Ao clicar \"Scale\" na página da campanha, esse valor é aplicado automaticamente como orçamento diário real no Google Ads."
+  },
+  "scoutCountry": {
+    "campo": "scoutCountry",
+    "agente": "Ad Scout Oracle",
+    "o_que": "País da biblioteca de anúncios que o Ad Scout vai varrer — ALL para varredura global ou o código ISO de duas letras.",
+    "por_que": "A concorrência é local. Anúncio que domina os Estados Unidos pode não existir no Brasil, e preço médio de outro país envenena o cálculo de break-even.",
+    "como": "1. Escolha o mesmo país do geo da campanha — o campo já vem preenchido assim.\n2. Use ALL só para explorar um nicho novo, nunca para calcular preço.\n3. O catálogo mostra UK, mas o código enviado é GB: a biblioteca da Meta usa ISO real e devolveria vazio com UK."
+  },
+  "scoutMode": {
+    "campo": "scoutMode",
+    "agente": "Ad Scout Oracle",
+    "o_que": "Alterna entre analisar concorrência de uma oferta de terceiro e criar uma ideia de produto próprio low-ticket a partir de um nicho.",
+    "por_que": "São duas esteiras diferentes. O modo de anúncios responde \"vale promover isso\"; o modo de ideia responde \"vale eu criar isso\" e devolve preço, isca e upsells.",
+    "como": "1. Para afiliado, mantenha o tipo de varredura correspondente ao produto.\n2. Para produto próprio, escolha Criar Ideia de Produto Próprio e descreva o nicho em vez do nome do produto.\n3. O resultado do modo ideia já nasce como produto no banco — importe com um clique para preencher o formulário."
+  },
+  "activeDays": {
+    "campo": "activeDays",
+    "agente": "Compliance Sentinel",
+    "o_que": "Há quantos dias o anúncio do concorrente está no ar, quando a fonte informa a data de início.",
+    "por_que": "É o sinal mais barato de oferta que converte. Ninguém sustenta 60 dias de mídia num criativo que não se paga.",
+    "como": "1. Priorize copiar o ângulo de quem está consolidado (60 dias ou mais).\n2. Abaixo de 14 dias trate como teste do concorrente, não como validação.\n3. Campo ausente significa que a fonte não expôs a data — não confunda com zero dia no ar."
+  },
+  "meta_pixel_id": {
+    "campo": "meta_pixel_id",
+    "agente": "Paid Ads Strategist",
+    "o_que": "Identificador do pixel da Meta usado tanto na presell quanto no disparo de conversão pelo servidor.",
+    "por_que": "Sem pixel a Meta não aprende quem compra e o otimizador fica cego. É o mesmo registro usado pelo Passo 4 e pelo Passo 9, de propósito — dois pixels diferentes para a mesma campanha produzem dois números de conversão.",
+    "como": "1. Copie o ID numérico no Gerenciador de Eventos da Meta.\n2. Salve uma vez; os dois passos passam a ler o mesmo valor.\n3. Use o console de eventos para confirmar que o Purchase sai pelos dois caminhos com o mesmo identificador."
+  },
+  "meta_access_token": {
+    "campo": "meta_access_token",
+    "agente": "Paid Ads Strategist",
+    "o_que": "Token de acesso que autoriza o envio de conversões do seu servidor para a Meta pela CAPI.",
+    "por_que": "Bloqueador de anúncio e restrição de cookie derrubam parte do pixel de browser. A CAPI recupera essa perda; sem token, ela não sai do lugar.",
+    "como": "1. Gere um token de sistema no Gerenciador de Negócios com permissão de eventos.\n2. Cole no campo de senha — ele é gravado criptografado e volta mascarado da API.\n3. A interface nunca reexibe o valor salvo; para trocar, cole um novo por cima."
+  },
+  "capUsd": {
+    "campo": "capUsd",
+    "agente": "Paid Ads Strategist",
+    "o_que": "Teto de gasto com modelos de IA para uma campanha, em dólar. Padrão de US$ 2,00.",
+    "por_que": "Agente que reprocessa a mesma fonte queima orçamento em silêncio. O teto não bloqueia nada sozinho — ele avisa antes de a fatura chegar.",
+    "como": "1. Deixe no padrão até conhecer o custo típico da sua operação.\n2. Se estourar, abra o rateio por etapa antes de mexer no teto: costuma ser um agente repetindo a mesma ingestão.\n3. O painel só converte para real quando o backend envia cotação; sem ela, o valor fica em dólar."
   }
 };
+
+export type IconePlaybook = 'target' | 'grafico' | 'documento' | 'ideia' | 'checklist';
+
+export interface SecaoPlaybook { titulo: string; conteudo: string }
+
+export interface GrupoPlaybook {
+  id: string;
+  titulo: string;
+  icone: IconePlaybook;
+  secoes: SecaoPlaybook[];
+}
+
+export const PLAYBOOKS: GrupoPlaybook[] = [
+  {
+    "id": "estrategias",
+    "titulo": "Estratégias",
+    "icone": "target",
+    "secoes": [
+      {
+        "titulo": "Seleção de Ofertas",
+        "conteudo": "**ClickBank:** Gravity (oferta viva), EPC de referência, avg sale, upsells. Ler Vendor Terms: geo, tráfego, trademark, claims. Testar LP/VSL no mobile. HopLink + UTMs.\n\n**BuyGoods:** Payout vs CPC esperado no geo. Criativos oficiais + ângulos próprios sem violar claims. Confirmar se exige bridge / proíbe direct / landing approval.\n\n**MaxWeb:** Vertical + payout (CPL vs CPA vs RevShare). Smartlink para descoberta; offer fixa após vencedor. Nunca escalar sem postback validado. Monitorar held/rejected/clawback semanalmente.\n\n**Hotmart/Eduzz/Monetizze:** Comissão %, qualidade da página, calendário de lançamento. Materiais oficiais + ângulo da sua audiência.\n\n**Shortlist:** 2–3 CB/BuyGoods + 1 path MaxWeb + 1 BR"
+      },
+      {
+        "titulo": "Funis",
+        "conteudo": "1. **Direct** — anúncio → hop/smartlink (teste rápido)\n2. **Bridge / Review** — anúncio → sua página → CTA afiliado (padrão Google)\n3. **Search Intent** — keyword problema/solução → RSA → bridge\n4. **YouTube / Demand Gen** — UGC/talking-head → bridge ou SL\n5. **PMax** — só após conversões estáveis\n6. **Lançamento BR** — conteúdo/lista → carrinho\n7. **MaxWeb Smartlink** — tráfego → SL → pin na offer vencedora"
+      },
+      {
+        "titulo": "Métricas e Decisão",
+        "conteudo": "| Métrica | Uso |\n|---------|-----|\n| EPC | Receita líquida / cliques |\n| eCPA | Gasto / conversões |\n| ROAS | Receita / gasto |\n| CVR | Conv / cliques |\n\n**SCALE:** EPC ≥ 1,3 × CPC ou eCPA < payout líquido com margem\n**KILL:** sem conversão com gasto ≥ orçamento de teste\n**OTIMIZAR:** perto do break-even"
+      }
+    ]
+  },
+  {
+    "id": "googleads",
+    "titulo": "Google Ads",
+    "icone": "grafico",
+    "secoes": [
+      {
+        "titulo": "Arquitetura de Conta",
+        "conteudo": "1 campanha = 1 rede × 1 vertical × 1 geo × 1 canal × 1 funil\nNaming: [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_vN\n\nExemplos:\nCB_WL_US_SEARCH_BRIDGE_v1\nMW_NUTRA_BR_YT_SL_v1\nBG_BEAUTY_US_DGEN_REVIEW_v2"
+      },
+      {
+        "titulo": "Search para Afiliados",
+        "conteudo": "**Quando usar:** Intent alto, problema claro, comparação.\n\n**Estrutura:** Campanha por tema/oferta. Ad groups por cluster de intenção.\nMatch: exact + phrase no começo.\n\n**RSA:** 10-15 títulos, 4 descrições. Alinhar H1 da bridge à keyword.\nEvitar claims absolutos. CTA: \"veja como funciona\", \"compare\".\n\n**Lances:** Início manual CPC. Com 30+ conv/mês: tCPA."
+      },
+      {
+        "titulo": "YouTube, Demand Gen e PMax",
+        "conteudo": "**YouTube:** Hook 0-3s; problema; mecanismo; CTA para bridge. Remarketing viewers.\n\n**Demand Gen:** Criativos feed + vídeo curto. Bridge obrigatória.\n\n**PMax:** SÓ DEPOIS de conversões confiáveis e Search/YT já lucrativos. Segmente por oferta."
+      },
+      {
+        "titulo": "Compliance Google × Redes",
+        "conteudo": "| Risco | Ação |\n|-------|------|\n| Claims saúde/renda | Linguagem condicional, sem garantia |\n| Trademark | Respeitar Vendor Terms + políticas Google |\n| Cloaking | Proibido |\n| Vertical restrita | Verificar certificação |\n| Destino | Página útil, não só hop opaco |\n\n**Regra de ouro:** anúncio approvável no Google E permitido nos terms da oferta"
+      }
+    ]
+  },
+  {
+    "id": "playbooks",
+    "titulo": "Playbooks",
+    "icone": "documento",
+    "secoes": [
+      {
+        "titulo": "Tipos de Página para Afiliados (Mercado Internacional)",
+        "conteudo": "**Regra geral:** no mercado internacional (US, CA, AU, UK, EU) você precisa de uma **página própria** entre o anúncio do Google e o produtor. Links de afiliado criptografados (hop links) não são aceitos como URL final no Google Ads desde ~2022/2023.\n\n**VSL (Video Sales Letter)**\n- Página centrada em vídeo de vendas.\n- Use só se o produtor não liberar outra página ou se o vídeo for muito forte.\n- Não é o primeiro na lista de prioridades.\n\n**TSL (Text Sales Letter)**\n- Página longa de texto com botões de compra.\n- Funciona bem se a TSL oficial for atrativa: botões visíveis, imagem do produto, informações claras.\n- Se a TSL oficial for \"feia\" (botões escondidos, design ruim), prefira uma página própria.\n\n**Cookie / Popup**\n- Página simples para marcar o cookie do afiliado e redirecionar para a página oficial.\n- É o formato mais usado por afiliados iniciantes e intermediários.\n- Rápido de criar, funciona para produtos com marca já pesquisada.\n\n**Review / Robusta**\n- Artigo review com comparação, prós/contras, depoimentos, FAQ e CTA.\n- Melhor para quem já domina taxa de fuga, usa heatmap (Microsoft Clarity) e quer ranquear no Google.\n- Mais trabalho, mas tende a converter melhor a longo prazo.\n\n**Como escolher:**\n1. Iniciante → Cookie/Popup ou TSL boa do produtor.\n2. Intermediário → TSL otimizada ou Review simples.\n3. Avançado com dados → Review/Robusta + testes A/B."
+      },
+      {
+        "titulo": "Playbook Search + ClickBank/BuyGoods (72h)",
+        "conteudo": "1. BreakEven: comissão, refund 5-15%, CVR 1-2%\n2. 1 campanha, 2-3 ad groups, 3-5 RSA, bridge única\n3. Orçamento = 1-2× comissão média por dia\n4. Dia 1-2: matar keywords com gasto alto zero conv\n5. Dia 3: se EPC ≥ 1,3× CPC → SCALE +20-30%"
+      },
+      {
+        "titulo": "Playbook YT/DGen + MaxWeb SL",
+        "conteudo": "1. Postback OK + 3 criativos (hooks diferentes)\n2. Orçamento até 100-300 cliques ou 10-20 leads\n3. eCPA vs payout: se eCPA < 70-80% → escalar\n4. Held alto → cortar fonte/criativo"
+      },
+      {
+        "titulo": "Diagnóstico Rápido",
+        "conteudo": "| Sintoma | Causa | Ação |\n|---------|-------|------|\n| CTR baixo | RSA fraco, keyword ampla | Reescrever; apertar match |\n| CPC alto | Competição, QS baixo | Bridge melhor; exact; negativas |\n| CTR ok, zero vendas | LP fraca, offer morta | Trocar offer; melhorar bridge |\n| Google conv ≠ rede | Postback/UTM | Corrigir tracking |\n| Ban/disapprove | Claims, cloaking | Reescrever; bridge limpa |"
+      }
+    ]
+  },
+  {
+    "id": "templates",
+    "titulo": "Templates",
+    "icone": "ideia",
+    "secoes": [
+      {
+        "titulo": "Template Bridge (Google-friendly)",
+        "conteudo": "H1 alinhado à keyword\nSubhead benefício específico\nEmpatia (problema)\nO que é a solução (sem milagre)\nProva realista\nPrós e contras\nPara quem é / não é\nCTA → hop / smartlink\nFAQ + garantia do produto\nDisclaimer afiliado + \"resultados variam\"\nPrivacidade / contato"
+      },
+      {
+        "titulo": "RSA Esqueleto",
+        "conteudo": "Títulos: {Keyword} Guia 2026 | Como Funciona | Compare Antes | Opção Que Estão Testando\nDescrições: Entenda prós e contras. Conteúdo informativo + oferta oficial. Resultados individuais variam."
+      },
+      {
+        "titulo": "Hipótese de Teste",
+        "conteudo": "Se eu usar o ângulo [X] no canal [Search/YT] para a oferta [Y] no geo [Z],\nentão EPC sobe para ≥ 1,3× CPC em [N] cliques,\nporque [motivo]."
+      },
+      {
+        "titulo": "UTMs Obrigatórios",
+        "conteudo": "?utm_source=google\n&utm_medium=cpc\n&utm_campaign=[NAMING]\n&utm_content={creative}\n&utm_term={keyword}\n\nMaxWeb: adicionar clickid/subid nos tokens da rede"
+      }
+    ]
+  },
+  {
+    "id": "checklists",
+    "titulo": "Checklists",
+    "icone": "checklist",
+    "secoes": [
+      {
+        "titulo": "Checklist Pré-escala Google + MaxWeb",
+        "conteudo": "☐ Terms da oferta lidos (geo, trademark, claims)\n☐ Bridge com disclaimer, privacidade, mobile OK\n☐ Conversões Google testadas (fire real)\n☐ MaxWeb: postback + clickid + 1 conv teste\n☐ UTMs = Campanha_ID\n☐ Break-even calculado; CPC alvo definido\n☐ Negativas base + exclusões\n☐ Orçamento de teste definido\n☐ Plano B de criativo/ângulo\n☐ Lucro medido pela rede"
+      },
+      {
+        "titulo": "Checklists Gerais",
+        "conteudo": "☐ Contas: CB, BuyGoods, MaxWeb, BR, Google Ads\n☐ Planilha de tracking preenchida\n☐ Shortlist de ofertas com terms OK\n☐ Funil escolhido por campanha\n☐ Compliance revisado\n☐ Kill/scale documentado\n☐ Reserva para refund/clawback"
+      },
+      {
+        "titulo": "Referência Rápida Break-even",
+        "conteudo": "Comissão líquida = Comissão × (1 − refund%)\nEPC break-even = Comissão líquida × CVR\nCPC máx ≈ EPC break-even\nCPC SCALE ≈ CPC máx / 1,3\neCPA máx ≈ Comissão líquida"
+      }
+    ]
+  }
+];
+
+export const ERROS_COMUNS: string[] = [
+  "Google direct link em vertical restrita",
+  "MaxWeb sem postback",
+  "Escalar no lucro do dia 1 ignorando refund",
+  "EPC do marketplace ≠ seu EPC",
+  "PMax no dia 1 sem conversão confiável",
+  "Misturar redes/ofertas sem naming",
+  "Claims agressivos (ban)",
+  "Um criativo só até fadiga",
+  "Usar HopLink criptografado como URL final do anúncio",
+  "Confundir URL do produtor com link de afiliado",
+  "Rodar \"Maximizar conversões\" sem estratégia madura",
+  "Aprovar rascunho achando que a página publicada mudou (o que muda é o presellHtml)",
+  "Ler badge de fonte sem conferir se a resposta veio em modo simulado",
+  "Tratar tendência indisponível como tendência estável",
+  "Simular compra em campanha real: o webhook de teste grava a venda e marca ATIVA",
+  "Escalar produto próprio sem medir o custo de IA que a esteira já queimou"
+];
+
+export const PLAYBOOKS_ATUALIZADO_EM = "2026-08-29";

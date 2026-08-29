@@ -316,3 +316,112 @@ termos:
       saturando ou morrendo."
     por_que_importa: Entrar em oferta morrendo é pagar CPC de leilão cheio por
       conversão em queda. O Caçador de Produtos avalia isso.
+  - termo: Meta Ads Library
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Biblioteca pública da Meta com todos os anúncios ativos, pesquisável por termo e por país.
+    por_que_importa: >-
+      É a fonte que o Ad Scout raspa para contar concorrentes, ler headline e medir preço
+      praticado. Anúncio que está lá há meses é anúncio que paga a conta — por isso o tempo
+      no ar vale mais que a quantidade.
+  - termo: Firecrawl
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Serviço de scraping que renderiza a página, espera o conteúdo carregar e devolve markdown limpo.
+    por_que_importa: >-
+      Sem ele a Meta Ads Library volta como casca de JavaScript. É o elo que transforma
+      página dinâmica em texto que o modelo consegue analisar — e o primeiro a falhar
+      quando a pesquisa passa do tempo limite.
+  - termo: Tendência do Nicho
+    sigla: 'trendSlope'
+    categoria: afiliados
+    definicao: >-
+      Comparação dos últimos 90 dias de interesse no Google Trends contra o período
+      anterior. Positivo, estável, negativo — ou nulo quando a API não responde.
+    por_que_importa: >-
+      Nicho em queda encarece a aquisição a cada mês. E nulo não é neutro nem positivo;
+      significa que ninguém mediu, e a interface mostra cinza justamente para você não ler
+      ausência de dado como sinal verde.
+  - termo: Tempo no Ar do Anúncio
+    sigla: 'activeDays'
+    categoria: afiliados
+    definicao: >-
+      Há quantos dias o anúncio do concorrente está rodando, quando a fonte expõe a data de início.
+    por_que_importa: >-
+      É o proxy mais barato de oferta que converte — ninguém paga 60 dias de mídia num
+      criativo que não se paga. Abaixo de 14 dias o anúncio ainda não provou nada.
+  - termo: API de Conversões
+    sigla: 'CAPI'
+    categoria: google-ads
+    definicao: >-
+      Envio de conversão direto do seu servidor para a Meta, em vez de depender só do pixel no browser.
+    por_que_importa: >-
+      Bloqueador de anúncio e restrição de cookie derrubam parte do pixel. Com o mesmo
+      event_id nos dois caminhos, a Meta desduplica e você para de perder conversão que
+      aconteceu de verdade.
+  - termo: Desduplicação de Evento
+    sigla: null
+    categoria: google-ads
+    definicao: >-
+      Quando o mesmo evento chega pelo servidor e pelo browser com o mesmo identificador,
+      a plataforma conta uma vez só.
+    por_que_importa: >-
+      Sem isso, rodar pixel e CAPI juntos dobra a contagem de venda e envenena o
+      otimizador — que passa a mirar um ROAS que não existe.
+  - termo: Isca Digital
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Entrega gratuita e pequena (checklist, template, aula) que captura o contato antes da oferta paga.
+    por_que_importa: >-
+      No low-ticket ela paga o tráfego que não comprou na hora. Sem isca, o visitante que
+      sai custou dinheiro e não deixou nada.
+  - termo: Potencial de Receita
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Nota de 0 a 100 que o Trend Scout atribui à ideia de produto próprio, combinando
+      demanda, concorrência e faixa de preço.
+    por_que_importa: >-
+      É triagem, não previsão. Serve para ordenar ideias entre si — acima de 80 vale
+      desenhar a oferta, abaixo de 50 quase sempre é nicho sem demanda paga.
+  - termo: Rascunho e Versão Ativa
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Todo produto próprio tem duas cópias no banco — a que os agentes escrevem (draftData)
+      e a que vale para empacotar (activeData).
+    por_que_importa: >-
+      Separar as duas é o que permite agente trabalhar em segundo plano sem alterar o que
+      está no ar. Nada atravessa de um lado para o outro sem aprovação explícita, e aprovar
+      o mesmo rascunho duas vezes não produz efeito nenhum.
+  - termo: Custo de IA por Campanha
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Soma em dólar de todas as chamadas de modelo feitas para uma campanha, com provedor,
+      modelo, tokens e objetivo de cada uma.
+    por_que_importa: >-
+      Agente que reprocessa a mesma fonte queima orçamento em silêncio. O rateio por etapa
+      mostra qual parte do pipeline está cara antes de a fatura chegar.
+  - termo: Modo Simulado
+    sigla: 'isMockMode'
+    categoria: afiliados
+    definicao: >-
+      Sinal que o backend envia quando a resposta não veio de fonte real.
+    por_que_importa: >-
+      Quando ele é verdadeiro, a interface derruba todas as badges de fonte para
+      indisponível e apaga o veredito de tendência. Selo de transparência em cima de dado
+      fabricado é pior que selo nenhum.
+  - termo: Empacotamento do Produto
+    sigla: null
+    categoria: afiliados
+    definicao: >-
+      Etapa final do produto próprio — gera o PDF do e-book, o .zip estático da landing e o
+      link de checkout.
+    por_que_importa: >-
+      Roda sobre a versão aprovada, nunca sobre o rascunho. É idempotente; disparar de novo
+      com o manifesto completo devolve os mesmos artefatos em vez de reprocessar e cobrar
+      duas vezes.

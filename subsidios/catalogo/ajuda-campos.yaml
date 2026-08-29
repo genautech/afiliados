@@ -266,3 +266,83 @@ campos:
       2. Regra prática: 3x a 5x o budget diário de teste, se o EPC/CPC estiver saudável.
 
       3. Ao clicar "Scale" na página da campanha, esse valor é aplicado automaticamente como orçamento diário real no Google Ads.
+  - campo: scoutCountry
+    agente: Ad Scout Oracle
+    o_que: >-
+      País da biblioteca de anúncios que o Ad Scout vai varrer — ALL para varredura global ou o código ISO de duas letras.
+    por_que: >-
+      A concorrência é local. Anúncio que domina os Estados Unidos pode não existir no
+      Brasil, e preço médio de outro país envenena o cálculo de break-even.
+    como: >-
+      1. Escolha o mesmo país do geo da campanha — o campo já vem preenchido assim.
+
+      2. Use ALL só para explorar um nicho novo, nunca para calcular preço.
+
+      3. O catálogo mostra UK, mas o código enviado é GB: a biblioteca da Meta usa ISO real e devolveria vazio com UK.
+  - campo: scoutMode
+    agente: Ad Scout Oracle
+    o_que: >-
+      Alterna entre analisar concorrência de uma oferta de terceiro e criar uma ideia de
+      produto próprio low-ticket a partir de um nicho.
+    por_que: >-
+      São duas esteiras diferentes. O modo de anúncios responde "vale promover isso"; o modo
+      de ideia responde "vale eu criar isso" e devolve preço, isca e upsells.
+    como: >-
+      1. Para afiliado, mantenha o tipo de varredura correspondente ao produto.
+
+      2. Para produto próprio, escolha Criar Ideia de Produto Próprio e descreva o nicho em vez do nome do produto.
+
+      3. O resultado do modo ideia já nasce como produto no banco — importe com um clique para preencher o formulário.
+  - campo: activeDays
+    agente: Compliance Sentinel
+    o_que: >-
+      Há quantos dias o anúncio do concorrente está no ar, quando a fonte informa a data de início.
+    por_que: >-
+      É o sinal mais barato de oferta que converte. Ninguém sustenta 60 dias de mídia num
+      criativo que não se paga.
+    como: >-
+      1. Priorize copiar o ângulo de quem está consolidado (60 dias ou mais).
+
+      2. Abaixo de 14 dias trate como teste do concorrente, não como validação.
+
+      3. Campo ausente significa que a fonte não expôs a data — não confunda com zero dia no ar.
+  - campo: meta_pixel_id
+    agente: Paid Ads Strategist
+    o_que: >-
+      Identificador do pixel da Meta usado tanto na presell quanto no disparo de conversão pelo servidor.
+    por_que: >-
+      Sem pixel a Meta não aprende quem compra e o otimizador fica cego. É o mesmo registro
+      usado pelo Passo 4 e pelo Passo 9, de propósito — dois pixels diferentes para a mesma
+      campanha produzem dois números de conversão.
+    como: >-
+      1. Copie o ID numérico no Gerenciador de Eventos da Meta.
+
+      2. Salve uma vez; os dois passos passam a ler o mesmo valor.
+
+      3. Use o console de eventos para confirmar que o Purchase sai pelos dois caminhos com o mesmo identificador.
+  - campo: meta_access_token
+    agente: Paid Ads Strategist
+    o_que: >-
+      Token de acesso que autoriza o envio de conversões do seu servidor para a Meta pela CAPI.
+    por_que: >-
+      Bloqueador de anúncio e restrição de cookie derrubam parte do pixel de browser. A CAPI
+      recupera essa perda; sem token, ela não sai do lugar.
+    como: >-
+      1. Gere um token de sistema no Gerenciador de Negócios com permissão de eventos.
+
+      2. Cole no campo de senha — ele é gravado criptografado e volta mascarado da API.
+
+      3. A interface nunca reexibe o valor salvo; para trocar, cole um novo por cima.
+  - campo: capUsd
+    agente: Paid Ads Strategist
+    o_que: >-
+      Teto de gasto com modelos de IA para uma campanha, em dólar. Padrão de US$ 2,00.
+    por_que: >-
+      Agente que reprocessa a mesma fonte queima orçamento em silêncio. O teto não bloqueia
+      nada sozinho — ele avisa antes de a fatura chegar.
+    como: >-
+      1. Deixe no padrão até conhecer o custo típico da sua operação.
+
+      2. Se estourar, abra o rateio por etapa antes de mexer no teto: costuma ser um agente repetindo a mesma ingestão.
+
+      3. O painel só converte para real quando o backend envia cotação; sem ela, o valor fica em dólar.

@@ -6,6 +6,22 @@ import { z } from 'zod';
 
 const Confianca = z.enum(['baixa', 'media', 'alta']);
 
+/**
+ * Benchmark público que ilumina o número sem ser a origem dele. Existe porque a
+ * maioria dos benchmarks de CVR publicados mede outra coisa (lead de formulário,
+ * loja própria com tráfego morno) e trocar `origem` por eles transformaria uma
+ * heurística em dado "com fonte" que não sustenta a conta de break-even.
+ * `metrica` é obrigatória justamente para o leitor ver que não é a mesma medida.
+ */
+const Referencia = z.object({
+  url: z.string().url(),
+  titulo: z.string().min(1),
+  acessado_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  metrica: z.string().min(1),
+  valor_citado: z.string().min(1),
+  por_que_nao_substitui: z.string().min(1),
+});
+
 const procedencia = {
   origem: z.enum(['heuristica-interna', 'dado-proprio', 'fonte-externa']),
   confianca: Confianca,
@@ -13,6 +29,7 @@ const procedencia = {
   amostra: z.string().optional(),
   url: z.string().url().optional(),
   revisar_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  referencias: z.array(Referencia).max(6).optional(),
 };
 
 const exigeLastro = <T extends z.ZodRawShape>(shape: T) =>
@@ -51,6 +68,24 @@ export const VerticalSchema = z.object({
   keywords: KeywordsComProcedencia.optional(),
   negativas: ListaComProcedencia,
 });
+
+// Playbooks operacionais: material de método, sem número de decisão, por isso não
+// exige procedência por item — mas mora no catálogo para nascer versionado e revisável.
+export const PlaybooksSchema = z.object({
+  schema: z.literal(1),
+  atualizado_em: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  grupos: z.array(z.object({
+    id: z.string().min(1),
+    titulo: z.string().min(1),
+    icone: z.enum(['target', 'grafico', 'documento', 'ideia', 'checklist']),
+    secoes: z.array(z.object({
+      titulo: z.string().min(1),
+      conteudo: z.string().min(1),
+    })).min(1),
+  })).min(1),
+  erros_comuns: z.array(z.string().min(1)).min(1),
+});
+export type Playbooks = z.infer<typeof PlaybooksSchema>;
 
 export const CatalogoVerticaisSchema = z.object({
   schema: z.literal(1),

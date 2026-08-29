@@ -76,8 +76,8 @@ unidades:
     natureza: Verticais, operação, glossário, manual e ajuda de campo, com
       procedência por valor
     nivel: catalogo
-    arquivos: 5
-    hash: sha256:e3a93d1dc2920680b76f2dafb88880440d640feab45df35fb31a07a04a8e1423
+    arquivos: 6
+    hash: sha256:80c99c8708515391a612df107b18d83990af9134e1e83c42124cefd6d59ea17d
   - destino: brandkit
     origem: afiliados (criado aqui, em branco)
     natureza: Template de identidade por campanha; nunca contém marca de terceiro

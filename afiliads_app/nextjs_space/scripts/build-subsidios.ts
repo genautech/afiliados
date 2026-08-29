@@ -9,7 +9,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 // Roda sob tsx (script subsidios:build), então o contrato vem do próprio schema TS —
 // não existe uma segunda cópia dele para sair de sincronia.
-import { CatalogoVerticaisSchema, CatalogoOperacaoSchema, GlossarioSchema, ManualSchema, AjudaCamposSchema, OrigemDadoSchema } from '../lib/subsidios/schema';
+import { CatalogoVerticaisSchema, CatalogoOperacaoSchema, GlossarioSchema, ManualSchema, AjudaCamposSchema, OrigemDadoSchema, PlaybooksSchema } from '../lib/subsidios/schema';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = join(here, '..');
@@ -31,6 +31,7 @@ const operacao = load('operacao.yaml', CatalogoOperacaoSchema);
 const glossario = load('glossario.yaml', GlossarioSchema);
 const manual = load('manual.yaml', ManualSchema);
 const ajuda = load('ajuda-campos.yaml', AjudaCamposSchema);
+const playbooks = load('playbooks.yaml', PlaybooksSchema);
 
 const j = (v: unknown) => JSON.stringify(v, null, 2).replace(/\n/g, '\n');
 
@@ -41,6 +42,16 @@ const out = `// GERADO por scripts/build-subsidios.ts a partir de subsidios/cata
 export type Origem = 'heuristica-interna' | 'dado-proprio' | 'fonte-externa';
 export type Confianca = 'baixa' | 'media' | 'alta';
 
+/** Benchmark público que contextualiza o número sem ser a origem dele. */
+export interface ReferenciaExterna {
+  url: string;
+  titulo: string;
+  acessado_em: string;
+  metrica: string;
+  valor_citado: string;
+  por_que_nao_substitui: string;
+}
+
 export interface Procedencia {
   origem: Origem;
   confianca: Confianca;
@@ -48,6 +59,7 @@ export interface Procedencia {
   amostra?: string;
   url?: string;
   revisar_em?: string;
+  referencias?: ReferenciaExterna[];
 }
 
 export interface NumeroComProcedencia extends Procedencia { valor: number; unidade: string }
@@ -135,12 +147,31 @@ export const MANUAL: SecaoManual[] = ${j(manual.secoes)};
 export const AJUDA_CAMPOS: Record<string, AjudaCampo> = ${j(
   Object.fromEntries(ajuda.campos.map((c) => [c.campo, c])),
 )};
+
+export type IconePlaybook = 'target' | 'grafico' | 'documento' | 'ideia' | 'checklist';
+
+export interface SecaoPlaybook { titulo: string; conteudo: string }
+
+export interface GrupoPlaybook {
+  id: string;
+  titulo: string;
+  icone: IconePlaybook;
+  secoes: SecaoPlaybook[];
+}
+
+export const PLAYBOOKS: GrupoPlaybook[] = ${j(playbooks.grupos)};
+
+export const ERROS_COMUNS: string[] = ${j(playbooks.erros_comuns)};
+
+export const PLAYBOOKS_ATUALIZADO_EM = ${JSON.stringify(playbooks.atualizado_em)};
 `;
 
 writeFileSync(join(app, 'lib/generated/catalogo-conhecimento.ts'), outConhecimento);
 console.log(
   `catalogo-conhecimento.ts gerado: ${glossario.termos.length} termos, ` +
-  `${manual.secoes.length} seções de manual, ${ajuda.campos.length} campos de ajuda`,
+  `${manual.secoes.length} seções de manual, ${ajuda.campos.length} campos de ajuda, ` +
+  `${playbooks.grupos.length} grupos de playbook (${playbooks.grupos.reduce((n, g) => n + g.secoes.length, 0)} seções), ` +
+  `${playbooks.erros_comuns.length} erros comuns`,
 );
 
 // --- Gate de procedência dos dados de campanha (subsidios/dados/**). ---
