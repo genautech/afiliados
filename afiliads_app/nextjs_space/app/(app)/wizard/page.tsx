@@ -693,6 +693,24 @@ export default function WizardPage() {
     }
   };
 
+  /**
+   * O autofill deriva os números do agente; a ideia traz os que o usuário aprovou
+   * no card. Cravamos os da ideia por último para card e formulário não divergirem.
+   */
+  const importProductIdea = async (idea: ProductIdea) => {
+    if (!idea.id) {
+      toast.error('Esta ideia não foi persistida: não há id de produto para importar.');
+      return;
+    }
+    await loadFromResearch(idea.id);
+    if (idea.name) setName(idea.name);
+    if (idea.vertical) setVertical(idea.vertical);
+    // Produto próprio: a receita por venda é o preço de front-end, não uma comissão.
+    if (idea.suggestedPrice !== null) setCommission(String(idea.suggestedPrice));
+    if (idea.suggestedAov !== null) setAov(String(idea.suggestedAov));
+    toast.success('Ideia importada com o preço e o AOV que apareceram no card.');
+  };
+
   const scoutCountryTouched = useRef(false);
   useEffect(() => {
     if (scoutCountryTouched.current) return;
@@ -1337,6 +1355,7 @@ export default function WizardPage() {
                 productIdea={productIdea}
                 generatingIdea={generatingIdea}
                 runProductIdea={runProductIdea}
+                importProductIdea={importProductIdea}
                 scoutCountry={scoutCountry}
                 setScoutCountry={(v: string) => { scoutCountryTouched.current = true; setScoutCountry(v); }}
                 runAdScoutResearch={runAdScoutResearch}

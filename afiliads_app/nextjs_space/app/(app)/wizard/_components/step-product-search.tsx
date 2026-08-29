@@ -249,6 +249,8 @@ interface StepProductSearchProps {
   productIdea: ProductIdea | null;
   generatingIdea: boolean;
   runProductIdea: () => Promise<void>;
+  /** Importa a ideia: roda o autofill e depois crava os valores que o card exibiu. */
+  importProductIdea: (idea: ProductIdea) => Promise<void>;
   runAdScoutResearch: () => Promise<void>;
 
   onPrev: () => void;
@@ -302,6 +304,7 @@ export function StepProductSearch({
   productIdea,
   generatingIdea,
   runProductIdea,
+  importProductIdea,
   runAdScoutResearch,
   onPrev,
   onNext,
@@ -937,7 +940,7 @@ export function StepProductSearch({
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-purple-500/15 pt-3">
                 <Button
                   size="sm"
-                  onClick={() => { if (productIdea.id) void loadFromResearch(productIdea.id); }}
+                  onClick={() => { void importProductIdea(productIdea); }}
                   disabled={!productIdea.id || autofilling}
                   className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
                 >
