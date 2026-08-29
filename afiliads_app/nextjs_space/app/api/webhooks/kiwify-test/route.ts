@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { processKiwifyWebhook, type KiwifyWebhookPayload } from '@/lib/kiwifyService';
+import { sendFacebookCapiEvent } from '@/lib/tracking/capiService';
 
 const payloadSchema = z.object({
   order_id: z.string().min(1).max(255),
@@ -52,6 +53,16 @@ export async function POST(request: Request) {
 
     if (result.campaignId && payload.order_status === 'paid') {
       await prisma.campaign.update({ where: { id: result.campaignId }, data: { status: 'ATIVA' } });
+      await sendFacebookCapiEvent({
+        pixelId: process.env.META_PIXEL_ID ?? '',
+        accessToken: process.env.META_ACCESS_TOKEN ?? process.env.FACEBOOK_ACCESS_TOKEN ?? '',
+        eventName: 'Purchase',
+        eventId: payload.order_id,
+        email: payload.customer.email,
+        phone: payload.customer.mobile,
+        value: payload.amount / 100,
+        isMockMode: true,
+      });
     }
     return NextResponse.json({ ...result, simulated: true, campaignStatus: payload.order_status === 'paid' ? 'ATIVA' : undefined });
   } catch (error) {

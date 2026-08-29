@@ -301,6 +301,11 @@ def deploy_campaign(campaign_slug: str, is_mock: bool = False, custom_dist: str 
             "checkout_url": checkout_url,
             "webhook_url": webhook_url,
             "webhook_secret": webhook_secret
+        },
+        "token_usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
         }
     }
 

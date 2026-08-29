@@ -37,6 +37,8 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
 
+LAST_TOKEN_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
 
 OBSIDIAN_GLOBAL_DIR = Path("/Users/genautech/EMAI Starter Vault/Conhecimento/Global/Low_Ticket_Insights")
 OBSIDIAN_SINTESES_DIR = Path("/Users/genautech/EMAI Starter Vault/Conhecimento/Global/Sinteses")
@@ -115,6 +117,8 @@ def analyze_transcript_marketing(transcript_text: str, is_mock: bool = False) ->
             ]
         }
 
+    global LAST_TOKEN_USAGE
+    LAST_TOKEN_USAGE = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         print("[ANALYSIS] ⚠️ GEMINI_API_KEY não encontrada no ambiente (.env). Usando fallback offline.")
@@ -147,6 +151,12 @@ Transcrição do Vídeo:
                 response_mime_type="application/json"
             )
         )
+        usage = getattr(response, "usage_metadata", None)
+        LAST_TOKEN_USAGE = {
+            "prompt_tokens": int(getattr(usage, "prompt_token_count", 0) or 0),
+            "completion_tokens": int(getattr(usage, "candidates_token_count", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_token_count", 0) or 0),
+        }
         data = json.loads(response.text)
         return data
     except Exception as e:
@@ -333,6 +343,7 @@ def main():
             "url": youtube_url,
             "title": transcript_data["title"],
             "insights": insights,
+            "token_usage": LAST_TOKEN_USAGE,
             "synthesis_file": str(synthesis_path)
         }, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"📄 JSON salvo em: {out_path}")

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { readJsonFile, researchDir, runWithMockFallback, updateManifest } from '@/lib/antigravity';
+import { recordAICostLog } from '@/lib/costEstimator';
 
 const requestSchema = z.object({
   videoUrl: z.string().url().max(2048),
@@ -32,6 +33,7 @@ async function processReference(input: {
   campaignName: string;
   tags: string[];
   kind: 'youtube' | 'reference';
+  userId: string;
 }) {
   const outputPath = path.join(researchDir(input.campaignName), input.kind === 'youtube' ? 'youtube_insights.json' : 'competitor_scrape.json');
   const args = input.kind === 'youtube'
@@ -61,6 +63,19 @@ async function processReference(input: {
       campaigns: { connect: { id: input.campaignId } },
     },
   });
+  const tokenUsage = data.token_usage;
+  if (tokenUsage && typeof tokenUsage === 'object') {
+    await recordAICostLog({
+      campaignId: input.campaignId,
+      provider: input.kind === 'youtube' ? 'google' : 'firecrawl',
+      model: input.kind === 'youtube' ? 'gemini-2.5-flash' : 'firecrawl-scraper',
+      usage: {
+        promptTokens: Number((tokenUsage as { prompt_tokens?: unknown }).prompt_tokens) || 0,
+        completionTokens: Number((tokenUsage as { completion_tokens?: unknown }).completion_tokens) || 0,
+      },
+      purpose: input.kind === 'youtube' ? 'youtube-ingestion' : 'competitor-ingestion',
+    }).catch((error) => console.error('Falha ao persistir custo da ingestão:', error));
+  }
   await updateManifest(input.campaignName, (manifest) => {
     const current = Array.isArray(manifest.insights) ? manifest.insights : [];
     const next = current.filter((item) => item && typeof item === 'object' && (item as { url?: string }).url !== input.videoUrl);
@@ -104,7 +119,7 @@ export async function POST(request: NextRequest) {
     if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
 
     const kind = sourceKind(videoUrl, tags);
-    void processReference({ videoUrl, campaignId: campaign.id, campaignName: campaign.name, tags, kind })
+    void processReference({ videoUrl, campaignId: campaign.id, campaignName: campaign.name, tags, kind, userId })
       .catch((error) => console.error('Antigravity knowledge process failed:', error));
     const acceptedAt = new Date().toISOString();
     return NextResponse.json(

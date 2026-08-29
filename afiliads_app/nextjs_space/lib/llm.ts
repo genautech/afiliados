@@ -12,6 +12,7 @@ import {
   type LlmBudgetReservation,
 } from './llm-budget';
 import { validateJson } from './json-validation';
+import { recordAICostLog } from './costEstimator';
 
 const llmBudgetClient = prisma as unknown as AgentRunClient;
 
@@ -114,6 +115,7 @@ export interface LlmOptions {
   agent?: string;
   campaignId?: string;
   campaignTarget: CampaignGuardTarget;
+  purpose?: string;
 }
 
 export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi' | 'openrouter';
@@ -982,6 +984,19 @@ export async function callAgent(
             error: null,
           },
         }).catch((e: any) => { throw new Error(`Falha ao persistir telemetria financeira: ${e?.message ?? e}`); }));
+      }
+
+      if (opts.campaignId) {
+        await recordAICostLog({
+          campaignId: opts.campaignId,
+          provider: step.provider,
+          model: modelAttempt,
+          usage: res?.usage ?? emptyUsage,
+          purpose: opts.purpose ?? opts.agent,
+          multipliers: ctx.costMultipliers,
+        }).catch((error) => {
+          console.error('Falha ao persistir AICostLog:', error);
+        });
       }
 
       const successResult: AgentCallResult = {

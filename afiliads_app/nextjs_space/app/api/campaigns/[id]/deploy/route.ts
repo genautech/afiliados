@@ -14,6 +14,7 @@ import {
   withCampaignFileLock,
   withCampaignLock,
 } from '@/lib/antigravity';
+import { recordAICostLog } from '@/lib/costEstimator';
 
 type DeploySummary = {
   status?: string;
@@ -89,6 +90,20 @@ export async function POST(_request: Request, { params }: { params: { id: string
       }
       if (!isCompletedManifest(manifest)) {
         return NextResponse.json({ error: 'Deploy concluído sem resumo válido no manifest', mode: result.mode }, { status: 502 });
+      }
+
+      const tokenUsage = (manifest.deploy as DeploySummary & { token_usage?: Record<string, unknown> }).token_usage;
+      if (tokenUsage) {
+        await recordAICostLog({
+          campaignId: campaign.id,
+          provider: 'google',
+          model: 'gemini-2.5-flash',
+          usage: {
+            promptTokens: Number(tokenUsage.prompt_tokens) || 0,
+            completionTokens: Number(tokenUsage.completion_tokens) || 0,
+          },
+          purpose: 'pdf-generation',
+        }).catch((error) => console.error('Falha ao persistir custo do deploy:', error));
       }
 
       await prisma.campaign.update({

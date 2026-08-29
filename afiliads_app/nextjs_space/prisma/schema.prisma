@@ -182,10 +182,29 @@ model Campaign {
   launchPlans               LaunchPlan[]
   channelLaunches           ChannelLaunch[]
   globalKnowledgeInsights   GlobalKnowledgeInsight[]
+  aiCostLogs                AICostLog[]
 
   @@index([userId, status])
   @@index([userId, platform])
   @@index([productResearchId])
+}
+
+model AICostLog {
+  id               String    @id @default(cuid())
+  campaignId       String?
+  campaign         Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  model            String
+  provider         String
+  promptTokens     Int
+  completionTokens Int
+  costUsd          Float
+  purpose          String
+  createdAt        DateTime  @default(now())
+
+  @@index([campaignId])
+  @@index([campaignId, createdAt])
+  @@index([provider, model])
+  @@index([createdAt])
 }
 
 model GlobalKnowledgeInsight {
