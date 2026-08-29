@@ -60,13 +60,37 @@ describe('POST /api/campaigns/[id]/launch', () => {
     );
   });
 
-  it('devolve 500 quando o lançamento falha, preservando o corpo', async () => {
+  it('recusa de regra é 422 com o corpo inteiro, não 500', async () => {
     h.executeLaunch.mockResolvedValue({
       success: false, logs: ['x'], error: 'Ledger de claims reprovado', channels: [], replayed: false,
     });
     const res = await POST(req({ idempotencyKey: 'k1' }), { params });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(422);
     expect((await res.json()).error).toContain('Ledger de claims');
+  });
+
+  it('preflight reprovado devolve 422 com os canais para o painel desenhar', async () => {
+    h.executeLaunch.mockResolvedValue({
+      success: false,
+      logs: ['[Google Ads] bloqueio: brand bidding'],
+      error: 'Lançamento abortado: canal reprovado no preflight. Nada foi criado.',
+      channels: [
+        { channel: 'GOOGLE_ADS', label: 'Google Ads', status: 'FAILED', mode: 'MOCK', externalIds: {}, error: 'brand bidding', logs: [], alreadyExisted: false },
+        { channel: 'META_ADS', label: 'Meta Ads', status: 'PENDING', mode: 'MOCK', externalIds: {}, error: null, logs: [], alreadyExisted: false },
+      ],
+      replayed: false,
+    });
+    const res = await POST(req({ idempotencyKey: 'k1' }), { params });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.channels.map((c: any) => c.status)).toEqual(['FAILED', 'PENDING']);
+  });
+
+  it('exceção de verdade continua sendo 500', async () => {
+    h.executeLaunch.mockRejectedValue(new Error('conexão com o banco caiu'));
+    const res = await POST(req({ idempotencyKey: 'k1' }), { params });
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toContain('conexão com o banco');
   });
 
   it('não deixa requestMock virar true por omissão', async () => {

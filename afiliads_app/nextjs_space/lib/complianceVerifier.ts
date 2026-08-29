@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { getGoogleAdsConfig } from './google-ads';
 import type { Campaign, Keyword } from '@prisma/client';
 import { z } from 'zod';
 import { AnalyzedClaimItemSchema, type AnalyzedClaimItem } from './validations/market-research';
@@ -177,9 +178,15 @@ export async function verifyGoLiveChecklist(
     keywords_ok: ctx.selectedKeywordsCount > 0
       ? { passed: true }
       : { passed: false, note: 'Nenhuma keyword selecionada' },
+    // Antes exigia googleCampaignId, que só existe DEPOIS do lançamento — e o lançamento
+    // exige o Go-live completo (evaluateWizardGate). Ninguém conseguia lançar a primeira vez.
+    // O item pré-lançamento é "conta pronta pra receber a campanha"; depois de criada, o
+    // próprio ID é a prova.
     google_ads_ok: campaign.googleCampaignId
       ? { passed: true }
-      : { passed: false, note: 'Campanha ainda não criada no Google Ads' },
+      : (await getGoogleAdsConfig(campaign.userId))
+        ? { passed: true, note: 'Conta configurada; a campanha é criada pelo painel de lançamento' }
+        : { passed: false, note: 'Google Ads não configurado (Configurações → Google Ads API)' },
     // MaxWeb exige postback S2S (postbackUrl + clickidToken); ClickBank rastreia via TID no
     // hoplink e usa o item self_attested "hop_stats" do Step 8 (TRACKING_CHECKLIST_CB) — por
     // isso o critério de "tracking ok" depende da plataforma, não pode ser fixo em postback.

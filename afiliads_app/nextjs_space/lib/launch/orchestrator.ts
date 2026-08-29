@@ -95,6 +95,28 @@ export async function assertClaimsAllowed(userId: string, campaignId: string): P
   return [`Gate de claims: ${rows.length} claim(s) da versão ${version} aprovadas.`];
 }
 
+/**
+ * Grava a reprovação de preflight como linha do canal. Se a chave já foi usada
+ * naquele canal, a linha existente manda — idempotência não pode ser
+ * sobrescrita por uma segunda avaliação.
+ */
+async function recordBlocked(args: {
+  userId: string; campaignId: string; idempotencyKey: string;
+  channel: LaunchChannel; mode: LaunchMode; error: string; logs: string[];
+}): Promise<void> {
+  try {
+    await prisma.channelLaunch.create({
+      data: {
+        userId: args.userId, campaignId: args.campaignId, channel: args.channel,
+        idempotencyKey: args.idempotencyKey, status: 'FAILED', mode: args.mode,
+        externalIds: {}, error: args.error, logs: args.logs,
+      },
+    });
+  } catch (err: any) {
+    if (err?.code !== 'P2002') throw err;
+  }
+}
+
 function toOutcome(row: {
   channel: string; status: string; mode: string | null;
   externalIds: unknown; error: string | null; logs: unknown;
@@ -160,20 +182,41 @@ export async function executeLaunch(input: LaunchInput): Promise<LaunchResult> {
     logs.push(...pre.errors.map(e => `[${adapter.label}] bloqueio: ${e}`));
     logs.push(...pre.warnings.map(w => `[${adapter.label}] aviso: ${w}`));
     if (!pre.ready) {
+      const error = pre.errors.join(' | ') || 'Canal não está pronto.';
+      const channelLogs = [...pre.errors, ...pre.warnings];
+      // A reprovação precisa virar linha no banco. O painel hidrata pelo
+      // getLaunchState, então bloqueio que só existe na resposta HTTP some no
+      // primeiro refresh e o canal volta a aparecer como "não iniciado".
+      await recordBlocked({ userId, campaignId, idempotencyKey, channel, mode: pre.mode, error, logs: channelLogs });
       outcomes.push({
         channel, label: adapter.label, status: 'FAILED', mode: pre.mode,
-        externalIds: {}, error: pre.errors.join(' | ') || 'Canal não está pronto.',
-        logs: [...pre.errors, ...pre.warnings], alreadyExisted: false,
+        externalIds: {}, error, logs: channelLogs, alreadyExisted: false,
       });
       continue;
     }
     plan.push({ adapter, mode: pre.mode });
   }
 
-  if (plan.length === 0) {
+  // Todo-ou-nada no preflight. Antes daqui o código deixava os canais aprovados
+  // subirem enquanto outro estava bloqueado — foi exatamente o meio-lançamento
+  // que este bloco existe para impedir (Meta no ar, Google barrado por brand
+  // bidding). Quem quer subir um canal isolado manda channels: ['X'].
+  const blocked = outcomes.filter(o => o.status === 'FAILED');
+  if (blocked.length > 0) {
+    for (const { adapter } of plan) {
+      logs.push(`[${adapter.label}] não iniciado: outro canal do mesmo lançamento foi reprovado.`);
+      outcomes.push({
+        channel: adapter.channel, label: adapter.label, status: 'PENDING', mode: 'MOCK',
+        externalIds: {}, error: null,
+        logs: ['Não iniciado: outro canal do mesmo lançamento foi reprovado.'],
+        alreadyExisted: false,
+      });
+    }
     return {
       success: false, logs,
-      error: 'Nenhum canal passou no preflight. Nada foi criado.',
+      error: plan.length > 0
+        ? 'Lançamento abortado: canal reprovado no preflight. Nada foi criado.'
+        : 'Nenhum canal passou no preflight. Nada foi criado.',
       channels: outcomes, replayed: false,
     };
   }

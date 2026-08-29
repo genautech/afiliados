@@ -87,8 +87,30 @@ describe('executeLaunch', () => {
     const r = await executeLaunch(base);
     expect(r.success).toBe(false);
     expect(r.channels.find(c => c.channel === 'META_ADS')?.status).toBe('FAILED');
-    // O Google até roda, mas o resultado não é sucesso enquanto houver canal reprovado.
-    expect(r.channels.find(c => c.channel === 'GOOGLE_ADS')?.status).toBe('SUCCESS');
+    // O canal aprovado NÃO sobe: meio-lançamento é o que este bloco impede.
+    expect(r.channels.find(c => c.channel === 'GOOGLE_ADS')?.status).toBe('PENDING');
+    expect(h.google.create).not.toHaveBeenCalled();
+    expect(h.meta.create).not.toHaveBeenCalled();
+  });
+
+  it('bloqueio de preflight vira linha no banco, para o painel não esquecer', async () => {
+    h.meta.preflight.mockResolvedValue({ ready: false, mode: 'MOCK', errors: ['sem pixel'], warnings: [] });
+    await executeLaunch(base);
+    const gravados = h.channelLaunch.create.mock.calls.map((c: any) => c[0].data);
+    const metaRow = gravados.find((d: any) => d.channel === 'META_ADS');
+    expect(metaRow).toMatchObject({ status: 'FAILED', idempotencyKey: base.idempotencyKey });
+    expect(metaRow.error).toContain('sem pixel');
+    // O canal que nem chegou a rodar não inventa linha.
+    expect(gravados.find((d: any) => d.channel === 'GOOGLE_ADS')).toBeUndefined();
+  });
+
+  it('canal isolado reprovado não arrasta ninguém: só ele volta reprovado', async () => {
+    h.google.preflight.mockResolvedValue({ ready: false, mode: 'MOCK', errors: ['brand bidding'], warnings: [] });
+    const r = await executeLaunch({ ...base, channels: ['GOOGLE_ADS'] });
+    expect(r.success).toBe(false);
+    expect(r.channels).toHaveLength(1);
+    expect(r.channels[0]).toMatchObject({ channel: 'GOOGLE_ADS', status: 'FAILED' });
+    expect(h.meta.preflight).not.toHaveBeenCalled();
   });
 
   it('compensa o canal que subiu quando o seguinte falha', async () => {

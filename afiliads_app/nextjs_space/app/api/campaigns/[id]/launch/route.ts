@@ -61,9 +61,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       overrides: body?.overrides,
     });
 
-    // Formato compatível com o consumidor anterior (success/logs/error), com os
-    // canais anexados para quem souber ler.
-    return NextResponse.json(result, { status: result.success ? 200 : 500 });
+    // Recusa de regra (preflight reprovado, claim gate, canal já ocupado) é
+    // resultado esperado, não defeito do servidor: 422 com o corpo inteiro. O 500
+    // fica só para exceção de verdade, no catch — senão todo bloqueio legítimo
+    // polui o log de erro e o painel não distingue "barrado" de "quebrou".
+    return NextResponse.json(result, { status: result.success ? 200 : 422 });
   } catch (err: any) {
     console.error('Launch campaign error:', err);
     return NextResponse.json({ error: err?.message ?? 'Erro ao lançar campanha' }, { status: 500 });
