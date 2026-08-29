@@ -5,7 +5,7 @@ export const ClaimRiskLevel = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 export type ClaimRiskLevel = z.infer<typeof ClaimRiskLevel>;
 
 // Tipo de produto/estratégia usado pelo ad-scout-oracle.
-export const ProductTypeEnum = z.enum(['AFFILIATE', 'PROPRIETARY_LOW_TICKET']);
+export const ProductTypeEnum = z.enum(['AFFILIATE', 'PROPRIETARY_LOW_TICKET', 'MENTORSHIP']);
 export type ProductTypeEnum = z.infer<typeof ProductTypeEnum>;
 
 // Concorrente mapeado durante a pesquisa de mercado.
@@ -29,7 +29,7 @@ export type AnalyzedClaimItem = z.infer<typeof AnalyzedClaimItemSchema>;
 // Retorno completo e estrito do contrato do ad-scout-oracle.
 export const AdScoutOracleOutputSchema = z.object({
   query: z.string().min(1, 'A palavra-chave de pesquisa é obrigatória.'),
-  productType: ProductTypeEnum.default('AFFILIATE'),
+  productType: ProductTypeEnum,
   adCount: z.number().int().nonnegative('A contagem de anúncios deve ser um número inteiro.'),
   avgPrice: z.number().finite().nonnegative('O preço médio de mercado deve ser um valor positivo.'),
   competitors: z.array(CompetitorItemSchema).default([]),
@@ -44,6 +44,6 @@ export const MarketResearchRequestSchema = z.object({
   query: z.string().min(2, 'Palavra-chave curta demais para pesquisa.'),
   productResearchId: z.string().optional(),
   campaignId: z.string().optional(),
-  productType: ProductTypeEnum.default('AFFILIATE'),
+  productType: ProductTypeEnum,
 }).strict();
 export type MarketResearchRequest = z.infer<typeof MarketResearchRequestSchema>;

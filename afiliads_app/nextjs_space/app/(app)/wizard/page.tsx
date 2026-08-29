@@ -187,7 +187,7 @@ export default function WizardPage() {
   const [scoutLoading, setScoutLoading] = useState(false);
   const [scoutStage, setScoutStage] = useState('');
   const [scoutResult, setScoutResult] = useState<any>(null);
-  const [scoutProductType, setScoutProductType] = useState<'AFFILIATE' | 'PROPRIETARY_LOW_TICKET'>('AFFILIATE');
+  const [scoutProductType, setScoutProductType] = useState<ProductType>('AFFILIATE');
 
   // Break-even calculations
   const commVal = parseFloat(commission) || 0;

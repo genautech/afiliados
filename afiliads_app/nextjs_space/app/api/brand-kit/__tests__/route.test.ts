@@ -7,6 +7,16 @@ import { callAgent } from '@/lib/llm';
 vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/llm', () => ({ callAgent: vi.fn() }));
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    campaign: { findFirst: vi.fn(async () => ({ id: 'camp-1' })) },
+    productResearch: { findFirst: vi.fn(async () => ({ id: 'prod-1' })) },
+    brandKit: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 'bk-1', version: 1 })),
+    },
+  },
+}));
 
 const brandKit = {
   palette: [

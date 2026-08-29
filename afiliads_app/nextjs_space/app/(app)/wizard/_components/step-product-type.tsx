@@ -1,11 +1,13 @@
 'use client';
 
 import React from 'react';
+import type { ProductTypeEnum } from '@/lib/validations/market-research';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Tag, Users, ArrowRight, ShieldCheck, Zap, Link2 } from 'lucide-react';
 
-export type ProductType = 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET' | 'MENTORSHIP';
+// Fonte única: o enum Zod, que espelha o enum ProductType do Prisma.
+export type ProductType = ProductTypeEnum;
 
 interface StepProductTypeProps {
   value: ProductType;

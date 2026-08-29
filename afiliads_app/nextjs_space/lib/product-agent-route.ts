@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { z } from 'zod';
 import { authOptions } from './auth';
 import { ProductAgentSpec, runProductAgent } from './product-agents';
+import { StudioScopeError } from './product-agent-persistence';
 
 /** Handler POST padrão para os agentes de produto próprio. */
 export function productAgentHandler<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(
@@ -24,6 +25,11 @@ export function productAgentHandler<I extends z.ZodTypeAny, O extends z.ZodTypeA
       const result = await runProductAgent(userId, spec, body);
       return NextResponse.json(result);
     } catch (error: any) {
+      // Escopo inválido (campanha/produto de outro usuário, ou inexistente): 404, nunca 500 —
+      // mesmo tratamento das rotas de campanha, pra não revelar existência de id alheio.
+      if (error instanceof StudioScopeError) {
+        return NextResponse.json({ error: error.message }, { status: 404 });
+      }
       if (error instanceof z.ZodError) {
         return NextResponse.json(
           {

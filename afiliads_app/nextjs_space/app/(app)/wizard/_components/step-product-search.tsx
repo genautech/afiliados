@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { AgentHelp, applyEnumIfValid } from './agent-help';
+import type { ProductType } from './step-product-type';
 import {
   Search, Bot, Loader2, AlertTriangle, CheckCircle2, ArrowLeft, ArrowRight,
   TrendingUp, Tag, ShieldAlert, Target, Link2, Key, HelpCircle
@@ -60,8 +61,8 @@ interface StepProductSearchProps {
   scoutLoading: boolean;
   scoutStage: string;
   scoutResult: any;
-  scoutProductType: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET';
-  setScoutProductType: (v: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET') => void;
+  scoutProductType: ProductType;
+  setScoutProductType: (v: ProductType) => void;
   runAdScoutResearch: () => Promise<void>;
 
   onPrev: () => void;
@@ -516,7 +517,7 @@ export function StepProductSearch({
               <Label className="text-slate-300 text-xs font-medium">Tipo de Varredura</Label>
               <Select
                 value={scoutProductType}
-                onValueChange={(v: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET') => setScoutProductType(v)}
+                onValueChange={(v: ProductType) => setScoutProductType(v)}
                 disabled={scoutLoading}
               >
                 <SelectTrigger className="bg-[#0f172a] border-purple-500/30 text-white mt-1.5">
@@ -525,6 +526,7 @@ export function StepProductSearch({
                 <SelectContent className="bg-[#1e293b] border-[#334155]">
                   <SelectItem value="AFFILIATE" className="text-white">Afiliado / Arbitragem</SelectItem>
                   <SelectItem value="PROPRIETARY_LOW_TICKET" className="text-white">Infoproduto Próprio</SelectItem>
+                  <SelectItem value="MENTORSHIP" className="text-white">Mentoria / Alto Ticket</SelectItem>
                 </SelectContent>
               </Select>
             </div>

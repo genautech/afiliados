@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,29 @@ export function ProductStudio({ productType, productName, vertical, aov, campaig
   const [surface, setSurface] = useState<'EBOOK' | 'LANDING' | 'CRIATIVO' | 'CARROSSEL'>('LANDING');
   const [claimsText, setClaimsText] = useState('');
   const [copyText, setCopyText] = useState('');
+  const [restoring, setRestoring] = useState(false);
+
+  // Recarrega o que já foi rodado para esta campanha. Sem isso o estúdio esquece
+  // tudo ao fechar a aba, e o usuário refaz (e repaga) as sete chamadas de LLM.
+  useEffect(() => {
+    if (!campaignId) return;
+    let cancelled = false;
+    setRestoring(true);
+    fetch(`/api/product-studio?campaignId=${encodeURIComponent(campaignId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.results) return;
+        const saved = json.results as Results;
+        if (Object.keys(saved).length > 0) setResults((prev) => ({ ...saved, ...prev }));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRestoring(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignId]);
 
   const brand = results.brand;
   const productKind: 'EBOOK' | 'MENTORIA' = productType === 'MENTORSHIP' ? 'MENTORIA' : 'EBOOK';
@@ -74,7 +97,11 @@ export function ProductStudio({ productType, productName, vertical, aov, campaig
         return;
       }
       setResults((prev) => ({ ...prev, [id]: json.data }));
-      toast.success(`${spec.label} pronto (${json.provider}/${json.model})`);
+      toast.success(
+        json.version
+          ? `${spec.label} pronto e salvo (v${json.version} · ${json.provider}/${json.model})`
+          : `${spec.label} pronto (${json.provider}/${json.model})`
+      );
     } catch {
       toast.error(`Erro de rede em ${spec.label}`);
     } finally {
@@ -166,7 +193,7 @@ export function ProductStudio({ productType, productName, vertical, aov, campaig
           <Wand2 className="w-4 h-4 text-cyan-400" />
           Estúdio de Produto Próprio
           <Badge variant="outline" className="ml-2 text-[10px] border-[#334155] text-slate-400">
-            {Object.keys(results).length}/{TABS.length} rodados
+            {restoring ? 'carregando…' : `${Object.keys(results).length}/${TABS.length} rodados`}
           </Badge>
         </CardTitle>
         <CardDescription className="text-slate-400">

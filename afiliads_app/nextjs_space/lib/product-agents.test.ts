@@ -10,6 +10,30 @@ import {
 
 vi.mock('./llm', () => ({ callAgent: vi.fn() }));
 
+// Contrato dos agentes é uma coisa; gravar no banco é outra. A persistência tem teste
+// próprio em product-agent-persistence.test.ts — aqui ela vira no-op para o teste não
+// depender de Postgres.
+vi.mock('./product-agent-persistence', async () => {
+  const actual = await vi.importActual<typeof import('./product-agent-persistence')>(
+    './product-agent-persistence'
+  );
+  const noop = vi.fn(async () => ({ recordId: 'rec-1', version: 1 }));
+  return {
+    ...actual,
+    resolveScope: vi.fn(async (_userId: string, input: any) => ({
+      campaignId: input.campaignId ?? null,
+      productResearchId: input.productResearchId ?? null,
+    })),
+    persistBrandKit: noop,
+    persistOfferDesign: noop,
+    persistClaimLedger: noop,
+    persistContentArchitecture: noop,
+    persistCopyQaReport: noop,
+    persistVisualSystem: noop,
+    persistLaunchPlan: noop,
+  };
+});
+
 const brandKit = {
   palette: [
     { role: 'primary', hex: '#1D4ED8', usage: 'CTA' },

@@ -41,6 +41,13 @@ model User {
   checklistLearnings   ChecklistLearning[]
   googleAdsExperiments GoogleAdsExperiment[]
   marketResearches     MarketResearch[]
+  brandKits            BrandKit[]
+  offerDesigns         OfferDesign[]
+  claimLedger          ClaimLedgerEntry[]
+  contentArchitectures ContentArchitecture[]
+  copyQaReports        CopyQaReport[]
+  visualSystems        VisualSystem[]
+  launchPlans          LaunchPlan[]
 }
 
 model Account {
@@ -154,6 +161,13 @@ model Campaign {
   presells                  Presell[]
   googleAdsExperiments      GoogleAdsExperiment[]
   marketResearches          MarketResearch[]
+  brandKits                 BrandKit[]
+  offerDesigns              OfferDesign[]
+  claimLedger               ClaimLedgerEntry[]
+  contentArchitectures      ContentArchitecture[]
+  copyQaReports             CopyQaReport[]
+  visualSystems             VisualSystem[]
+  launchPlans               LaunchPlan[]
 
   @@index([userId, status])
   @@index([userId, platform])
@@ -423,6 +437,7 @@ enum BridgePageType {
 enum ProductType {
   AFFILIATE
   PROPRIETARY_LOW_TICKET
+  MENTORSHIP
 }
 
 model ProductResearch {
@@ -462,6 +477,13 @@ model ProductResearch {
   bridgePageRecommendations BridgePageStrategyRecommendation[]
   marketIntelSnapshots      MarketIntelSnapshot[]
   marketResearch            MarketResearch?
+  brandKits                 BrandKit[]
+  offerDesigns              OfferDesign[]
+  claimLedger               ClaimLedgerEntry[]
+  contentArchitectures      ContentArchitecture[]
+  copyQaReports             CopyQaReport[]
+  visualSystems             VisualSystem[]
+  launchPlans               LaunchPlan[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -717,4 +739,208 @@ model HermesOutboxEntry {
   processedAt DateTime?
 
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Estúdio de Produto — saída persistida dos sete agentes de produto próprio.
+// Cada modelo guarda o input que gerou o artefato, a saída já validada pelo Zod
+// e a telemetria do provedor. `version` cresce a cada nova rodada do mesmo
+// escopo (campanha ou produto), então o histórico não é sobrescrito.
+// ---------------------------------------------------------------------------
+
+// Classificação de uma claim pelo fact-steward.
+enum ClaimStatus {
+  FATO
+  INFERENCIA
+  PROIBIDO
+}
+
+model BrandKit {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  palette           Json
+  typography        Json
+  tone              Json
+  bannedWords       Json     @default("[]")
+  positioning       String   @db.Text
+  gaps              Json     @default("[]")
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
+}
+
+model OfferDesign {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  promise           String   @db.Text
+  deliverables      Json     @default("[]")
+  price             Json
+  bump              Json?
+  upsell            Json?
+  guarantee         Json
+  reasonToBuyNow    String   @db.Text
+  objections        Json     @default("[]")
+  gaps              Json     @default("[]")
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
+}
+
+// Uma linha por claim — o ledger é consultável, não um blob.
+model ClaimLedgerEntry {
+  id                String      @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int         @default(1)
+  claim             String      @db.Text
+  status            ClaimStatus
+  source            String?     @db.Text
+  rewrite           String      @db.Text
+  allowedChannels   Json        @default("[]")
+  reason            String      @db.Text
+  provider          String      @default("")
+  model             String      @default("")
+  createdAt         DateTime    @default(now())
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId, version])
+  @@index([campaignId, status])
+  @@index([productResearchId])
+}
+
+model ContentArchitecture {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  modules           Json     @default("[]")
+  sequenceRationale String   @db.Text
+  gaps              Json     @default("[]")
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
+}
+
+model CopyQaReport {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  score             Int
+  issues            Json     @default("[]")
+  rewritten         String   @db.Text
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
+}
+
+model VisualSystem {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  typeScale         Json
+  spacing           Json
+  grid              Json
+  coverDirection    Json
+  contrastChecks    Json     @default("[]")
+  gaps              Json     @default("[]")
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
+}
+
+model LaunchPlan {
+  id                String   @id @default(cuid())
+  userId            String
+  campaignId        String?
+  productResearchId String?
+  version           Int      @default(1)
+  input             Json
+  organicProof      Json     @default("[]")
+  experimentCard    Json
+  scaleGates        Json     @default("[]")
+  testBudget        Json
+  gaps              Json     @default("[]")
+  provider          String   @default("")
+  model             String   @default("")
+  totalTokens       Int      @default(0)
+  durationMs        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productResearchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, campaignId])
+  @@index([productResearchId])
 }

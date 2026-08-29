@@ -75,9 +75,12 @@ export class AdScoutService {
       niche = 'produtividade';
     }
 
-    const defaultPrices = input.productType === 'PROPRIETARY_LOW_TICKET' 
-      ? { avg: 47.90, min: 29.00, max: 67.00 }
-      : { avg: 197.00, min: 97.00, max: 297.00 };
+    const defaultPrices =
+      input.productType === 'PROPRIETARY_LOW_TICKET'
+        ? { avg: 47.90, min: 29.00, max: 67.00 }
+        : input.productType === 'MENTORSHIP'
+        ? { avg: 1497.00, min: 497.00, max: 4997.00 }
+        : { avg: 197.00, min: 97.00, max: 297.00 };
 
     const responseTemplates: Record<string, Partial<AdScoutOracleOutput>> = {
       saude: {

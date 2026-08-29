@@ -1,5 +1,16 @@
 import { z } from 'zod';
 import { callAgent } from './llm';
+import type { PersistFn, PersistResult } from './product-agent-persistence';
+import {
+  resolveScope,
+  persistBrandKit,
+  persistOfferDesign,
+  persistClaimLedger,
+  persistContentArchitecture,
+  persistCopyQaReport,
+  persistVisualSystem,
+  persistLaunchPlan,
+} from './product-agent-persistence';
 
 /**
  * Agentes de produto próprio (e-book / low-ticket / mentoria).
@@ -22,10 +33,13 @@ export interface ProductAgentSpec<I extends z.ZodTypeAny, O extends z.ZodTypeAny
   output: O;
   systemPrompt: string;
   buildUserPrompt: (input: z.infer<I>) => string;
+  /** Grava a saída validada no escopo (campanha/produto) do input. Sem isso o artefato morre na tela. */
+  persist?: PersistFn<z.infer<I>, z.infer<O>>;
 }
 
 const campaignScope = {
   campaignId: z.string().min(1).optional(),
+  productResearchId: z.string().min(1).optional(),
 };
 
 // --------------------------------------------------------------------------
@@ -88,6 +102,7 @@ Referências visuais/verbais: ${i.references.length ? i.references.join('; ') : 
 Observações: ${i.notes ?? 'nenhuma'}
 
 Derive o Brand Kit.`,
+  persist: persistBrandKit,
 };
 
 // --------------------------------------------------------------------------
@@ -143,6 +158,7 @@ Dor principal: ${i.mainPain}
 Preço sugerido pelo operador: ${i.priceHint ?? 'não definido'} ${i.currency}
 
 Desenhe a oferta.`,
+  persist: persistOfferDesign,
 };
 
 // --------------------------------------------------------------------------
@@ -203,6 +219,7 @@ ${i.sources.length
 
 Afirmações a classificar:
 ${i.claims.map((c, n) => `${n + 1}. ${c}`).join('\n')}`,
+  persist: persistClaimLedger,
 };
 
 // --------------------------------------------------------------------------
@@ -252,6 +269,7 @@ Promessa: ${i.promise}
 Número de módulos desejado: ${i.modules}
 
 Monte a matriz editorial.`,
+  persist: persistContentArchitecture,
 };
 
 // --------------------------------------------------------------------------
@@ -301,6 +319,7 @@ Texto a auditar:
 """
 ${i.text}
 """`,
+  persist: persistCopyQaReport,
 };
 
 // --------------------------------------------------------------------------
@@ -359,6 +378,7 @@ Tipografia: display=${i.typography.display}, texto=${i.typography.text}
 Mood: ${i.mood ?? 'não informado'}
 
 Derive o sistema visual.`,
+  persist: persistVisualSystem,
 };
 
 // --------------------------------------------------------------------------
@@ -418,6 +438,7 @@ Orçamento total disponível: ${i.budgetTotal ?? 'não informado'} ${i.currency}
 Canais pretendidos: ${i.channels.length ? i.channels.join(', ') : 'não informado'}
 
 Monte o plano de lançamento.`,
+  persist: persistLaunchPlan,
 };
 
 // --------------------------------------------------------------------------
@@ -431,6 +452,10 @@ export interface ProductAgentRun<O> {
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
   provider: string;
   model: string;
+  /** id do artefato gravado (null quando o agente não persiste). */
+  recordId: string | null;
+  /** versão do artefato dentro do escopo (campanha/produto). */
+  version: number | null;
 }
 
 export async function runProductAgent<I extends z.ZodTypeAny, O extends z.ZodTypeAny>(
@@ -438,8 +463,11 @@ export async function runProductAgent<I extends z.ZodTypeAny, O extends z.ZodTyp
   spec: ProductAgentSpec<I, O>,
   rawInput: unknown
 ): Promise<ProductAgentRun<z.infer<O>>> {
-  const input = spec.input.parse(rawInput) as z.infer<I> & { campaignId?: string };
+  const input = spec.input.parse(rawInput) as z.infer<I> & { campaignId?: string; productResearchId?: string };
   const campaignId = input.campaignId;
+
+  // Escopo antes do LLM: um campaignId de outro usuário tem que virar 404 sem gastar token.
+  const scope = spec.persist ? await resolveScope(userId, input) : null;
 
   const res = await callAgent(userId, {
     agent: spec.agent,
@@ -459,16 +487,42 @@ export async function runProductAgent<I extends z.ZodTypeAny, O extends z.ZodTyp
     throw new Error(`Saída do agente ${spec.agent} fora do contrato: ${parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`);
   }
 
+  const usage = {
+    promptTokens: res.usage?.promptTokens ?? 0,
+    completionTokens: res.usage?.completionTokens ?? 0,
+    totalTokens: res.usage?.totalTokens ?? 0,
+  };
+
+  // A escrita não pode derrubar a resposta: se o banco falhar depois do LLM ter respondido,
+  // o usuário ainda recebe o artefato (com version null, que a UI mostra como "não salvo").
+  let persisted: PersistResult | null = null;
+  if (spec.persist && scope) {
+    try {
+      persisted = await spec.persist({
+        userId,
+        input,
+        output: parsed.data,
+        scope,
+        telemetry: {
+          provider: res.provider,
+          model: res.model,
+          totalTokens: usage.totalTokens,
+          durationMs: res.durationMs ?? 0,
+        },
+      });
+    } catch (err) {
+      console.error(`[product-agents] falha ao persistir ${spec.agent}:`, err);
+    }
+  }
+
   return {
     ok: true,
     agent: spec.agent,
     data: parsed.data,
-    usage: {
-      promptTokens: res.usage?.promptTokens ?? 0,
-      completionTokens: res.usage?.completionTokens ?? 0,
-      totalTokens: res.usage?.totalTokens ?? 0,
-    },
+    usage,
     provider: res.provider,
     model: res.model,
+    recordId: persisted?.recordId ?? null,
+    version: persisted?.version ?? null,
   };
 }
