@@ -18,18 +18,51 @@ import { GOLIVE_CHECKLIST } from '@/lib/wizard-data';
 import { useRouter } from 'next/navigation';
 import { LaunchChannelsPanel } from './launch-channels';
 
-/** Espelha o deploy_summary escrito por scripts/deploy_product.py no manifest.json. */
-interface DeploySummary {
-  status?: string;
-  deployed_at?: string;
-  landing_page_zip?: string;
-  ebook_pdf?: string;
-  ebook_html?: string;
-  payment_integration?: {
-    platform?: string;
-    checkout_url?: string;
-    webhook_url?: string;
+export interface DeployArtifacts {
+  status: string | null;
+  checkoutUrl: string | null;
+  webhookUrl: string | null;
+  ebookPdf: string | null;
+  ebookHtml: string | null;
+  landingPageZip: string | null;
+  deployedAt: string | null;
+  mode: 'LIVE' | 'MOCK' | null;
+  /** true = manifest já estava completo, o deploy não rodou de novo. */
+  idempotent: boolean;
+}
+
+function str(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+/**
+ * A rota devolve camelCase achatado; o deploy_summary do manifest.json é snake_case
+ * aninhado. Aceitamos os dois para não quebrar se um dos lados mudar de forma.
+ */
+export function normalizeDeployResponse(raw: unknown): DeployArtifacts | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const flat = raw as Record<string, unknown>;
+  const nested = (flat.deploy && typeof flat.deploy === 'object' ? flat.deploy : {}) as Record<string, unknown>;
+  const payment = (nested.payment_integration && typeof nested.payment_integration === 'object'
+    ? nested.payment_integration
+    : {}) as Record<string, unknown>;
+
+  const mode = str(flat.mode);
+  const artifacts: DeployArtifacts = {
+    status: str(flat.status) ?? str(nested.status),
+    checkoutUrl: str(flat.checkoutUrl) ?? str(payment.checkout_url),
+    webhookUrl: str(flat.webhookUrl) ?? str(payment.webhook_url),
+    ebookPdf: str(flat.ebookPdf) ?? str(nested.ebook_pdf),
+    ebookHtml: str(flat.ebookHtml) ?? str(nested.ebook_html),
+    landingPageZip: str(flat.landingPageZip) ?? str(nested.landing_page_zip),
+    deployedAt: str(flat.deployedAt) ?? str(nested.deployed_at),
+    mode: mode === 'LIVE' || mode === 'MOCK' ? mode : null,
+    idempotent: flat.idempotent === true,
   };
+
+  const hasArtifact =
+    artifacts.checkoutUrl || artifacts.ebookPdf || artifacts.ebookHtml || artifacts.landingPageZip;
+  return hasArtifact ? artifacts : null;
 }
 
 const DEPLOY_STAGES = [
@@ -139,7 +172,7 @@ export function StepLaunch({
   const [launching, setLaunching] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployStage, setDeployStage] = useState(0);
-  const [deployResult, setDeployResult] = useState<DeploySummary | null>(null);
+  const [deployResult, setDeployResult] = useState<DeployArtifacts | null>(null);
   const [launchLogs, setLaunchLogs] = useState<string[]>([]);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState(false);
@@ -272,13 +305,17 @@ export function StepLaunch({
         toast.error(data?.error || `Empacotamento falhou (HTTP ${res.status}).`);
         return;
       }
-      const summary = (data?.deploy ?? data) as DeploySummary;
-      if (!summary || typeof summary !== 'object') {
-        toast.error('O deploy respondeu 200 sem o resumo dos artefatos.');
+      const artifacts = normalizeDeployResponse(data);
+      if (!artifacts) {
+        toast.error('O deploy respondeu 200 sem nenhum artefato no payload.');
         return;
       }
-      setDeployResult(summary);
-      toast.success('Produto empacotado: PDF, zip da landing e checkout prontos.');
+      setDeployResult(artifacts);
+      toast.success(
+        artifacts.idempotent
+          ? 'Já estava empacotado: reaproveitei os artefatos do manifest.'
+          : 'Produto empacotado: PDF, zip da landing e checkout prontos.',
+      );
     } catch (e: any) {
       toast.error(e?.message || 'Erro de rede ao chamar o deploy.');
     } finally {
@@ -670,34 +707,47 @@ export function StepLaunch({
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   {deployResult.status || 'empacotado'}
                 </Badge>
-                {deployResult.deployed_at && (
-                  <span className="text-[11px] text-slate-500">em {deployResult.deployed_at}</span>
+                {deployResult.mode && (
+                  <Badge
+                    className={
+                      deployResult.mode === 'LIVE'
+                        ? 'bg-emerald-500/15 text-emerald-400 text-[10px] hover:bg-emerald-500/25'
+                        : 'bg-amber-500/15 text-amber-400 text-[10px] hover:bg-amber-500/25'
+                    }
+                  >
+                    {deployResult.mode}
+                  </Badge>
+                )}
+                {deployResult.idempotent && (
+                  <Badge className="bg-slate-500/20 text-slate-300 text-[10px] hover:bg-slate-500/30">
+                    reaproveitado do manifest
+                  </Badge>
+                )}
+                {deployResult.deployedAt && (
+                  <span className="text-[11px] text-slate-500">em {deployResult.deployedAt}</span>
                 )}
               </div>
 
-              {deployResult.payment_integration?.checkout_url && (
+              {deployResult.checkoutUrl && (
                 <div className="rounded-lg border border-[#334155] bg-[#0f172a] p-3 space-y-1.5">
                   <p className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
-                    <CreditCard className="h-3 w-3" />
-                    Checkout {deployResult.payment_integration.platform || 'Kiwify'} (simulado)
+                    <CreditCard className="h-3 w-3" /> Checkout Kiwify (simulado)
                   </p>
-                  {isHttpUrl(deployResult.payment_integration.checkout_url) ? (
+                  {isHttpUrl(deployResult.checkoutUrl) ? (
                     <a
-                      href={deployResult.payment_integration.checkout_url}
+                      href={deployResult.checkoutUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm font-mono text-emerald-400 hover:text-emerald-300 break-all underline underline-offset-2"
                     >
-                      {deployResult.payment_integration.checkout_url}
+                      {deployResult.checkoutUrl}
                     </a>
                   ) : (
-                    <code className="text-sm font-mono text-slate-300 break-all">
-                      {deployResult.payment_integration.checkout_url}
-                    </code>
+                    <code className="text-sm font-mono text-slate-300 break-all">{deployResult.checkoutUrl}</code>
                   )}
-                  {deployResult.payment_integration.webhook_url && (
+                  {deployResult.webhookUrl && (
                     <p className="text-[11px] text-slate-500 break-all">
-                      webhook: <code className="font-mono">{deployResult.payment_integration.webhook_url}</code>
+                      webhook: <code className="font-mono">{deployResult.webhookUrl}</code>
                     </p>
                   )}
                 </div>
@@ -705,9 +755,9 @@ export function StepLaunch({
 
               <div className="grid gap-2 sm:grid-cols-3">
                 {([
-                  { label: 'E-book (PDF)', value: deployResult.ebook_pdf, icon: Download },
-                  { label: 'E-book (HTML)', value: deployResult.ebook_html, icon: Eye },
-                  { label: 'Landing (.zip)', value: deployResult.landing_page_zip, icon: FileArchive },
+                  { label: 'E-book (PDF)', value: deployResult.ebookPdf, icon: Download },
+                  { label: 'E-book (HTML)', value: deployResult.ebookHtml, icon: Eye },
+                  { label: 'Landing (.zip)', value: deployResult.landingPageZip, icon: FileArchive },
                 ] as const).map(({ label, value, icon: Icon }) =>
                   value ? (
                     <div key={label} className="rounded-lg border border-[#334155] bg-[#0f172a] p-3">
