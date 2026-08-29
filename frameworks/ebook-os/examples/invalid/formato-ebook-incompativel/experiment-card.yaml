@@ -1,0 +1,33 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+hipotese: "Usar o gate de formato antes da escrita reduz classificação incorreta de curso como e-book. Sem dado próprio, esta hipótese permanece aberta."
+
+dado_proprio:
+  existe: false
+  descricao: "dados/proprio/ está vazio. Não há venda, ativação nem experimento concluído deste fixture."
+  origem: ausente
+
+benchmark:
+  usado: false
+  descricao: "Nenhum CPC, CTR ou taxa de mercado entra como resultado deste card."
+  origem: ausente
+  nao_e_resultado_proprio: true
+
+metrica: "produtos classificados como ebook com duas ou mais capacidades interativas essenciais"
+baseline:
+  valor: "ausente"
+  origem: ausente
+  tipo: ausente
+
+janela: "ainda não iniciada"
+
+amostra_minima:
+  n: 3
+  definida_antes_do_teste: true
+  unidade: produtos
+
+variavel_unica: "presença do gate F0 antes do outline"
+regra_decisao: "Sem dado próprio ou com menos de 3 produtos classificados, o resultado é inconclusivo. Benchmark não autoriza adotar nem rejeitar."
+resultado: inconclusivo

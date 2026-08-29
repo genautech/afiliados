@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/claim-ledger.json",
+  "title": "Ledger de claims EBOOK-OS",
+  "description": "Cada afirmação comercial ou factual tem origem, limite, força e status. Somente status verificado pode entrar em copy final.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["claims"],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/claim" }
+    }
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "texto",
+        "produto",
+        "versao",
+        "fonte",
+        "data",
+        "status",
+        "forca_evidencia",
+        "canais_permitidos",
+        "revisor",
+        "validade",
+        "limite",
+        "uso_copy_final"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 2 },
+        "texto": {
+          "type": "string",
+          "minLength": 8,
+          "description": "Afirmação literal candidata a copy ou documentação."
+        },
+        "produto": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Produto ao qual a claim pertence. Impede contaminação cruzada."
+        },
+        "versao": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Versão exata do produto à qual a claim pertence."
+        },
+        "fonte": {
+          "type": "string",
+          "minLength": 4,
+          "description": "Origem verificável: caminho, URL ou identificador."
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["verificado", "a-verificar", "nao-usar", "não-usar"],
+          "description": "nao-usar e não-usar são equivalentes. Somente verificado entra em copy final."
+        },
+        "forca_evidencia": {
+          "type": "string",
+          "enum": ["alta", "media", "baixa", "nenhuma"]
+        },
+        "canais_permitidos": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["produto", "landing-page", "organico", "email", "anuncio-pago", "interno", "nenhum"]
+          }
+        },
+        "revisor": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Responsável humano pela revisão da claim."
+        },
+        "validade": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Data após a qual a claim precisa ser revalidada."
+        },
+        "limite": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que a fonte não prova."
+        },
+        "uso_copy_final": {
+          "type": "string",
+          "enum": ["sim", "nao"],
+          "description": "sim só é válido quando status é verificado."
+        }
+      }
+    }
+  }
+}

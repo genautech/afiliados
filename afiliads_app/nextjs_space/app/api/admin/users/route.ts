@@ -47,7 +47,7 @@ export async function GET(_request: NextRequest) {
     }));
 
     return NextResponse.json({ users: result });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('GET admin/users error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
@@ -72,7 +72,7 @@ export async function PATCH(request: NextRequest) {
       select: { id: true, email: true, isActive: true },
     });
     return NextResponse.json(user);
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('PATCH admin/users error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

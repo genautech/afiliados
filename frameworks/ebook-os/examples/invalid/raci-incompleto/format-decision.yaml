@@ -1,0 +1,25 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+capacidades_nucleo:
+  login: false
+  progresso_persistente: false
+  notificacoes: false
+  liberacao_temporal: false
+  feedback_adaptativo: false
+  validacao_servidor: false
+  depende_online: false
+
+justificativa: "O núcleo deste fixture é um pacote editorial finito: brief, decisão, ledger e matriz. O leitor preenche artefatos offline. Progresso, login e D+48h não fazem parte do núcleo."
+
+sinais_observados:
+  - "O framework de e-books define e-book como artefato que sobrevive sem estado de usuário."
+  - "Este fixture entrega contratos e um validador de arquivos, não uma área de membros."
+
+classificacao: ebook
+
+fontes:
+  - origem: "frameworks/ebook-os/README.md"
+    data: "2026-08-15"
+    limite: "Define o critério de e-book. Não prova que este fixture já foi usado em produção comercial."

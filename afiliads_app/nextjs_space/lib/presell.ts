@@ -5,6 +5,8 @@ import { prisma } from './prisma';
 import { callAgent } from './llm';
 import { computeEconomics } from './campaign-rules';
 import { getMarketIntelReferencia } from './marketIntel';
+import { enforceCompliance, getAnalyzedClaims } from './complianceVerifier';
+import type { AnalyzedClaimItem } from './validations/market-research';
 
 export interface PresellContent {
   categoria: string;
@@ -330,6 +332,11 @@ const TEMPLATE_FILE_BY_TYPE: Record<string, string> = {
   interstitial: 'presell-template-interstitial.html',
   authority: 'presell-template-authority.html',
   authority_v2: 'presell-template-authority-v2.html',
+  // Mapeamentos novos (aulão Thiago Laprovitera, 2026-08-19):
+  // tsl usa o template longo de advertorial; review usa authority; cookie_popup tem template próprio.
+  tsl: 'presell-template.html',
+  review: 'presell-template-authority.html',
+  cookie_popup: 'presell-template-cookie-popup.html',
 };
 
 // Screenshot da sales page real do vendor (usado só pelo pageType 'interstitial'), via
@@ -1258,7 +1265,8 @@ export async function generatePresell(userId: string, args: {
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
   const normalizedPageType = args.pageType === 'authority_review' ? 'authority' : args.pageType;
-  const pageType = normalizedPageType && ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2'].includes(normalizedPageType) ? normalizedPageType : 'advertorial';
+  const VALID_PAGE_TYPES = ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2', 'tsl', 'cookie_popup', 'review'];
+  const pageType = normalizedPageType && VALID_PAGE_TYPES.includes(normalizedPageType) ? normalizedPageType : 'advertorial';
   const popupGate = !!args.popupGate;
   if (pageType === 'vsl' && !args.videoUrl?.trim()) {
     throw new Error('pageType "vsl" exige videoUrl (link do vídeo do VSL — YouTube, Vimeo ou .mp4 direto)');
@@ -1320,6 +1328,18 @@ export async function generatePresell(userId: string, args: {
     }
   }
 
+  // Kill switch de compliance: as claims que o Compliance Sentinel marcou como risco ALTO no
+  // dossiê do Ad Scout Oracle entram no prompt como proibição explícita — e são re-checadas no
+  // texto gerado logo abaixo, porque prompt sozinho não segura IA que recebeu a frase de brinde.
+  const analyzedClaims = await getAnalyzedClaims(userId, {
+    productId: args.productId,
+    campaignId: args.campaignId,
+  }).catch(() => [] as AnalyzedClaimItem[]);
+  const highRiskClaims = analyzedClaims.filter(c => c.riskLevel === 'HIGH');
+  if (highRiskClaims.length) {
+    productCtx += `\nCLAIMS PROIBIDAS (risco ALTO mapeado nos concorrentes — não use, não traduza, não parafraseie):\n${highRiskClaims.map(c => `- "${c.claim}" (fonte: ${c.sourceCompetitor}) — ${c.justification}`).join('\n')}`;
+  }
+
   let salesPageScreenshotUrl: string | undefined;
   if (pageType === 'interstitial') {
     const salesPageUrl = args.salesPageUrl?.trim() || vendorPageUrlFromProduct;
@@ -1341,17 +1361,50 @@ export async function generatePresell(userId: string, args: {
   const googleAdsId = args.googleAdsId || trackingIntegrations.find(i => i.fieldName === 'google_ads_conversion_id')?.fieldValue;
   const conversionLabel = trackingIntegrations.find(i => i.fieldName === 'google_ads_conversion_label')?.fieldValue;
 
-  const res = await callAgent(userId, {
-    agent: 'presell-builder',
-    campaignId: args.campaignId,
-    campaignTarget: args.campaignId
-      ? { kind: 'campaign', campaignId: args.campaignId }
-      : { kind: 'non-campaign' },
-    systemPrompt: BUILDER_PROMPT,
-    userPrompt: `Produto: ${productName} (ClickBank). Ângulo: ${angle}. Geo: ${geo}. Idioma: ${language}. Tipo de página: ${pageType}.${productCtx}\nJSON puro.`,
-  });
-  const content = res.data as PresellContent | null;
-  if (!content?.headline) throw new Error('Presell Builder retornou conteúdo inválido');
+  const basePrompt = `Produto: ${productName} (ClickBank). Ângulo: ${angle}. Geo: ${geo}. Idioma: ${language}. Tipo de página: ${pageType}.${productCtx}\nJSON puro.`;
+
+  // Uma regeneração, no máximo: a 2ª tentativa recebe a lista do que vazou. Se a claim de risco
+  // ALTO sobreviver às duas, a geração falha em vez de publicar página que derruba a conta.
+  let content: PresellContent | null = null;
+  let complianceGuidance = '';
+  let lastProvider = '';
+  let lastModel = '';
+  // Soma das duas tentativas: a regeneração é chamada de LLM de verdade e precisa aparecer no
+  // custo reportado, senão a 2ª volta some do relatório de gasto do usuário.
+  const usageTotal = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await callAgent(userId, {
+      agent: 'presell-builder',
+      campaignId: args.campaignId,
+      campaignTarget: args.campaignId
+        ? { kind: 'campaign', campaignId: args.campaignId }
+        : { kind: 'non-campaign' },
+      systemPrompt: BUILDER_PROMPT,
+      userPrompt: complianceGuidance ? `${basePrompt}\n\n${complianceGuidance}` : basePrompt,
+    });
+    lastProvider = res.provider;
+    lastModel = res.model;
+    usageTotal.promptTokens += res.usage?.promptTokens ?? 0;
+    usageTotal.completionTokens += res.usage?.completionTokens ?? 0;
+    usageTotal.totalTokens += res.usage?.totalTokens ?? 0;
+
+    const candidate = res.data as PresellContent | null;
+    if (!candidate?.headline) throw new Error('Presell Builder retornou conteúdo inválido');
+
+    const verdict = enforceCompliance(JSON.stringify(candidate), analyzedClaims);
+    if (verdict.passed) {
+      content = candidate;
+      break;
+    }
+    if (attempt === 2) {
+      const motivo = verdict.violations.length
+        ? `claims de risco ALTO reproduzidas: ${verdict.violations.map(v => `"${v.claim}"`).join(', ')}`
+        : `termo banido: "${verdict.bannedTerm}"`;
+      throw new Error(`Presell bloqueada pelo compliance após 2 tentativas — ${motivo}. Troque o ângulo ou reclassifique a claim no dossiê de mercado antes de gerar de novo.`);
+    }
+    complianceGuidance = verdict.guidance;
+  }
+  if (!content) throw new Error('Presell Builder retornou conteúdo inválido');
 
   // Hoplink com TID (tracking da campanha) se informado.
   // ClickBank TID: só a-z/0-9/_, até 100 chars — hífen quebra o tracking.
@@ -1415,5 +1468,5 @@ export async function generatePresell(userId: string, args: {
       publishedUrl,
     },
   });
-  return { presell, usage: res.usage, provider: res.provider, model: res.model };
+  return { presell, usage: usageTotal, provider: lastProvider, model: lastModel };
 }

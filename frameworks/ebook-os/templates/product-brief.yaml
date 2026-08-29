@@ -1,0 +1,43 @@
+# Template — product brief EBOOK-OS
+# Preencha todos os campos. Não invente métrica, depoimento ou prova social.
+
+produto:
+  id: "[preencher]"
+  nome: "[preencher]"
+  versao: "0.1.0-rascunho"
+
+publico: "[preencher: quem usa o produto, em situação concreta]"
+contexto: "[preencher: quando e onde a dor aparece]"
+dor_urgente: "[preencher: a dor que justifica abrir o e-book agora]"
+comportamento_alvo: "[preencher: ação observável que prova aplicação]"
+
+transformacao:
+  estado_inicial: "[preencher]"
+  estado_final: "[preencher]"
+  mecanismo: "[preencher: o método em 3–7 passos]"
+  primeira_vitoria: "[preencher: resultado de uma sessão ou até 7 dias]"
+  hipotese: "Para [público em contexto], o produto ajuda a [ação observável] por meio de [mecanismo], sem prometer [limite]."
+  limite: "[preencher: o que este produto não promete]"
+
+formato_pretendido: ebook
+# Valores: ebook | sprint_interativo | curso | aplicacao
+# A classificação final sai de format-decision.yaml, não daqui.
+
+restricoes:
+  - "Não inventar fatos, métricas, depoimentos ou número de alunos."
+  - "Não executar campanha paga sem campaign_id válido e campaign_guard exit 0."
+
+nao_objetivos:
+  - "Não transformar curso ou aplicação em e-book por conveniência da fábrica."
+  - "Não preencher lacunas de conteúdo sem fonte."
+
+responsavel_humano:
+  nome: "[preencher: pessoa real, não um agente]"
+  papel: "Product Editor"
+
+fontes_autorizadas:
+  - id: F01
+    origem: "[preencher: caminho ou URL]"
+    data: "2026-08-15"
+    tipo: documento
+    limite: "[preencher: o que esta fonte não prova]"

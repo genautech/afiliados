@@ -1,4 +1,12 @@
 'use client';
+import { StepProductType, ProductType } from './_components/step-product-type';
+import { StepProductSearch } from './_components/step-product-search';
+import { StepCalculator } from './_components/step-calculator';
+import { StepCreativeGen } from './_components/step-creative-gen';
+import { StepLandingPage } from './_components/step-landing-page';
+import { ProductStudio } from './_components/product-studio';
+import { AgentHelp, ChecklistItemRow, applyEnumIfValid, AutofillContext } from './_components/agent-help';
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,13 +30,16 @@ import {
   PLATFORMS, VERTICALS, CHANNELS, GEOS, CVR_DEFAULTS, ANTISTRIKE_ITEMS,
   BRIDGE_CHECKLIST, GOOGLE_ADS_CHECKLIST, TRACKING_CHECKLIST_MAXWEB,
   TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST, KEYWORDS_BY_VERTICAL,
-  NEGATIVES_BY_VERTICAL
+  NEGATIVES_BY_VERTICAL, PLATFORMS_EXTENDED, ExtendedPlatform
 } from '@/lib/wizard-data';
 import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
+import { PresellPageType, PRESELL_PAGE_TYPES } from '@/lib/presell-types';
 import { ExperimentSetupCard } from '@/components/wizard/ExperimentSetupCard';
 import { ExperimentDashboardCard } from '@/components/wizard/ExperimentDashboardCard';
 import { requireOk, requireOkJson } from '@/lib/wizard-persistence';
 import { getCampaignPresellId } from '@/lib/wizard-campaign-hydration';
+import { validateAffiliateLink, AffiliatePlatform, HopLinkValidation } from '@/lib/affiliate-link-validator';
+import { ProductResearch } from '@prisma/client';
 
 const STEPS = [
   { num: 1, title: 'Oferta', icon: FileText },
@@ -41,367 +52,6 @@ const STEPS = [
   { num: 8, title: 'Tracking', icon: Radio },
   { num: 9, title: 'Go-live', icon: Rocket },
 ];
-
-const FIELD_HELP: Record<string, {
-  agent: string;
-  what: string;
-  why: string;
-  steps: string;
-  apiKeyHelp?: string;
-}> = {
-  name: {
-    agent: 'Paid Ads Strategist',
-    what: 'Nome de controle interno da campanha no painel AfiliAds.',
-    why: 'Ajuda a rastrear e encontrar suas campanhas de forma organizada no seu dashboard.',
-    steps: '1. Digite um nome contendo Rede, Vertical, Geo, Canal e Funil (ex: "CB_WL_US_SEARCH_BRIDGE_v1").\n2. Alinhe o nome interno com a UTM de campanha para facilitar a leitura no Analytics.\n3. Salve a campanha e mantenha o mesmo padrão no Google Ads.'
-  },
-  platform: {
-    agent: 'Affiliate Network Specialist',
-    what: 'A rede de afiliados que hospeda a oferta escolhida.',
-    why: 'Diferentes plataformas possuem diferentes termos, moedas de pagamento e dinâmicas de rastreamento (postbacks/webhooks).',
-    steps: '1. Selecione a plataforma onde a oferta está hospedada.\n2. Verifique os termos de pagamento e se as comissões são em dólar (USD).\n3. Confira se a plataforma requer aprovação prévia para promover a oferta.'
-  },
-  vertical: {
-    agent: 'Niche Intelligence Agent',
-    what: 'O nicho/categoria ao qual o produto pertence (ex: Emagrecimento, Finanças, Cursos).',
-    why: 'Ajuda a carregar as sugestões de palavras-chave, estimativas de taxa de conversão (CVR) e listas padrão de negativas recomendadas.',
-    steps: '1. Escolha a vertical correspondente ao nicho do produto.\n2. Note que a vertical define as sugestões de CVR e a lista-mestra de negativas.\n3. Se o produto pertencer a sub-nichos específicos, ajuste as palavras-chave manualmente.'
-  },
-  geo: {
-    agent: 'Paid Ads Strategist',
-    what: 'O país ou região geográfica onde os anúncios serão exibidos.',
-    why: 'Os custos de clique (CPC) e conversão variam radicalmente por localização (Tier 1 vs Tier 3). Além disso, ofertas possuem restrições geográficas de entrega.',
-    steps: '1. Verifique nos termos da oferta quais países (GEOS) são permitidos.\n2. Escolha o país onde seus anúncios serão veiculados.\n3. Certifique-se de configurar a segmentação de local como "presença apenas" no Google Ads.'
-  },
-  channel: {
-    agent: 'Traffic Acquisition Strategist',
-    what: 'A rede de anúncios específica do Google Ads (Pesquisa, Vídeo/YouTube, Demand Gen, Performance Max).',
-    why: 'Cada canal requer criativos e landing pages adaptados. Iniciantes devem focar em Pesquisa (SEARCH) para tráfego com alta intenção.',
-    steps: '1. Selecione o canal de tráfego do Google Ads (ex: SEARCH, YOUTUBE).\n2. Use SEARCH para iniciar com tráfego qualificado de intenção.\n3. Use YOUTUBE ou DEMAND GEN para escalar volume com anúncios gráficos e vídeo.'
-  },
-  funnel: {
-    agent: 'CRO & Conversion Specialist',
-    what: 'O tipo de página de destino que o usuário visitará após clicar no anúncio (Bridge Page, Review Page, Link Direto).',
-    why: 'O Google Ads reprova links de afiliado direto na maioria das vezes. Bridge pages (artigo review ou pré-sell) são o padrão recomendado para evitar suspensões.',
-    steps: '1. Defina o tipo de destino: BRIDGE, DIRECT, REVIEW ou SMARTLINK.\n2. Use BRIDGE (página ponte) para produtos físicos e verticais sensíveis para evitar reprovações.\n3. O link direto (DIRECT) é aceito em poucas ofertas e pode resultar em suspensão.'
-  },
-  pageType: {
-    agent: 'Compliance Sentinel',
-    what: 'A estrutura da presell gerada: advertorial (artigo review), pogo (curta e direta), vsl (com vídeo), authority (autoridade editorial/científica — nav, ingredientes, pacotes, certificações) ou interstitial (screenshot + popup de segmentação).',
-    why: 'Cada canal aceita estruturas diferentes — interstitial só é seguro em YouTube/Demand Gen, nunca em Search, onde reprova revisão por falta de conteúdo editorial. Authority costuma converter melhor em nutra/saúde/beleza por reforçar credibilidade.',
-    steps: '1. Em Search, prefira advertorial, pogo ou authority.\n2. VSL exige um vídeo real do vendor.\n3. Interstitial só em canais fora de Search/PMax — o Compliance Sentinel bloqueia a geração se o canal não permitir.'
-  },
-  popupGate: {
-    agent: 'CRO & Conversion Specialist',
-    what: 'Pop-up de retenção "pressione e segure" opcional antes de revelar o conteúdo da presell.',
-    why: 'Adiciona um passo de interação real (mesma experiência pra todo visitante, não é cloaking) que pode aumentar percepção de valor antes do CTA — mas também pode reduzir conversão se usado sem necessidade.',
-    steps: '1. Ative só se fizer sentido pro ângulo/oferta (ex.: conteúdo "exclusivo").\n2. Teste com e sem pra ver o efeito real na sua vertical.\n3. Nunca combine com dark patterns — é só um delay de interação, não uma barreira enganosa.'
-  },
-  videoUrl: {
-    agent: 'Presell Builder',
-    what: 'Link do vídeo (YouTube, Vimeo ou .mp4 direto) usado como VSL na presell.',
-    why: 'pageType "vsl" exige um vídeo real — sem isso a geração falha.',
-    steps: '1. Cole a URL pública do vídeo (YouTube/Vimeo/.mp4).\n2. Use um vídeo do próprio vendor ou um review em vídeo genuíno.\n3. Confirme que o vídeo carrega antes de publicar a campanha.'
-  },
-  commission: {
-    agent: 'Affiliate Finance Broker',
-    what: 'O valor estimado pago pela rede de afiliados por cada conversão (venda/lead).',
-    why: 'Esse valor é a base para o cálculo da comissão líquida, EPC de break-even e definição do seu lance máximo de CPC.',
-    steps: '1. Insira o valor médio pago pela plataforma por conversão.\n2. Consulte a aba Marketplace da rede para obter o valor médio histórico.\n3. Utilize essa métrica para guiar seus cálculos de break-even.'
-  },
-  refundPct: {
-    agent: 'Risk Assessment Agent',
-    what: 'A taxa média de reembolsos (refund) ou cancelamentos históricos da oferta.',
-    why: 'O ClickBank e redes semelhantes possuem taxas de reembolso de 5% a 15% em produtos físicos. Ignorar isso distorce a margem de lucro real.',
-    steps: '1. Estime a taxa de reembolso com base no produto (geralmente 5% a 15%).\n2. Para produtos físicos nos EUA, considere usar 10% como padrão conservador.\n3. Esse valor deduzirá a comissão bruta para calcular seu lucro líquido real.'
-  },
-  aov: {
-    agent: 'Affiliate Finance Broker',
-    what: 'Valor Médio do Pedido (Average Order Value) que o cliente gasta, incluindo upsells.',
-    why: 'Ofertas com forte funil de upsell geram comissões adicionais elevadas por clique.',
-    steps: '1. Insira o valor médio do carrinho de compras da oferta.\n2. Considere os upsells recorrentes oferecidos pelo produtor no funil.\n3. Um AOV alto indica maior tolerância a CPCs mais caros durante a escala.'
-  },
-  offerUrl: {
-    agent: 'Tracking & Analytics Engineer',
-    what: 'O seu link de afiliado oficial (HopLink ou Smartlink) gerado na plataforma.',
-    why: 'Esse link direciona o comprador para a página oficial do produto, garantindo que a sua comissão seja rastreada.',
-    steps: '1. Acesse a rede de afiliados (ex: ClickBank), clique em "Promover" (Promote) e insira seu nickname para gerar o HopLink.\n2. Copie o link e certifique-se de adicionar os parâmetros de tracking necessários (como subid/clickid).\n3. Use este link no botão de chamada para ação (CTA) da sua pré-sell/bridge page.',
-    apiKeyHelp: 'Acesse o Marketplace do ClickBank, clique em "Promote" no produto escolhido e copie o link. Para MaxWeb, acesse a oferta aprovada e copie o link.'
-  },
-  cvrExpected: {
-    agent: 'CRO & Conversion Specialist',
-    what: 'A taxa de conversão estimada da pré-sell para a venda (conversão por cliques).',
-    why: 'Utilizada para calcular o EPC de break-even. Superestimar a CVR fará você pagar CPCs mais caros do que deveria.',
-    steps: '1. Insira a taxa de conversão (cliques para vendas) esperada.\n2. Use de 1% a 2% como padrão conservador para tráfego frio em Search/YouTube.\n3. Não infle a CVR ou seus CPCs de break-even ficarão irrealisticamente altos.'
-  },
-  presellUrl: {
-    agent: 'Compliance Sentinel',
-    what: 'A URL pública onde sua pré-sell ou bridge page está hospedada.',
-    why: 'Usado para auditoria e teste de carregamento rápido. O Google Ads exige que o domínio do anúncio corresponda ao destino.',
-    steps: '1. Digite a URL final onde sua pré-sell ou bridge page foi publicada.\n2. O domínio deve ser idêntico ao que será usado na URL final dos anúncios do Google.\n3. Certifique-se de que a página carregue em menos de 3 segundos no mobile.'
-  },
-  flowpageUrl: {
-    agent: 'CRO & Conversion Specialist',
-    what: 'Link alternativo da sua FlowPage de tráfego rápido.',
-    why: 'Útil para testes imediatos sem domínio próprio.',
-    steps: '1. Crie ou configure sua página rápida no Flowpage.com.\n2. Insira os links de afiliado nos botões e publique a página.\n3. Cole o link final gerado neste campo para referência rápida.'
-  },
-  hostingerDomain: {
-    agent: 'Hosting & Domain Specialist',
-    what: 'O domínio do site hospedado na Hostinger.',
-    why: 'Domínio próprio dá autoridade e qualidade ao anúncio do Google Ads.',
-    steps: '1. Acesse seu painel da Hostinger para gerenciar domínios.\n2. Certifique-se de que o certificado SSL esteja ativo e configurado.\n3. Cole o domínio principal que você usará para criar as páginas ponte.'
-  },
-  presellHtml: {
-    agent: 'Compliance & SEO Auditor',
-    what: 'O código-fonte HTML completo da sua pré-sell.',
-    why: 'O analisador de compliance do app lê esse HTML em milissegundos para identificar alegações proibidas antes de você subir no Google.',
-    steps: '1. Desenvolva o HTML da sua pré-sell ou use o gerador de template.\n2. Cole o código HTML completo neste campo.\n3. Use o botão "Analisar com IA" para auditar possíveis alegações agressivas e claims de compliance.'
-  },
-  postbackUrl: {
-    agent: 'Tracking & Analytics Engineer',
-    what: 'O endpoint URL que notificará a rede MaxWeb ou outra de cada conversão.',
-    why: 'O rastreamento via postback envia conversões diretas de volta do servidor da rede, essencial para que o Google Ads otimize os lances inteligentes.',
-    steps: '1. Copie a URL de postback do seu rastreador de conversões.\n2. Configure a URL no painel da rede de afiliados (ex: MaxWeb).\n3. Teste o disparo gerando uma conversão manual de simulação.',
-    apiKeyHelp: 'Acesse seu painel MaxWeb -> Pixels & Postbacks. Copie o postback para sua oferta e insira aqui. Para ClickBank, configure no menu Vendor Settings -> My Site.'
-  },
-  clickidToken: {
-    agent: 'Tracking & Analytics Engineer',
-    what: 'O nome do parâmetro que armazena o identificador exclusivo do clique no link.',
-    why: 'Permite bater a conversão de volta com o clique exato no Google Ads.',
-    steps: '1. Escolha o token que a rede utiliza para registrar a identificação do clique.\n2. Use "clickid" no MaxWeb e "subid" no ClickBank.\n3. Garanta que o token esteja mapeado no link final do redirecionamento.'
-  },
-  budgetTest: {
-    agent: 'Paid Ads Finance Broker',
-    what: 'O orçamento total alocado para testar e validar esta oferta.',
-    why: 'Campanhas de afiliados devem ter limite de perda controlado. Recomendamos $50 a $80 para validação inicial de 48-72h.',
-    steps: '1. Insira o orçamento de teste total alocado para esta oferta.\n2. Recomendamos usar o equivalente a pelo menos 1x a 2x o valor da comissão da oferta.\n3. Distribua o orçamento diário igualmente durante o período de testes de 72 horas.'
-  },
-  testDuration: {
-    agent: 'Paid Ads Finance Broker',
-    what: 'O tempo limite de duração do teste da campanha (ex: 48h, 72h).',
-    why: 'Fase de validação inicial. Campanhas sem conversão nesse período devem ser desativadas.',
-    steps: '1. Escolha o período que a campanha ficará ativa em fase de validação.\n2. Use 72 horas (3 dias) como padrão ideal para coletar cliques suficientes.\n3. Pause a campanha imediatamente se atingir o orçamento sem conversões.'
-  },
-  budgetScale: {
-    agent: 'Paid Ads Finance Broker',
-    what: 'O orçamento diário real a aplicar no Google Ads quando a campanha for confirmada para SCALE (depois de validada no teste).',
-    why: 'Separa a etapa de risco controlado (teste) da etapa de investimento sério — evita escalar orçamento por engano e dá ao agente um número pra planejar CPC de scale e cobertura de keywords.',
-    steps: '1. Só defina depois (ou junto) de ver os resultados do teste.\n2. Regra prática: 3x a 5x o budget diário de teste, se o EPC/CPC estiver saudável.\n3. Ao clicar "Scale" na página da campanha, esse valor é aplicado automaticamente como orçamento diário real no Google Ads.'
-  }
-};
-
-const AutofillContext = React.createContext<Record<string, string>>({});
-
-const AgentHelp = ({
-  fieldKey,
-  fieldValue,
-  context,
-  onApply,
-}: {
-  fieldKey: string;
-  fieldValue?: string;
-  context?: any;
-  onApply?: (value: string) => void;
-}) => {
-  const help = FIELD_HELP[fieldKey];
-  const [analysing, setAnalysing] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [suggestedValue, setSuggestedValue] = useState<string | null>(null);
-  const autofillRationale = React.useContext(AutofillContext);
-  const campaignId = useSearchParams()?.get('campaignId') ?? undefined;
-  const autoSuggestion = autofillRationale?.[fieldKey];
-
-  if (!help) return null;
-
-  const handleVerify = async () => {
-    if (!fieldValue || fieldValue.trim().length === 0) {
-      toast.error('Preencha o campo primeiro antes de solicitar a verificação do agente.');
-      return;
-    }
-    setAnalysing(true);
-    setResult(null);
-    setSuggestedValue(null);
-    try {
-      const res = await fetch('/api/wizard-field-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldKey, fieldValue, context, campaignId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setResult(data.response);
-        if (data.valorSugerido && data.valorSugerido !== fieldValue) setSuggestedValue(data.valorSugerido);
-        toast.success('Análise de campo concluída pelo agente!');
-      } else {
-        setResult(data.error || 'Erro ao validar campo.');
-      }
-    } catch {
-      setResult('Erro de rede ao falar com o agente.');
-    } finally {
-      setAnalysing(false);
-    }
-  };
-
-  const handleApply = () => {
-    if (!suggestedValue || !onApply) return;
-    onApply(suggestedValue);
-    toast.success('Correção aplicada ao campo.');
-    setSuggestedValue(null);
-  };
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" className="ml-1.5 inline-flex items-center justify-center text-slate-400 hover:text-green-400 transition-colors focus:outline-none" title={`Consultar ${help.agent}`}>
-          <Sparkles className="h-3.5 w-3.5" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 bg-[#1e293b] border-[#334155] text-white p-4 shadow-xl z-50 rounded-lg">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between border-b border-[#334155] pb-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-green-400 shrink-0" />
-              <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">{help.agent}</span>
-            </div>
-            <Button
-              type="button"
-              onClick={handleVerify}
-              disabled={analysing}
-              className="bg-green-600 hover:bg-green-700 text-white text-[10px] px-2 py-0.5 h-6 rounded flex items-center gap-1 shrink-0"
-            >
-              {analysing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-2.5 w-2.5" />}
-              Analisar Campo
-            </Button>
-          </div>
-          <div className="space-y-1.5 text-xs max-h-[320px] overflow-y-auto pr-1">
-            <p className="text-slate-300"><strong className="text-white">O que preencher:</strong> {help.what}</p>
-            <p className="text-slate-300"><strong className="text-white">Por que:</strong> {help.why}</p>
-            <div className="text-slate-300">
-              <strong className="text-white">Passo a passo:</strong>
-              <div className="whitespace-pre-line mt-1 bg-[#0f172a] p-2 rounded text-[11px] font-mono leading-normal border border-[#334155]/50">
-                {help.steps}
-              </div>
-            </div>
-            {help.apiKeyHelp && (
-              <div className="bg-yellow-500/10 border border-yellow-500/20 p-2 rounded text-[11px] text-yellow-300 mt-2">
-                <strong>Onde encontrar:</strong> {help.apiKeyHelp}
-              </div>
-            )}
-            {autoSuggestion && (
-              <div className="bg-purple-500/10 border border-purple-500/20 p-2 rounded text-[11px] text-purple-200 mt-2">
-                <strong className="text-purple-300 block mb-0.5">💡 Sugestão do agente (já aplicada):</strong>
-                {autoSuggestion}
-              </div>
-            )}
-            {result && (
-              <div className="mt-3 bg-[#0f172a] border border-[#334155]/60 p-3 rounded-lg text-[11px] leading-relaxed space-y-1 text-slate-300">
-                <span className="text-green-400 font-bold block mb-1">🤖 Análise do Agente:</span>
-                <p className="whitespace-pre-line">{result}</p>
-              </div>
-            )}
-            {suggestedValue && (
-              <div className="mt-2 bg-green-500/10 border border-green-500/30 p-3 rounded-lg text-[11px] space-y-2">
-                <div className="text-green-300 font-semibold">Correção sugerida:</div>
-                <div className="font-mono text-white bg-[#0f172a] rounded p-2 break-all">{suggestedValue}</div>
-                {onApply ? (
-                  <Button type="button" onClick={handleApply} className="bg-green-600 hover:bg-green-700 text-white text-[11px] h-7 w-full">
-                    Aplicar correção no campo
-                  </Button>
-                ) : (
-                  <p className="text-slate-400">Copie e cole manualmente — esse campo ainda não suporta aplicação direta.</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-};
-
-// Linha de item de checklist: itens 'auto' mostram o resultado de uma verificação real (não dá
-// pra clicar/mentir sobre eles) + o motivo quando falham; itens autoatestados continuam um
-// checkbox manual, mas claramente rotulados como tal — nenhum dos dois finge ser o outro.
-const ChecklistItemRow = ({
-  item, checked, onToggle, meta, step, onFix,
-}: {
-  item: { key: string; label: string; critical: boolean };
-  checked: boolean;
-  onToggle: (v: boolean) => void;
-  meta?: { verificationType: string; note?: string | null };
-  step?: number;
-  onFix?: (step: number, itemKey: string) => Promise<any>;
-}) => {
-  const isAuto = meta?.verificationType === 'auto';
-  const [fixing, setFixing] = useState(false);
-  const [fixResult, setFixResult] = useState<any>(null);
-
-  const handleFix = async () => {
-    if (!onFix || step === undefined) return;
-    setFixing(true);
-    setFixResult(null);
-    try {
-      setFixResult(await onFix(step, item.key));
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  return (
-    <div className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${checked ? 'bg-green-500/5 border border-green-500/20' : item.critical ? 'bg-red-500/5' : 'bg-[#0f172a]'}`}>
-      {isAuto ? (
-        checked ? <CheckCircle2 className="h-4 w-4 text-green-400 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-      ) : (
-        <Checkbox checked={checked} onCheckedChange={(v: any) => onToggle(!!v)} className="mt-0.5" />
-      )}
-      <div className="flex-1 min-w-0">
-        <span className={`text-sm ${checked ? 'text-green-300' : 'text-white'}`}>{item.label}</span>
-        {isAuto
-          ? <Badge className="ml-2 bg-blue-500/20 text-blue-300 text-[10px]">VERIFICADO</Badge>
-          : <Badge className="ml-2 bg-slate-500/20 text-slate-300 text-[10px]">AUTOATESTADO</Badge>}
-        {item.critical && !checked && <Badge className="ml-2 bg-red-500/20 text-red-400 text-[10px]">CRÍTICO</Badge>}
-        {isAuto && !checked && meta?.note && <p className="text-xs text-red-300 mt-1">{meta.note}</p>}
-        {isAuto && !checked && onFix && step !== undefined && (
-          <div className="mt-2">
-            <Button type="button" size="sm" variant="outline" onClick={handleFix} disabled={fixing} className="h-7 text-[11px] border-[#334155] text-slate-300 gap-1.5">
-              {fixing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Corrigir com agente
-            </Button>
-            {fixResult && (
-              <div className="mt-2 bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 text-[11px] space-y-1">
-                {fixResult.error && <p className="text-red-300">{fixResult.error}</p>}
-                {fixResult.diagnostico && <p className="text-slate-300">{fixResult.diagnostico}</p>}
-                {fixResult.valorAplicado && (
-                  <p className={fixResult.passouAVerificar ? 'text-green-300' : 'text-yellow-300'}>
-                    Campo "{fixResult.campoAlterado}" atualizado para <span className="font-mono">{fixResult.valorAplicado}</span> —
-                    {fixResult.passouAVerificar ? ' passou na verificação ✅' : ' ainda não passou, revise manualmente.'}
-                  </p>
-                )}
-                {fixResult.correcao && <p className="text-white">{fixResult.correcao}</p>}
-                {fixResult.proximaAcao && <p className="text-slate-400">{fixResult.proximaAcao}</p>}
-                {fixResult.alreadyPassing && <p className="text-green-300">Este item já está passando.</p>}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Aplica a sugestão do AgentHelp num campo enum/Select só se o valor bater com uma opção real —
-// o servidor (wizard-field-check) já valida isso antes de devolver, mas a UI nunca deve confiar
-// cegamente (defesa em profundidade): sem isso, um valor fora do enum deixa o Select em branco
-// e o estado interno "corrompido" segue pro salvamento da campanha sem ninguém perceber.
-function applyEnumIfValid(options: readonly string[], setter: (v: any) => void, label: string) {
-  return (v: string) => {
-    if (options.includes(v)) {
-      setter(v);
-    } else {
-      toast.error(`Sugestão do agente ("${v}") não é uma opção válida pra ${label} — ignorada.`);
-    }
-  };
-}
 
 export default function WizardPage() {
   const router = useRouter();
@@ -417,6 +67,14 @@ export default function WizardPage() {
   const [aiNegatives, setAiNegatives] = useState<string[] | null>(null);
   const [sourceProductResearchId, setSourceProductResearchId] = useState<string | null>(null);
   const [researchProducts, setResearchProducts] = useState<Array<{ id: string; name: string; score: number; vertical: string; confirmedAt?: string | null }>>([]);
+
+  const [productType, setProductType] = useState<ProductType>('AFFILIATE');
+  const [showProductTypeSelection, setShowProductTypeSelection] = useState(true);
+  const [checkoutWebhook, setCheckoutWebhook] = useState('');
+  const [leadMagnet, setLeadMagnet] = useState('');
+  const [whatsappLink, setWhatsappLink] = useState('');
+  const [step4SubTab, setStep4SubTab] = useState<'presell' | 'creative'>('presell');
+
 
   const [auditing, setAuditing] = useState(false);
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -448,7 +106,7 @@ export default function WizardPage() {
   };
 
   // Step 1
-  const [platform, setPlatform] = useState('ClickBank');
+  const [platform, setPlatform] = useState<ExtendedPlatform>('ClickBank');
   const [name, setName] = useState('');
   const [vertical, setVertical] = useState('Weight Loss');
   const [geo, setGeo] = useState('US');
@@ -460,6 +118,7 @@ export default function WizardPage() {
   const [refundPct, setRefundPct] = useState('');
   const [aov, setAov] = useState('');
   const [offerUrl, setOfferUrl] = useState('');
+  const [hopLinkValidation, setHopLinkValidation] = useState<HopLinkValidation | null>(null);
 
   // Step 2
   const [cvrExpected, setCvrExpected] = useState('');
@@ -473,7 +132,7 @@ export default function WizardPage() {
   const [flowpageUrl, setFlowpageUrl] = useState('');
   const [hostingerDomain, setHostingerDomain] = useState('');
   const [presellHtml, setPresellHtml] = useState('');
-  const [pageType, setPageType] = useState<'advertorial' | 'pogo' | 'vsl' | 'interstitial' | 'authority'>('advertorial');
+  const [pageType, setPageType] = useState<PresellPageType>('advertorial');
   const [popupGate, setPopupGate] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [showPreview, setShowPreview] = useState(false);
@@ -483,7 +142,7 @@ export default function WizardPage() {
   // de página/vídeo/nome em passo posterior), a presell pode estar desatualizada e precisa
   // regenerar antes de lançar. Comparação é só client-side (não bloqueia nada sozinha —
   // bridge_ok em GOLIVE_CHECKLIST continua sendo o gate real), é só aviso antecipado.
-  const [presellSnapshot, setPresellSnapshot] = useState<{ channel: string; pageType: string; videoUrl: string; name: string } | null>(null);
+  const [presellSnapshot, setPresellSnapshot] = useState<{ channel: string; pageType: PresellPageType; videoUrl: string; name: string } | null>(null);
   const [presellId, setPresellId] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -522,6 +181,13 @@ export default function WizardPage() {
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [loopInterval, setLoopInterval] = useState('24h');
   const [loopAgents, setLoopAgents] = useState('ads,compliance');
+
+  // Ad Scout Oracle V2 States
+  const [scoutQuery, setScoutQuery] = useState('');
+  const [scoutLoading, setScoutLoading] = useState(false);
+  const [scoutStage, setScoutStage] = useState('');
+  const [scoutResult, setScoutResult] = useState<any>(null);
+  const [scoutProductType, setScoutProductType] = useState<'AFFILIATE' | 'PROPRIETARY_LOW_TICKET'>('AFFILIATE');
 
   // Break-even calculations
   const commVal = parseFloat(commission) || 0;
@@ -627,6 +293,16 @@ export default function WizardPage() {
   };
 
   const hydrateFromCampaign = (c: any) => {
+
+    if (c?.platform === 'Stripe' || c?.platform === 'Kiwify') {
+      setProductType('PROPRIETARY_LOW_TICKET');
+    } else if (c?.whatsappLink || c?.leadMagnet) {
+      setProductType('MENTORSHIP');
+    } else {
+      setProductType('AFFILIATE');
+    }
+    setShowProductTypeSelection(false);
+
     setCampaignId(c?.id ?? null);
     setPresellId(getCampaignPresellId(c));
     setSourceProductResearchId(c?.productResearchId ?? c?.productResearch?.id ?? null);
@@ -785,7 +461,7 @@ export default function WizardPage() {
   const applyAutofill = (data: any, opts?: { onlyIfEmpty?: boolean; baseline?: Record<string, any>; existingKeywordsCount?: number }) => {
     const onlyIfEmpty = !!opts?.onlyIfEmpty;
     const baseline = opts?.baseline ?? {};
-    const setIf = (key: string, setter: (v: string) => void, value: any) => {
+    const setIf = (key: string, setter: (v: any) => void, value: any) => {
       if (value === undefined || value === null || String(value).trim() === '') return;
       if (onlyIfEmpty) {
         const cur = baseline[key];
@@ -823,7 +499,7 @@ export default function WizardPage() {
       if (['advertorial', 'pogo', 'vsl', 'interstitial'].includes(suggestedPageType)) {
         const curPageType = baseline.pageType;
         if (!onlyIfEmpty || curPageType === undefined || curPageType === null || String(curPageType).trim() === '') {
-          setPageType(suggestedPageType);
+          setPageType(suggestedPageType as PresellPageType);
         }
       }
     }
@@ -890,6 +566,11 @@ export default function WizardPage() {
           return;
         }
         setSourceProductResearchId(prId);
+        // Validate initial offerUrl when loading from product research
+        if (product.hopLink && product.network) {
+          setOfferUrl(product.hopLink);
+          setHopLinkValidation(validateAffiliateLink(product.hopLink, product.network as AffiliatePlatform));
+        }
         await runAutofill({ productResearchId: prId });
       }
     })();
@@ -910,14 +591,92 @@ export default function WizardPage() {
       .catch(() => {});
   }, []);
 
-  const requireConfirmedProduct = async (id: string): Promise<{ confirmedAt?: string | null } | null> => {
+  // Ad Scout Oracle V2 Loader & Action Hook
+  useEffect(() => {
+    if (!campaignId && !sourceProductResearchId) {
+      if (vertical && !scoutQuery) setScoutQuery(vertical);
+      return;
+    }
+    const q = new URLSearchParams();
+    if (campaignId) q.set('campaignId', campaignId);
+    if (sourceProductResearchId) q.set('productId', sourceProductResearchId);
+
+    fetch(`/api/search/market-scout?${q.toString()}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(res => {
+        if (res && res.found) {
+          setScoutResult(res.data);
+          setScoutQuery(res.data.query);
+          setScoutProductType(res.data.productType);
+        } else if (vertical && !scoutQuery) {
+          setScoutQuery(vertical);
+        }
+      })
+      .catch(() => {});
+  }, [campaignId, sourceProductResearchId, vertical]);
+
+  const runAdScoutResearch = async () => {
+    if (!scoutQuery || scoutQuery.trim().length < 2) {
+      toast.error('Digite uma palavra-chave válida de no mínimo 2 caracteres.');
+      return;
+    }
+    setScoutLoading(true);
+    setScoutResult(null);
+    setScoutStage('Iniciando comunicação com a Google Agent Platform...');
+
+    const stages = [
+      'Acessando Google Search API oficial...',
+      'Mapeando concorrentes e temperatura de leilão...',
+      'Escavando fóruns de dor do usuário (Reddit)...',
+      'Analisando claims enganosas e riscos de compliance...',
+      'Sincronizando relatórios e gerando insights de copy...'
+    ];
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i < stages.length) {
+        setScoutStage(stages[i++]);
+      }
+    }, 800);
+
+    try {
+      const response = await fetch('/api/search/market-scout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: scoutQuery,
+          productResearchId: sourceProductResearchId || undefined,
+          campaignId: campaignId || undefined,
+          productType: scoutProductType,
+        }),
+      });
+
+      clearInterval(interval);
+
+      if (response.ok) {
+        const resData = await response.json();
+        setScoutResult(resData);
+        toast.success('Pesquisa do Ad Scout consolidada com sucesso!');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.error || 'Erro ao processar pesquisa de mercado.');
+      }
+    } catch {
+      clearInterval(interval);
+      toast.error('Erro de rede ao falar com o Ad Scout.');
+    } finally {
+      setScoutLoading(false);
+      setScoutStage('');
+    }
+  };
+
+  const requireConfirmedProduct = async (id: string): Promise<ProductResearch | null> => {
     const cached = researchProducts.find(p => p.id === id);
-    if (cached) return cached;
+    if (cached) return cached as ProductResearch;
     try {
       const res = await fetch('/api/products');
       if (!res.ok) return null;
       const list = await res.json();
-      return Array.isArray(list) ? (list.find((p: any) => p.id === id) ?? null) : null;
+      return Array.isArray(list) ? (list.find((p: ProductResearch) => p.id === id) ?? null) : null;
     } catch { return null; }
   };
 
@@ -1413,100 +1172,93 @@ export default function WizardPage() {
         <CardContent className="p-6">
           {/* STEP 1 - Oferta */}
           {step === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Dados da Oferta</h2>
-              {researchProducts.length > 0 && (
-                <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <Label className="text-purple-300 text-xs shrink-0 flex items-center gap-1"><Bot className="h-3.5 w-3.5" /> Carregar de um produto pesquisado</Label>
-                  <Select value={sourceProductResearchId ?? ''} onValueChange={loadFromResearch} disabled={autofilling}>
-                    <SelectTrigger className={`${inputCls} flex-1`}><SelectValue placeholder="Escolha um produto já analisado em Busca de Produtos..." /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155] max-h-72">
-                      {researchProducts.map(p => (
-                        <SelectItem key={p.id} value={p.id} className="text-white">{p.name} — {p.vertical || 'sem vertical'} (score {p.score})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Nome da Campanha *</Label><AgentHelp fieldKey="name" fieldValue={name} context={{ platform, vertical, geo }} onApply={setName} /></div><Input value={name} onChange={(e:any) => setName(e?.target?.value ?? '')} placeholder="Ex: WL Supplement Alpha" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Plataforma</Label><AgentHelp fieldKey="platform" fieldValue={platform} onApply={applyEnumIfValid(PLATFORMS, setPlatform, 'Plataforma')} /></div>
-                  <Select value={platform} onValueChange={setPlatform}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]">{PLATFORMS.map(p => <SelectItem key={p} value={p} className="text-white">{p}</SelectItem>)}</SelectContent>
-                  </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Vertical</Label><AgentHelp fieldKey="vertical" fieldValue={vertical} onApply={applyEnumIfValid(VERTICALS, setVertical, 'Vertical')} /></div>
-                  <Select value={vertical} onValueChange={(v) => { setVertical(v); setCvrExpected(''); }}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]">{VERTICALS.map(v => <SelectItem key={v} value={v} className="text-white">{v}</SelectItem>)}</SelectContent>
-                  </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Geo</Label><AgentHelp fieldKey="geo" fieldValue={geo} onApply={applyEnumIfValid(GEOS, setGeo, 'Geo')} /></div>
-                  <Select value={geo} onValueChange={setGeo}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]">{GEOS.map(g => <SelectItem key={g} value={g} className="text-white">{g}</SelectItem>)}</SelectContent>
-                  </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Canal</Label><AgentHelp fieldKey="channel" fieldValue={channel} context={{ vertical }} onApply={applyEnumIfValid(CHANNELS, setChannel, 'Canal')} /></div>
-                  <Select value={channel} onValueChange={setChannel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]">{CHANNELS.map(c => <SelectItem key={c} value={c} className="text-white">{c}</SelectItem>)}</SelectContent>
-                  </Select>
-                  {blockedChannels.includes(channel) && (
-                    <p className="text-xs text-amber-300 mt-1">⚠️ {channelBlockReason ?? 'Este canal pode estar bloqueado pelas regras de tráfego do vendor para este produto.'} Confirme antes de gastar.</p>
-                  )}
-                  </div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Funil</Label><AgentHelp fieldKey="funnel" fieldValue={funnel} onApply={applyEnumIfValid(['BRIDGE', 'DIRECT', 'REVIEW', 'SL'], setFunnel, 'Funil')} /></div>
-                  <Select value={funnel} onValueChange={setFunnel}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="BRIDGE" className="text-white">Bridge</SelectItem><SelectItem value="DIRECT" className="text-white">Direct</SelectItem><SelectItem value="REVIEW" className="text-white">Review</SelectItem><SelectItem value="SL" className="text-white">Smartlink</SelectItem></SelectContent>
-                  </Select></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Comissão USD *</Label><AgentHelp fieldKey="commission" fieldValue={commission} context={{ platform, vertical, geo }} onApply={setCommission} /></div><Input type="number" value={commission} onChange={(e:any) => setCommission(e?.target?.value ?? '')} placeholder="Ex: 47.00" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Refund % estimado</Label><AgentHelp fieldKey="refundPct" fieldValue={refundPct} context={{ platform, vertical }} onApply={setRefundPct} /></div><Input type="number" value={refundPct} onChange={(e:any) => setRefundPct(e?.target?.value ?? '')} placeholder="Ex: 10" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">AOV (USD)</Label><AgentHelp fieldKey="aov" fieldValue={aov} onApply={setAov} /></div><Input type="number" value={aov} onChange={(e:any) => setAov(e?.target?.value ?? '')} placeholder="Ex: 67.00" className={inputCls} /></div>
-                <div className="sm:col-span-2"><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Oferta (HopLink/Smartlink)</Label><AgentHelp fieldKey="offerUrl" fieldValue={offerUrl} onApply={setOfferUrl} /></div><Input value={offerUrl} onChange={(e:any) => setOfferUrl(e?.target?.value ?? '')} placeholder="https://hop.clickbank.net/..." className={inputCls} /></div>
+            showProductTypeSelection ? (
+              <StepProductType
+                value={productType}
+                onChange={(type) => {
+                  setProductType(type);
+                  if (type === 'AFFILIATE') {
+                    setPlatform('ClickBank');
+                  } else if (type === 'PROPRIETARY_LOW_TICKET') {
+                    setPlatform('Hotmart');
+                  } else {
+                    setPlatform('Outro');
+                  }
+                }}
+                onNext={() => setShowProductTypeSelection(false)}
+              />
+            ) : (
+              <div className="space-y-6">
+                {productType !== 'AFFILIATE' && (
+                  <ProductStudio
+                    productType={productType}
+                    productName={name}
+                    vertical={vertical}
+                    aov={Number(aov) || 0}
+                    campaignId={campaignId}
+                  />
+                )}
+              <StepProductSearch
+                productType={productType}
+                name={name}
+                setName={setName}
+                platform={platform}
+                setPlatform={setPlatform}
+                vertical={vertical}
+                setVertical={setVertical}
+                geo={geo}
+                setGeo={setGeo}
+                channel={channel}
+                setChannel={setChannel}
+                funnel={funnel}
+                setFunnel={setFunnel}
+                offerUrl={offerUrl}
+                setOfferUrl={setOfferUrl}
+                commission={commission}
+                setCommission={setCommission}
+                refundPct={refundPct}
+                setRefundPct={setRefundPct}
+                aov={aov}
+                setAov={setAov}
+                checkoutWebhook={checkoutWebhook}
+                setCheckoutWebhook={setCheckoutWebhook}
+                leadMagnet={leadMagnet}
+                setLeadMagnet={setLeadMagnet}
+                whatsappLink={whatsappLink}
+                setWhatsappLink={setWhatsappLink}
+                researchProducts={researchProducts}
+                sourceProductResearchId={sourceProductResearchId}
+                loadFromResearch={loadFromResearch}
+                autofilling={autofilling}
+                scoutQuery={scoutQuery}
+                setScoutQuery={setScoutQuery}
+                scoutLoading={scoutLoading}
+                scoutStage={scoutStage}
+                scoutResult={scoutResult}
+                scoutProductType={scoutProductType}
+                setScoutProductType={setScoutProductType}
+                runAdScoutResearch={runAdScoutResearch}
+                onPrev={() => setShowProductTypeSelection(true)}
+                onNext={next}
+              />
               </div>
-            </div>
+            )
           )}
 
-          {/* STEP 2 - Break-even */}
           {step === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Calculadora de Break-even</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">CVR Esperado (%)</Label><AgentHelp fieldKey="cvrExpected" fieldValue={cvrExpected || CVR_DEFAULTS[vertical]?.toString() || '1'} context={{ platform, vertical }} onApply={setCvrExpected} /></div>
-                  <Input type="number" value={cvrExpected || CVR_DEFAULTS[vertical]?.toString() || '1'} onChange={(e:any) => setCvrExpected(e?.target?.value ?? '')} className={inputCls} />
-                  <p className="text-xs text-slate-500 mt-1">Sugestão para {vertical}: {CVR_DEFAULTS[vertical] ?? 1}%</p></div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
-                <Card className="bg-[#0f172a] border-[#334155]"><CardContent className="p-4 text-center">
-                  <p className="text-xs text-slate-400">Comissão Líquida</p>
-                  <p className="text-xl font-bold text-white font-mono">${commissionNet?.toFixed?.(2)}</p>
-                </CardContent></Card>
-                <Card className="bg-[#0f172a] border-[#334155]"><CardContent className="p-4 text-center">
-                  <p className="text-xs text-slate-400">EPC Break-even</p>
-                  <p className="text-xl font-bold text-yellow-400 font-mono">${epcBE?.toFixed?.(4)}</p>
-                </CardContent></Card>
-                <Card className="bg-[#0f172a] border-[#334155]"><CardContent className="p-4 text-center">
-                  <p className="text-xs text-slate-400">CPC Máx</p>
-                  <p className="text-xl font-bold text-orange-400 font-mono">${cpcMax?.toFixed?.(4)}</p>
-                </CardContent></Card>
-                <Card className="bg-[#0f172a] border-[#334155]"><CardContent className="p-4 text-center">
-                  <p className="text-xs text-slate-400">CPC SCALE</p>
-                  <p className="text-xl font-bold text-green-400 font-mono">${cpcScale?.toFixed?.(4)}</p>
-                </CardContent></Card>
-              </div>
-              <div className="flex items-center gap-3 mt-4">
-                <div className={`h-6 w-6 rounded-full ${cpcMax >= 0.5 ? 'bg-green-500' : cpcMax >= 0.2 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                <span className="text-sm text-slate-300">
-                  {cpcMax >= 0.5 ? '✅ CPC Máx saudável — boa margem para testar' : cpcMax >= 0.2 ? '⚠️ CPC Máx apertado — teste com cuidado' : '🚨 CPC Máx muito baixo — considere outra oferta'}
-                </span>
-              </div>
-              <div className="bg-[#0f172a] rounded-lg p-4 mt-4">
-                <p className="text-xs text-slate-400 font-mono">
-                  Comissão líquida = {commVal} × (1 - {refVal}%) = ${commissionNet?.toFixed?.(2)}<br/>
-                  EPC BE = ${commissionNet?.toFixed?.(2)} × {cvr}% = ${epcBE?.toFixed?.(4)}<br/>
-                  CPC Máx ≈ EPC BE = ${cpcMax?.toFixed?.(4)}<br/>
-                  CPC SCALE = ${cpcMax?.toFixed?.(4)} / 1.3 = ${cpcScale?.toFixed?.(4)}
-                </p>
-              </div>
-            </div>
+            <StepCalculator
+              productType={productType}
+              vertical={vertical}
+              commission={commission}
+              setCommission={setCommission}
+              refundPct={refundPct}
+              setRefundPct={setRefundPct}
+              cvrExpected={cvrExpected}
+              setCvrExpected={setCvrExpected}
+              onPrev={prev}
+              onNext={next}
+            />
           )}
-
-          {/* STEP 3 - Anti-strike */}
           {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1556,252 +1308,52 @@ export default function WizardPage() {
           {/* STEP 4 - Bridge/Pré-sell ENHANCED */}
           {step === 4 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Eye className="h-5 w-5 text-green-400" /> Pré-sell / Bridge Page
-              </h2>
-
-              {/* Checklist with progress ring */}
-              <div className="flex items-center gap-4 bg-[#0f172a] rounded-lg p-4">
-                <div className="relative w-12 h-12">
-                  <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-                    <circle cx="24" cy="24" r="20" fill="none" stroke="#334155" strokeWidth="3" />
-                    <circle cx="24" cy="24" r="20" fill="none" stroke={BRIDGE_CHECKLIST.filter(i => i.critical).every(i => bridgeChecks[i.key]) ? '#22c55e' : '#f59e0b'} strokeWidth="3" strokeDasharray={`${(Object.values(bridgeChecks).filter(Boolean).length / BRIDGE_CHECKLIST.length) * 125.6} 125.6`} strokeLinecap="round" />
-                  </svg>
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">{Object.values(bridgeChecks).filter(Boolean).length}/{BRIDGE_CHECKLIST.length}</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-white">Checklist da Bridge</p>
-                  <p className="text-xs text-slate-500">{BRIDGE_CHECKLIST.filter(i => i.critical && !bridgeChecks[i.key]).length} itens críticos pendentes</p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5 shrink-0">
-                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar
-                </Button>
-              </div>
-
-              <div className="space-y-3">
-                {BRIDGE_CHECKLIST.map(item => (
-                  <ChecklistItemRow
-                    key={item.key}
-                    item={item}
-                    checked={bridgeChecks[item.key] ?? false}
-                    onToggle={(v) => setBridgeChecks(prev => ({ ...prev, [item.key]: v }))}
-                    meta={checklistMeta[item.key]}
-                    step={4}
-                    onFix={fixChecklistItem}
-                  />
-                ))}
-              </div>
-
-              {/* URLs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Tipo de Página</Label><AgentHelp fieldKey="pageType" fieldValue={pageType} context={{ channel, vertical }} onApply={applyEnumIfValid(['advertorial', 'pogo', 'vsl', 'interstitial', 'authority'], setPageType, 'Tipo de Página')} /></div>
-                  <Select value={pageType} onValueChange={(v: 'advertorial' | 'pogo' | 'vsl' | 'interstitial' | 'authority') => setPageType(v)}>
-                    <SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-[#1e293b] border-[#334155]">
-                      <SelectItem value="advertorial" className="text-white">Advertorial (Artigo de Review)</SelectItem>
-                      <SelectItem value="pogo" className="text-white">Pogo (Curta, direto ao ponto)</SelectItem>
-                      <SelectItem value="vsl" className="text-white">VSL (Vídeo Sales Letter)</SelectItem>
-                      <SelectItem value="authority" className="text-white">Authority (Autoridade editorial — ingredientes, pacotes, certificações)</SelectItem>
-                      <SelectItem value="interstitial" className="text-white">Interstitial (Screenshot + Popup — só YouTube/Demand Gen, nunca Search)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {pageType === 'interstitial' && (channel === 'SEARCH' || channel === 'PMAX') && (
-                    <p className="text-xs text-red-400 mt-1">⚠ Interstitial não é permitido no canal {channel} — reprova revisão do Google Search. Troque o canal ou o tipo de página.</p>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2 mt-2">
-                  <Checkbox id="popup-gate" checked={popupGate} onCheckedChange={(v: boolean) => setPopupGate(v)} />
-                  <label htmlFor="popup-gate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-slate-300">
-                    Ativar Pop-up de Retenção
-                  </label>
-                  <AgentHelp fieldKey="popupGate" fieldValue={String(popupGate)} />
-                </div>
-                {pageType === 'vsl' && (
-                  <div className="sm:col-span-2">
-                    <div className="flex items-center gap-1"><Label className="text-slate-300">URL do Vídeo (YouTube, Vimeo ou .mp4)</Label><AgentHelp fieldKey="videoUrl" fieldValue={videoUrl} onApply={setVideoUrl} /></div>
-                    <Input value={videoUrl} onChange={(e:any) => setVideoUrl(e?.target?.value ?? '')} placeholder="https://youtube.com/watch?v=..." className={inputCls} />
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div className="sm:col-span-2">
-                  <div className="flex items-center gap-1">
-                    <Label className="text-slate-300">Link de Afiliado / Oferta (HopLink)</Label>
-                    <AgentHelp fieldKey="offerUrl" fieldValue={offerUrl} onApply={setOfferUrl} />
-                  </div>
-                  <Input
-                    value={offerUrl}
-                    onChange={(e: any) => setOfferUrl(e?.target?.value ?? '')}
-                    onBlur={(e: any) => {
-                      const v = e?.target?.value ?? '';
-                      if (campaignId) fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ offerUrl: v }) }).catch(() => {});
-                    }}
-                    placeholder="https://hop.clickbank.net/..."
-                    className={inputCls}
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Este link é usado nos botões CTA da pré-sell gerada. Se alterar antes de regerar, o novo HTML usará este link atualizado.
-                  </p>
-                </div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL da Pré-sell</Label><AgentHelp fieldKey="presellUrl" fieldValue={presellUrl} context={{ platform, vertical }} onApply={setPresellUrl} /></div><Input value={presellUrl} onChange={(e:any) => setPresellUrl(e?.target?.value ?? '')} onBlur={(e:any) => { const v = e?.target?.value ?? ''; if (campaignId) fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presellUrl: v }) }).catch(() => {}); }} placeholder="https://seudominio.com/review" className={inputCls} /></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">URL FlowPage</Label><AgentHelp fieldKey="flowpageUrl" fieldValue={flowpageUrl} onApply={setFlowpageUrl} /></div>
-                  <div className="flex gap-2"><Input value={flowpageUrl} onChange={(e:any) => setFlowpageUrl(e?.target?.value ?? '')} placeholder="URL do FlowPage" className={`${inputCls} flex-1`} />
-                    <a href="https://flowpages.com" target="_blank" rel="noopener"><Button variant="outline" size="icon" className="border-[#334155] text-slate-300"><ExternalLink className="h-4 w-4" /></Button></a></div></div>
-                <div><div className="flex items-center gap-1"><Label className="text-slate-300">Domínio Hostinger</Label><AgentHelp fieldKey="hostingerDomain" fieldValue={hostingerDomain} onApply={setHostingerDomain} /></div>
-                  <div className="flex gap-2"><Input value={hostingerDomain} onChange={(e:any) => setHostingerDomain(e?.target?.value ?? '')} placeholder="seudominio.com" className={`${inputCls} flex-1`} />
-                    <a href="https://hostinger.com" target="_blank" rel="noopener"><Button variant="outline" size="icon" className="border-[#334155] text-slate-300"><ExternalLink className="h-4 w-4" /></Button></a></div></div>
-              </div>
-
-              {/* Pre-sell builder */}
-              <div className="mt-6 space-y-3">
-                <div className="bg-[#0f172a] p-3 rounded-lg border border-[#334155] space-y-2">
-                  <div className="flex items-center gap-1">
-                    <Label className="text-slate-300 text-xs font-semibold">Ângulo Editorial / Instruções Adicionais para IA (Opcional)</Label>
-                  </div>
-                  <Textarea
-                    value={presellCustomContext}
-                    onChange={(e: any) => setPresellCustomContext(e?.target?.value ?? '')}
-                    placeholder="Ex: Focar em autoridade editorial, depoimentos de transformações reais, destacar garantia de 60 dias..."
-                    className={`${inputCls} min-h-[50px] text-xs`}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-yellow-400" /> Builder de Pré-sell</h3>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => generatePresellHtml()} disabled={generatingPresell} className="bg-green-600 hover:bg-green-700 text-white gap-1">
-                      {generatingPresell ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                      {generatingPresell ? 'Gerando com IA...' : 'Gerar com Presell Builder (IA)'}
-                    </Button>
-                    <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-300 gap-1" onClick={regenerateWithCorrections} disabled={generatingPresell} title="Regenera aplicando as correções já aprendidas (ChecklistLearning) pra esta vertical/canal/plataforma">
-                      {generatingPresell ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />} Regenerar com correções
-                    </Button>
-                    <Button size="sm" variant="outline" className="border-[#334155] text-slate-300 gap-1" onClick={() => copyToClipboard(presellHtml)} disabled={!presellHtml}>
-                      <Copy className="h-3 w-3" /> Copiar HTML
-                    </Button>
-                    {ftpDomains.length > 0 && (
-                      <Button size="sm" variant="outline" className="border-purple-500/40 text-purple-300 gap-1" onClick={publishToOwnDomain} disabled={publishingOwnDomain || !presellId} title={`Publica a presell gerada em ${ftpDomains.join(', ')} via FTP`}>
-                        {publishingOwnDomain ? <Loader2 className="h-3 w-3 animate-spin" /> : <Rocket className="h-3 w-3" />} Publicar em domínio próprio
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 mb-1">
-                  <Label className="text-slate-300">HTML da Pré-sell</Label>
-                  <AgentHelp fieldKey="presellHtml" fieldValue={presellHtml} />
-                </div>
-                <Textarea
-                  value={presellHtml}
-                  onChange={(e: any) => setPresellHtml(e?.target?.value ?? '')}
-                  placeholder="Cole o HTML da sua pré-sell aqui para preview e análise..."
-                  className={`${inputCls} min-h-[120px] font-mono text-xs`}
-                />
-
-                {/* Preview / Analysis buttons */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setShowPreview(!showPreview)} className="border-[#334155] text-slate-300 gap-1" disabled={!presellHtml}>
-                    <Eye className="h-3 w-3" /> {showPreview ? 'Fechar Preview' : 'Preview'}
+                  <Button
+                    size="sm"
+                    variant={step4SubTab === 'presell' ? 'default' : 'outline'}
+                    onClick={() => setStep4SubTab('presell')}
+                    className={step4SubTab === 'presell' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold' : 'border-[#334155] text-slate-300'}
+                  >
+                    Página Pré-sell
                   </Button>
-                  <Button size="sm" onClick={analyzePresell} disabled={analyzing || (!presellUrl && !presellHtml)} className="bg-blue-600 hover:bg-blue-700 text-white gap-1">
-                    {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
-                    {analyzing ? 'Analisando...' : 'Analisar com IA'}
+                  <Button
+                    size="sm"
+                    variant={step4SubTab === 'creative' ? 'default' : 'outline'}
+                    onClick={() => setStep4SubTab('creative')}
+                    className={step4SubTab === 'creative' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold' : 'border-[#334155] text-slate-300'}
+                  >
+                    Anúncios & Copys <Badge className="ml-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] scale-90">Novo</Badge>
                   </Button>
                 </div>
-
-                {/* Preview iframe */}
-                {showPreview && presellHtml && (
-                  <div className="mt-3 border border-[#334155] rounded-lg overflow-hidden">
-                    <div className="bg-[#0f172a] px-3 py-2 flex items-center gap-2 border-b border-[#334155]">
-                      <div className="flex gap-1.5">
-                        <div className="w-3 h-3 rounded-full bg-red-500/60" />
-                        <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
-                        <div className="w-3 h-3 rounded-full bg-green-500/60" />
-                      </div>
-                      <span className="text-xs text-slate-500 ml-2">Preview da Pré-sell</span>
-                    </div>
-                    <iframe
-                      srcDoc={presellHtml}
-                      className="w-full h-[500px] bg-white"
-                      sandbox="allow-same-origin"
-                      title="Pre-sell Preview"
-                    />
-                  </div>
-                )}
-
-                {/* Analysis result */}
-                {analysisResult && (
-                  <div className="mt-4 space-y-3">
-                    <div className="flex items-center gap-4">
-                      <div className="relative w-16 h-16">
-                        <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                          <circle cx="32" cy="32" r="28" fill="none" stroke="#334155" strokeWidth="4" />
-                          <circle cx="32" cy="32" r="28" fill="none" stroke={(analysisResult.overall_score ?? 0) >= 70 ? '#22c55e' : (analysisResult.overall_score ?? 0) >= 40 ? '#f59e0b' : '#ef4444'} strokeWidth="4" strokeDasharray={`${((analysisResult.overall_score ?? 0) / 100) * 175.9} 175.9`} strokeLinecap="round" />
-                        </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{analysisResult.overall_score ?? 0}</span>
-                      </div>
-                      <div>
-                        <Badge className={analysisResult.verdict === 'APROVADA' ? 'bg-green-500/20 text-green-400' : analysisResult.verdict === 'PRECISA_AJUSTES' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}>
-                          {analysisResult.verdict ?? 'Sem veredicto'}
-                        </Badge>
-                        {analysisResult.anti_strike?.risk_level && (
-                          <Badge className={`ml-2 ${analysisResult.anti_strike.risk_level === 'LOW' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                            Risco: {analysisResult.anti_strike.risk_level}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Category scores */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {['compliance', 'conversion', 'google_ads', 'anti_strike', 'ux_design'].map(cat => {
-                        const data = analysisResult[cat];
-                        if (!data) return null;
-                        const labels: Record<string, string> = { compliance: 'Compliance', conversion: 'Conversão', google_ads: 'Google Ads', anti_strike: 'Anti-Strike', ux_design: 'UX/Design' };
-                        return (
-                          <div key={cat} className="bg-[#0f172a] rounded-lg p-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm text-white">{labels[cat]}</span>
-                              <span className={`text-sm font-mono font-bold ${(data.score ?? 0) >= 70 ? 'text-green-400' : (data.score ?? 0) >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{data.score}/100</span>
-                            </div>
-                            {data.issues?.length > 0 && (
-                              <div className="space-y-1">
-                                {data.issues.map((issue: string, i: number) => (
-                                  <p key={i} className="text-xs text-red-300 flex items-start gap-1"><XCircle className="h-3 w-3 shrink-0 mt-0.5" />{issue}</p>
-                                ))}
-                              </div>
-                            )}
-                            {data.passed?.length > 0 && (
-                              <div className="space-y-1 mt-1">
-                                {data.passed.slice(0, 2).map((p: string, i: number) => (
-                                  <p key={i} className="text-xs text-green-300 flex items-start gap-1"><CheckCircle2 className="h-3 w-3 shrink-0 mt-0.5" />{p}</p>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Blockers */}
-                    {analysisResult.blockers?.length > 0 && (
-                      <div className="bg-red-500/10 rounded-lg p-3">
-                        <p className="text-sm text-red-400 font-semibold mb-1">Bloqueadores:</p>
-                        {analysisResult.blockers.map((b: string, i: number) => <p key={i} className="text-xs text-red-300">• {b}</p>)}
-                      </div>
-                    )}
-
-                    {/* Recommendations */}
-                    {analysisResult.recommendations?.length > 0 && (
-                      <div className="bg-blue-500/10 rounded-lg p-3">
-                        <p className="text-sm text-blue-400 font-semibold mb-1">Recomendações:</p>
-                        {analysisResult.recommendations.map((r: string, i: number) => <p key={i} className="text-xs text-blue-300">• {r}</p>)}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
+
+              {step4SubTab === 'creative' ? (
+                <StepCreativeGen
+                  campaignId={campaignId}
+                  productName={name}
+                  vertical={vertical}
+                  onPrev={prev}
+                  onNext={next}
+                />
+              ) : (
+                <StepLandingPage
+                  campaignId={campaignId}
+                  productType={productType}
+                  productName={name}
+                  vertical={vertical}
+                  channel={channel}
+                  pageType={pageType}
+                  setPageType={setPageType}
+                  popupGate={popupGate}
+                  setPopupGate={setPopupGate}
+                  videoUrl={videoUrl}
+                  setVideoUrl={setVideoUrl}
+                  onPrev={prev}
+                  onNext={next}
+                />
+              )}
             </div>
           )}
 

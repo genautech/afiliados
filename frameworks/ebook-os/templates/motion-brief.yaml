@@ -1,0 +1,14 @@
+produto:
+  id: "[preencher]"
+  versao: "[preencher]"
+
+superficie: pdf
+
+motores:
+  css_svg: true
+  lottie: false
+  gsap: false
+
+justificativa: "[preencher]"
+reduced_motion: obrigatorio
+variant_id: "[preencher]"

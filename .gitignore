@@ -64,3 +64,9 @@ __pycache__/
 .firecrawl/
 **/.hallmark/
 afiliads_app/nextjs_space/tsconfig.tsbuildinfo
+
+# Git worktrees locais
+.worktrees/
+
+# Legendas brutas do yt-dlp (transcript-pt.txt e o artefato citavel)
+research/**/*.json3

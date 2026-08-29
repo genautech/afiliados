@@ -1,11 +1,15 @@
 import { ProductResearch } from '@prisma/client';
 import { recommendBridgePage, BridgePageType } from '@/lib/bridgePageRecommender';
 import { SalesPageType } from '@/lib/salesPageAnalyzer';
+import { PRESELL_PAGE_TYPES, PresellPageType } from '@/lib/presell-types';
 
 export type Channel = 'SEARCH' | 'YOUTUBE' | 'DEMAND_GEN' | 'PMAX';
 export type Funnel = 'BRIDGE' | 'DIRECT' | 'REVIEW' | 'SL';
-export type PresellPageType = 'advertorial' | 'pogo' | 'vsl' | 'interstitial';
 export type FunnelStage = 'FUNDO' | 'MEIO' | 'TOPO';
+
+// Re-exporta para compatibilidade com consumidores existentes.
+export { PRESELL_PAGE_TYPES };
+export type { PresellPageType };
 export type KeywordLayer = 'A' | 'B' | 'C' | 'D';
 
 export type SelectedKeywordInput = { keyword: string; layer: string; matchType: string; relevance: number };
@@ -62,7 +66,9 @@ function normalizeChannel(raw: unknown): Channel | null {
 function normalizePresellTipo(raw: unknown): { funnel: Funnel; pageType: PresellPageType } | null {
   const s = String(raw ?? '').toLowerCase();
   if (!s) return null;
-  if (s.includes('review')) return { funnel: 'REVIEW', pageType: 'advertorial' };
+  if (s.includes('cookie') || s.includes('popup')) return { funnel: 'BRIDGE', pageType: 'cookie_popup' };
+  if (s.includes('tsl') || s.includes('text sales letter')) return { funnel: 'BRIDGE', pageType: 'tsl' };
+  if (s.includes('review') && !s.includes('cookie')) return { funnel: 'REVIEW', pageType: 'review' };
   if (s.includes('vsl')) return { funnel: 'BRIDGE', pageType: 'vsl' };
   if (s.includes('pogo')) return { funnel: 'BRIDGE', pageType: 'pogo' };
   if (s.includes('lead')) return { funnel: 'SL', pageType: 'advertorial' };
@@ -241,7 +247,7 @@ export async function deriveCampaignStrategy(
     const { rankPresellOutcomes } = await import('@/lib/presell');
     const { ranked } = await rankPresellOutcomes(userId, product.vertical, recommendedChannel ?? undefined);
     const best = ranked.find((r) => r.profit > 0 && (r.pageType !== 'interstitial' || (recommendedChannel && INTERSTITIAL_SAFE_CHANNELS.has(recommendedChannel))));
-    if (best && best.pageType !== recommendedBridgeType && ['advertorial', 'pogo', 'vsl', 'interstitial'].includes(best.pageType)) {
+    if (best && best.pageType !== recommendedBridgeType && PRESELL_PAGE_TYPES.includes(best.pageType as PresellPageType)) {
       const previous = recommendedBridgeType;
       recommendedBridgeType = best.pageType as PresellPageType;
       bridgeTypeSource = 'historico_real';

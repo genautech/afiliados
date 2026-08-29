@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { authorizeMutation, type AuthorizationContext } from '@/lib/google-ads/route-mutation-authorization';
+import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
+import { getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
 
 // B5 (checkpoint pós-Tarefa 8 — .hermes/handoffs/2026-07-29_task8-cross-flow-quality-gate.md):
 // sem este check, um usuário B autenticado podia POSTar SCALE pra um campaignId de outro
@@ -19,13 +22,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    type SessionUser = { id: string };
+    const userId = (session.user as SessionUser)?.id;
     if (!(await assertCampaignOwnership(params?.id, userId))) {
       return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
     }
     const decisions = await prisma.campaignDecision.findMany({ where: { campaignId: params?.id }, orderBy: { createdAt: 'desc' } });
     return NextResponse.json(decisions ?? []);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
@@ -44,11 +48,32 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    type SessionUser = { id: string };
+    const userId = (session.user as SessionUser)?.id;
     if (!(await assertCampaignOwnership(params?.id, userId))) {
       return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
     }
     const body = await request.json();
+    let campaignMutationAuthorization: AuthorizationContext | undefined;
+    if (body?.decision === 'SCALE') {
+      const currentCampaign = await prisma.campaign.findFirst({
+        where: { id: params?.id, userId },
+        select: { id: true, userId: true, updatedAt: true },
+      });
+      if (!currentCampaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 });
+      try {
+        campaignMutationAuthorization = authorizeMutation(
+          body?.authorization,
+          'MUTATE_CAMPAIGN',
+          currentCampaign.id,
+          String(currentCampaign.updatedAt.getTime()),
+          userId,
+          currentCampaign.userId,
+        );
+      } catch (e: any) {
+        return NextResponse.json({ error: e?.message || 'Falha de autorização' }, { status: 400 });
+      }
+    }
     const decision = await prisma.campaignDecision.create({
       data: {
         campaignId: params?.id,
@@ -81,19 +106,37 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         gadsLog = `⚠️ Budget de scale NÃO aplicado no Google Ads: $${campaign.budgetScale.toFixed(2)}/dia excede o teto de segurança (5x o budget diário de teste = $${maxSafeScale.toFixed(2)}/dia). Revise o valor no Wizard.`;
       } else {
         try {
+          const adsConfig = await getGoogleAdsConfig(userId);
+          if (!adsConfig) throw new Error('Configuração do Google Ads não encontrada');
+          const issueCapability = (operation: 'mutateGoogleCampaign.status' | 'mutateGoogleCampaign.budget') => {
+            const guard = assertMutationAllowed({
+              operation,
+              customerId: adsConfig.customerId,
+              isMock: isMockMode(adsConfig),
+              confirmed: campaignMutationAuthorization?.operation === 'MUTATE_CAMPAIGN',
+            });
+            if (!guard.allowed) throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
+            return guard.capability;
+          };
           const { mutateGoogleCampaign } = await import('@/lib/google-ads');
           const result = await mutateGoogleCampaign(userId, campaign.googleCampaignId, {
             budgetDaily: campaign.budgetScale,
             status: 'ENABLED',
+          }, {
+            status: issueCapability('mutateGoogleCampaign.status'),
+            budget: issueCapability('mutateGoogleCampaign.budget'),
           });
           gadsLog = result.log;
         } catch (e: any) {
+          if (e?.message?.startsWith('Falha de autorização') || e?.message?.includes('payload inválido')) {
+            return NextResponse.json({ error: e.message }, { status: 400 });
+          }
           gadsLog = `Falha ao aplicar budget de scale no Google Ads: ${e?.message}`;
         }
       }
     }
     return NextResponse.json({ ...decision, gadsLog }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('POST decision error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

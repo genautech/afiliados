@@ -8,7 +8,8 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    type SessionUser = { id: string };
+    const userId = (session.user as SessionUser)?.id;
 
     const campaigns = await prisma.campaign.findMany({
       where: { userId },
@@ -99,7 +100,7 @@ export async function GET() {
       testsKill,
       profit: totalRevenue - totalSpend,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Dashboard error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

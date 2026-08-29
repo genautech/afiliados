@@ -1,0 +1,38 @@
+# Template — experiment card
+# Sem dado próprio, o resultado obrigatório é inconclusivo.
+# Benchmark dimensiona hipótese; nunca declara vitória.
+
+produto:
+  id: "[preencher]"
+  versao: "0.1.0-rascunho"
+
+hipotese: "[preencher: afirmação testável, com número esperado se houver métrica]"
+
+dado_proprio:
+  existe: false
+  descricao: "Ainda não há export em dados/proprio/ para este produto."
+  origem: ausente
+
+benchmark:
+  usado: false
+  descricao: "Nenhum benchmark entra como resultado da fábrica."
+  origem: ausente
+  nao_e_resultado_proprio: true
+
+metrica: "[preencher: métrica observável e consentida]"
+baseline:
+  valor: "ausente"
+  origem: ausente
+  tipo: ausente
+
+janela: "[preencher: por exemplo 14 dias]"
+
+amostra_minima:
+  n: 1
+  definida_antes_do_teste: true
+  unidade: observacoes
+
+variavel_unica: "[preencher: uma mudança por ciclo]"
+regra_decisao: "Sem dado próprio ou sem atingir a amostra mínima, o resultado é inconclusivo."
+resultado: inconclusivo
+# Valores: adotar | rejeitar | inconclusivo

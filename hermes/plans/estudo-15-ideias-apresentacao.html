@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 Oportunidades de Infoproduto Low-Ticket · Brasil 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F4F7FC; --bg2:#EAF0F8; --card:#FFFFFF;
+  --ink:#16233F; --ink2:#33456B; --muted:#4F607A; --faint:#5A6B87;
+  --line:#E2E9F3; --line2:#EEF2F8;
+  --accent:#1C6CBB;
+  --ok:#1B7950; --warn:#965F00; --bad:#B0462F;
+  --seg-fin:#1C6CBB; --seg-sau:#1B7950; --seg-mkt:#965F00; --seg-eme:#6A59CB;
+  --seg-gas:#B1492A; --seg-pro:#5E6B82; --seg-edu:#0D7780; --seg-car:#A8437B; --seg-cas:#8A5A2B;
+  --sh:0 1px 2px rgba(22,35,63,.045), 0 10px 28px rgba(22,35,63,.055);
+  --sh2:0 1px 2px rgba(22,35,63,.05), 0 2px 8px rgba(22,35,63,.04);
+  --r:14px;
+}
+html,body{height:100%}
+body{
+  font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  background-image:linear-gradient(180deg,#F9FBFE 0%,var(--bg) 45%,var(--bg2) 100%);
+  color:var(--ink); overflow:hidden;
+  -webkit-font-smoothing:antialiased; font-size:16px; line-height:1.5;
+}
+em{font-style:normal;color:var(--accent)}
+
+/* ---------- slide shell ---------- */
+.slide{
+  display:none; height:100vh; width:100%;
+  flex-direction:column;
+  padding:clamp(26px,3.6vh,46px) clamp(32px,3.6vw,64px) 78px;
+  animation:fade .32s ease;
+}
+.slide.active{display:flex}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.slide-head{flex:0 0 auto;margin-bottom:clamp(14px,2vh,24px)}
+.slide-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:clamp(10px,1.6vh,18px)}
+.eyebrow{
+  font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--accent);
+}
+h1{font-size:clamp(38px,4.6vw,64px);line-height:1.06;font-weight:800;letter-spacing:-.025em}
+h2{font-size:clamp(24px,2.5vw,36px);line-height:1.14;font-weight:750;letter-spacing:-.02em;margin-top:6px}
+h3{font-size:14px;font-weight:750;letter-spacing:-.005em;margin-bottom:7px}
+h4{font-size:17px;font-weight:750;letter-spacing:-.01em}
+h5{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+p{font-size:13.5px;color:var(--ink2);line-height:1.6}
+.tiny{font-size:11.5px;color:var(--muted);line-height:1.55}
+.note{
+  flex:0 0 auto;font-size:11.5px;color:var(--muted);
+  border-top:1px solid var(--line);padding-top:9px;line-height:1.5;
+}
+.note b{color:var(--ink2)}
+.note.final{text-align:center;border:0;color:var(--faint)}
+
+/* ---------- capa ---------- */
+.cover{justify-content:center;align-items:flex-start}
+.cov{max-width:1080px}
+.cov .lede{font-size:clamp(15px,1.4vw,19px);color:var(--ink2);max-width:660px;margin-top:20px;line-height:1.6}
+.cov h1{margin-top:18px}
+.covstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:clamp(26px,4vh,44px);max-width:900px}
+.covstats>div{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh2)}
+.covstats b{display:block;font-size:clamp(20px,2vw,27px);font-weight:800;letter-spacing:-.02em;color:var(--accent)}
+.covstats span{display:block;font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+.covfoot{margin-top:26px;font-size:11.5px;color:var(--faint)}
+
+/* ---------- kpis ---------- */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:15px 15px 13px;box-shadow:var(--sh2)}
+.kpi b{display:block;font-size:clamp(17px,1.7vw,23px);font-weight:800;letter-spacing:-.02em;color:var(--ink)}
+.kpi span{display:block;font-size:11px;color:var(--muted);margin-top:5px;line-height:1.35}
+.kpi i{display:block;font-style:normal;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-top:8px}
+
+/* ---------- panels ---------- */
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1 1 auto;min-height:0}
+.twocol.wide{grid-template-columns:1.25fr 1fr}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh2);display:flex;flex-direction:column;gap:9px;min-height:0}
+.panelbox{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:10px;overflow:auto}
+.alert{
+  background:#EEF5FC;border:1px solid #D5E5F5;border-left:3px solid var(--accent);
+  border-radius:10px;padding:12px 15px;font-size:12px;color:var(--ink2);line-height:1.55;flex:0 0 auto;
+}
+.alert b{color:var(--ink)}
+.alert.warn{background:#FDF6E9;border-color:#F0E1C2;border-left-color:var(--warn)}
+.alert.tight{font-size:11.5px;padding:10px 13px}
+.formula{display:flex;flex-direction:column;gap:7px;margin:2px 0 4px}
+.formula div{background:#F5F8FC;border:1px solid var(--line2);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--ink2)}
+.formula span{font-weight:750;color:var(--ink)}
+.formula b{color:var(--accent)}
+dl.prem{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px;align-items:baseline}
+dl.prem dt{font-weight:700;color:var(--ink);white-space:nowrap}
+dl.prem dd{color:var(--ink2)}
+table.mini{width:100%;border-collapse:collapse;font-size:12.5px}
+table.mini th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:0 0 7px;font-weight:700}
+table.mini td{padding:6px 0;border-top:1px solid var(--line2);color:var(--ink2)}
+table.mini.estresse td{padding:clamp(1.5px,0.35vh,6px) 0;font-size:clamp(9.5px,1.3vh,11.5px);line-height:1.18}
+table.mini.estresse th{padding-bottom:clamp(2px,0.4vh,6px)}
+table.mini b{color:var(--ok)}
+.crit{margin:2px 0 0 16px;display:flex;flex-direction:column;gap:8px}
+.crit li{font-size:12.5px;color:var(--ink2);line-height:1.55;padding-left:3px}
+.crit b{color:var(--ink)}
+
+/* ---------- top5 volume ---------- */
+.vollist{display:flex;flex-direction:column;gap:9px;flex:0 0 auto}
+.volrow{display:grid;grid-template-columns:26px 1.5fr 88px 3fr;align-items:center;gap:14px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:var(--sh2)}
+.voln{font-size:12px;font-weight:800;color:var(--faint)}
+.volnome{font-size:14.5px;font-weight:700;color:var(--ink)}
+.volticket{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.volbar{height:8px;background:#EDF2F8;border-radius:99px;overflow:hidden}
+.volbar i{display:block;height:100%;border-radius:99px;background:var(--acc)}
+
+/* ---------- tabelas ---------- */
+.tblwrap{flex:1 1 auto;min-height:0;overflow:hidden;border:1px solid var(--line);border-radius:var(--r);background:var(--card);box-shadow:var(--sh2)}
+table.tbl{width:100%;border-collapse:collapse;font-size:clamp(10px,1.4vh,12px)}
+table.tbl th{
+  position:sticky;top:0;background:#F7FAFD;text-align:left;font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint);font-weight:750;padding:10px 10px;border-bottom:1px solid var(--line);
+}
+table.tbl th small{display:block;text-transform:none;letter-spacing:0;font-size:8.5px;font-weight:600;opacity:.85}
+table.tbl td{padding:clamp(2px,0.62vh,8px) 10px;border-bottom:1px solid var(--line2);color:var(--ink2)}
+table.tbl tbody tr:last-child td{border-bottom:0}
+table.tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+table.tbl .idn{font-weight:750;color:var(--faint);font-variant-numeric:tabular-nums}
+table.tbl .strong{font-weight:800;color:var(--ink)}
+table.tbl .seg{font-size:11px;color:var(--muted)}
+table.tbl tr.dim td{opacity:.5}
+table.tbl tfoot td{padding:10px;border-top:2px solid var(--line);font-weight:750;color:var(--ink);background:#F7FAFD;font-size:11.5px}
+table.chg{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh2);overflow:hidden;flex:0 0 auto}
+table.chg .why{font-size:11px;color:var(--muted)}
+.up{color:var(--ok);font-weight:750}
+.down{color:var(--bad);font-weight:750}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;vertical-align:1px}
+.badge-new{display:inline-block;font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);background:#E9F2FB;border:1px solid #D3E5F6;border-radius:5px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+
+/* ---------- scatter ---------- */
+.chartwrap{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh2);padding:10px 14px}
+svg.scatter{width:100%;height:100%;max-height:100%}
+svg.scatter .plot{fill:#FBFCFE;stroke:var(--line);stroke-width:1}
+svg.scatter .gl{stroke:var(--line2);stroke-width:1}
+svg.scatter .vl{stroke:var(--line);stroke-width:1;stroke-dasharray:4 5}
+svg.scatter .ax{font-size:11px;fill:var(--faint);font-family:inherit}
+svg.scatter .ax.b{font-size:11.5px;fill:var(--muted);font-weight:650}
+svg.scatter .ptn{font-size:12px;font-weight:800;font-family:inherit}
+.leg{list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px 14px;flex:0 0 auto}
+.leg li{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--ink2);min-width:0}
+.leg .ln{flex:0 0 auto;font-size:9px;font-weight:800;border:1.4px solid;border-radius:5px;padding:1px 4px;font-variant-numeric:tabular-nums}
+
+/* ---------- ranking ---------- */
+.rank{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:clamp(0px,0.2vh,2px);
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh2);padding:clamp(6px,1.3vh,12px) 18px}
+.rkrow{display:grid;grid-template-columns:26px 190px 1fr 52px 96px;align-items:center;gap:clamp(7px,0.9vw,12px)}
+.rkrow.dim{opacity:.48}
+.rkn{font-size:clamp(9px,1.2vh,10.5px);font-weight:800;color:var(--faint);font-variant-numeric:tabular-nums}
+.rknome{font-size:clamp(10.5px,1.42vh,12.5px);line-height:1.2;font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rknome em{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-left:5px}
+.rkbar{height:clamp(5px,0.95vh,9px);background:#EDF2F8;border-radius:99px;overflow:hidden}
+.rkbar i{display:block;height:100%;border-radius:99px;opacity:.85}
+.rkval{font-size:clamp(10px,1.38vh,12.5px);font-weight:800;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.rklucro{font-size:clamp(9px,1.18vh,11px);text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- segmentos ---------- */
+.seggrid{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:12px}
+.segcard{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:12px;
+  padding:14px 16px;box-shadow:var(--sh2);display:flex;flex-direction:column;gap:5px;min-height:0}
+.segtop{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.segtop h4{font-size:14px;color:var(--ink)}
+.segtop b{font-size:18px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums}
+.segn{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.segcard p{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px}
+
+/* ---------- fichas ---------- */
+.fichas{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fichas.solo{grid-template-columns:1fr 1fr}
+.ficha{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--acc);border-radius:var(--r);
+  padding:15px 17px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:9px;min-height:0;overflow:auto}
+.fh{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex:0 0 auto}
+.fhl{min-width:0}
+.fn{font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--acc);margin-bottom:4px}
+.fh h4{color:var(--ink);font-size:17px}
+.roi{text-align:right;flex:0 0 auto}
+.roi b{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--acc);line-height:1}
+.roi small{display:block;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-top:3px}
+.concept{font-size:13px;font-weight:650;color:var(--ink);line-height:1.4;flex:0 0 auto}
+.ltr{background:#F7FAFD;border:1px solid var(--line2);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
+.dor{font-size:12px;color:var(--ink2);line-height:1.5;font-style:italic}
+.meta{display:flex;flex-wrap:wrap;gap:5px}
+.pill{font-size:10px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:3px 9px;line-height:1.35}
+.pill b{color:var(--ink2);font-weight:650}
+.scores{display:flex;flex-direction:column;gap:5px}
+.scorebar{display:grid;grid-template-columns:78px 1fr 16px;align-items:center;gap:9px}
+.scorebar span{font-size:10px;color:var(--muted)}
+.scorebar b{font-size:10px;font-weight:800;color:var(--acc);text-align:right;font-variant-numeric:tabular-nums}
+.sbar{height:5px;background:#E6EDF6;border-radius:99px;overflow:hidden}
+.sbar i{display:block;height:100%;border-radius:99px;background:var(--acc);opacity:.75}
+.ficha dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:11.5px;align-items:baseline;flex:0 0 auto}
+.ficha dt{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);white-space:nowrap;padding-top:1px}
+.ficha dd{color:var(--ink2);line-height:1.5}
+.ficha dd b{color:var(--ink);font-weight:700}
+.foot{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto;padding-top:9px;border-top:1px solid var(--line2);flex:0 0 auto}
+.tag{font-size:9.5px;color:var(--muted);background:#F4F7FB;border:1px solid var(--line);border-radius:6px;padding:3px 7px;line-height:1.35}
+.tag.low{color:var(--ok);background:#EDF7F1;border-color:#CFE8DA}
+.tag.mid{color:var(--warn);background:#FBF4E7;border-color:#EFE0C4}
+.tag.high{color:var(--bad);background:#FBEEEB;border-color:#EFD6D0}
+.tag.on{color:var(--accent);background:#EAF2FB;border-color:#D2E4F6;font-weight:700}
+.tag.val{color:#7A5AA8;background:#F2EEFA;border-color:#DFD5F0}
+
+/* ---------- ondas ---------- */
+.ondas{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1 1 auto;min-height:0}
+.onda{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh2);
+  display:flex;flex-direction:column;gap:10px;border-top:3px solid var(--acc);min-height:0}
+.onda.o1{--acc:var(--ok)} .onda.o2{--acc:var(--accent)} .onda.o3{--acc:var(--faint)}
+.ot{display:flex;flex-direction:column;gap:3px}
+.ot span{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--acc)}
+.ot b{font-size:16px;font-weight:750;color:var(--ink);letter-spacing:-.01em}
+.onda ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+.onda li{font-size:12px;color:var(--ink2);line-height:1.45;padding-left:13px;position:relative}
+.onda li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:var(--acc);opacity:.6}
+.onda li b{color:var(--ink);font-weight:700}
+.onda p{font-size:11.5px;color:var(--muted);margin-top:auto;padding-top:8px;border-top:1px solid var(--line2)}
+
+/* ---------- conclusão ---------- */
+.concl{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex:0 0 auto}
+.cbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--sh2)}
+.cbox span{font-size:10px;font-weight:800;color:var(--accent);letter-spacing:.09em}
+.cbox h3{margin:6px 0 6px;font-size:13.5px;color:var(--ink)}
+.cbox p{font-size:11.5px;color:var(--muted);line-height:1.5}
+.prox{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 20px;box-shadow:var(--sh2);flex:1 1 auto;min-height:0;overflow:auto}
+.prox ol{margin:8px 0 0 18px;display:grid;grid-template-columns:1fr 1fr;gap:8px 26px}
+.prox li{font-size:12.5px;color:var(--ink2);line-height:1.5;padding-left:3px}
+.prox li b{color:var(--ink)}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;left:0;right:0;bottom:0;height:60px;display:flex;align-items:center;
+  gap:16px;padding:0 clamp(32px,3.6vw,64px);
+  background:rgba(249,251,254,.9);backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:50}
+.nav button{
+  width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink2);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh2);transition:.16s;font-family:inherit
+}
+.nav button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.nav button:disabled{opacity:.35;cursor:default}
+.counter{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:56px}
+.counter b{color:var(--ink);font-weight:750}
+.track{flex:1;height:3px;background:#E4EBF4;border-radius:99px;overflow:hidden}
+.track i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s ease}
+.navtitle{font-size:11px;color:var(--faint);white-space:nowrap;max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+
+@media (max-width:1200px){
+  .kpis{grid-template-columns:repeat(3,1fr)}
+  .leg{grid-template-columns:repeat(3,1fr)}
+  .concl{grid-template-columns:repeat(2,1fr)}
+  .covstats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<section class="slide cover">
+  <div class="cov">
+    <div class="eyebrow">Estudo de mercado · Infoprodutos low-ticket · Brasil · 2026</div>
+    <h1>15 oportunidades de<br><em>infoproduto low-ticket</em></h1>
+    <p class="lede">Mapeamento de segmentos, concorrência e retorno projetado para produtos de entrada
+    entre R$ 27 e R$ 67 — com esteira de order bump e upsell.</p>
+    <div class="covstats">
+      <div><b>15</b><span>ideias avaliadas</span></div>
+      <div><b>9</b><span>segmentos cobertos</span></div>
+      <div><b>R$ 1,12 mi</b><span>faturamento projetado do portfólio</span></div>
+      <div><b>162%</b><span>ROI médio sobre ads</span></div>
+    </div>
+    <p class="covfoot">Versão 2 — revisada. Todas as cifras são <b>projeções por benchmark</b>, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Contexto</div><h2>O mercado que sustenta a tese</h2></div>
+  <div class="slide-body">
+    <div class="kpis">
+      <div class="kpi"><b>R$ 30 bi</b><span>movimentados por criadores na Hotmart</span><i>FGV</i></div>
+      <div class="kpi"><b>380 mil+</b><span>produtos digitais ativos</span><i>Hotmart</i></div>
+      <div class="kpi"><b>389 mil</b><span>empregos gerados pela economia de criadores</span><i>FGV</i></div>
+      <div class="kpi"><b>+30% a.a.</b><span>crescimento do setor</span><i>Hotmart</i></div>
+      <div class="kpi"><b>163 mi</b><span>brasileiros conectados (88% da população)</span><i>TIC Domicílios</i></div>
+      <div class="kpi"><b>US$ 279 bi</b><span>e-learning global projetado até 2029</span><i>projeção de mercado</i></div>
+    </div>
+    <div class="twocol">
+      <div class="panel">
+        <h3>Por que low-ticket</h3>
+        <p>Entre R$ 27 e R$ 67 a compra é decidida por impulso, sem reunião familiar e sem parcelamento longo.
+        Isso encurta o ciclo, permite tráfego pago frio e transforma o e-book numa porta de entrada barata
+        para uma esteira mais cara.</p>
+        <p>O produto de entrada raramente é onde o dinheiro está — ele paga o anúncio. O lucro vem do
+        <b>order bump</b> e do <b>upsell</b>, que respondem por 35% a 45% do faturamento projetado em todas as 15 ideias.</p>
+      </div>
+      <div class="panel">
+        <h3>Taxas das plataformas</h3>
+        <table class="mini">
+          <tr><th>Plataforma</th><th>Taxa</th><th>Fixo</th></tr>
+          <tr><td>Eduzz</td><td><b>4,9%</b></td><td>R$ 2,49</td></tr>
+          <tr><td>Kiwify</td><td>8,99%</td><td>R$ 2,49</td></tr>
+          <tr><td>Hotmart</td><td>9,9%</td><td>R$ 1,00</td></tr>
+        </table>
+        <p class="tiny">O modelo deste estudo desconta <b>10% de taxa</b> — o pior caso da tabela. Migrar para
+        Eduzz devolveria cerca de 5 pontos de margem em todo o portfólio.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Base do recorte</div><h2>Os 5 segmentos de maior volume</h2></div>
+  <div class="slide-body">
+    <div class="vollist"><div class="volrow"><span class="voln">1</span><span class="volnome">Finanças & Negócios</span><span class="volticket">R$ 27–97</span><div class="volbar" style="--acc:var(--seg-fin)"><i style="width:100%"></i></div></div><div class="volrow"><span class="voln">2</span><span class="volnome">Saúde & Bem-estar</span><span class="volticket">R$ 29–97</span><div class="volbar" style="--acc:var(--seg-sau)"><i style="width:88%"></i></div></div><div class="volrow"><span class="voln">3</span><span class="volnome">Desenvolvimento Pessoal</span><span class="volticket">R$ 47–147</span><div class="volbar" style="--acc:var(--seg-pro)"><i style="width:76%"></i></div></div><div class="volrow"><span class="voln">4</span><span class="volnome">Marketing & Vendas</span><span class="volticket">R$ 29–97</span><div class="volbar" style="--acc:var(--seg-mkt)"><i style="width:68%"></i></div></div><div class="volrow"><span class="voln">5</span><span class="volnome">Gastronomia</span><span class="volticket">R$ 37–67</span><div class="volbar" style="--acc:var(--seg-gas)"><i style="width:52%"></i></div></div></div>
+    <p class="note">Volume relativo de títulos publicados na Hotmart, normalizado com o líder em 100.
+    A faixa de preço é a praticada no formato e-book de entrada, não o teto do segmento.</p>
+    <div class="twocol">
+      <div class="panel"><h3>O que esse ranking diz</h3><p>Volume alto significa demanda comprovada e
+      também concorrência comprovada. Nenhuma das 15 ideias ataca um segmento inteiro: todas atacam um
+      <b>recorte</b> dentro dele — “doces fit para vender”, não “gastronomia”.</p></div>
+      <div class="panel"><h3>O que ele não diz</h3><p>Volume de títulos não é volume de vendas. Um segmento
+      pode ter muitos produtos publicados e pouca receita por produto. Por isso o corte final deste estudo
+      usa <b>concorrência × retorno</b>, não posição no ranking.</p></div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Metodologia</div><h2>Como cada número foi construído</h2></div>
+  <div class="slide-body">
+    <div class="twocol wide">
+      <div class="panel">
+        <h3>Modelo econômico — idêntico para as 15</h3>
+        <div class="formula">
+          <div><span>Faturamento</span> = vendas × ( entrada + <b>30%</b> × bump + <b>10%</b> × upsell )</div>
+          <div><span>Lucro</span> = faturamento − <b>10%</b> de taxa de plataforma − investimento em ads</div>
+          <div><span>ROI sobre ads</span> = lucro ÷ ads</div>
+        </div>
+        <p class="tiny">As taxas de anexação (30% no bump, 10% no upsell) são o ponto médio das faixas de
+        referência do mercado: 25–35% para order bump e 8–12% para upsell. Nenhuma ideia recebeu taxa
+        privilegiada — é o mesmo modelo para todas, o que torna o ranking comparável.</p>
+      </div>
+      <div class="panel">
+        <h3>Premissas de tráfego</h3>
+        <dl class="prem">
+          <dt>CPC</dt><dd>R$ 0,40 – 0,70 (Meta e Google, Brasil)</dd>
+          <dt>Conversão da landing</dt><dd>1% – 3%</dd>
+          <dt>CPA implícito</dt><dd>R$ 21,50 – 25,00 por venda de entrada</dd>
+          <dt>Margem líquida</dt><dd>60% – 75% após taxa e ads</dd>
+        </dl>
+        <p class="tiny">O CPA é a variável mais sensível do modelo. Uma alta de R$ 5 no custo por venda
+        derruba o ROI médio do portfólio em cerca de 25 pontos.</p>
+      </div>
+    </div>
+    <div class="alert">
+      <b>Limite honesto deste estudo.</b> As projeções são estimativas por benchmark de mercado, não
+      resultado próprio. Dados de tendência de terceiros indicam interesse de busca, não venda realizada
+      na Hotmart. Nenhuma das 15 ideias foi testada com tráfego real até aqui.
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Revisão da versão 1</div><h2>O que mudou, e por quê</h2></div>
+  <div class="slide-body">
+    <div class="alert warn">
+      <b>Achado da revisão.</b> Quatro das dez projeções originais não eram reproduzíveis pelas premissas
+      declaradas no próprio estudo. Recalculadas as quinze no mesmo modelo, o ranking mudou — e o produto
+      que estava em primeiro lugar caiu para o décimo.
+    </div>
+    <table class="tbl chg">
+      <thead><tr><th>#</th><th>Produto</th><th class="num">Faturamento v1</th><th class="num">Faturamento v2</th><th class="num">Δ</th><th>Motivo</th></tr></thead>
+      <tbody><tr><td class="idn">07</td><td>Mestres do Prompt</td><td class="num">73.120</td><td class="num">82.240</td><td class="num up">+12,5%</td><td class="why">upsell estava a 5,4% — abaixo da própria premissa</td></tr><tr><td class="idn">10</td><td>Recomeço a Dois</td><td class="num">76.230</td><td class="num">85.860</td><td class="num up">+12,6%</td><td class="why">upsell estava a 6,4% — abaixo da premissa</td></tr><tr><td class="idn">06</td><td>Renove-se aos 40+</td><td class="num">75.140</td><td class="num">78.430</td><td class="num up">+4,4%</td><td class="why">ajuste menor de arredondamento</td></tr><tr><td class="idn">05</td><td>Investidor Iniciante</td><td class="num">75.330</td><td class="num">76.320</td><td class="num up">+1,3%</td><td class="why">ajuste menor de arredondamento</td></tr><tr><td class="idn">08</td><td>Visibilidade Local</td><td class="num">70.440</td><td class="num">68.880</td><td class="num down">−2,2%</td><td class="why">ajuste menor de arredondamento</td></tr><tr><td class="idn">09</td><td>Doce Lucro Fit</td><td class="num">76.500</td><td class="num">70.900</td><td class="num down">−7,3%</td><td class="why">upsell estava a 13,4% — acima do teto da premissa</td></tr></tbody>
+    </table>
+    <div class="twocol">
+      <div class="panel"><h3>Fluxo Imparável saiu de vez</h3><p>Na v1 o produto rodava com CPA implícito de
+      R$ 16,70, bem abaixo dos R$ 23–25 de todos os outros. Normalizado o custo por venda, o ROI caiu de
+      85% para <b>51%</b> — o pior do portfólio. A conclusão da v1 estava certa; a razão, não.</p></div>
+      <div class="panel"><h3>ROI agora é líquido de taxa</h3><p>A v1 chamava de ROI a razão entre faturamento
+      bruto e ads, ignorando os ~10% da plataforma. A v2 desconta a taxa antes de calcular o retorno.
+      Os percentuais ficaram menores e passaram a significar o que o nome promete.</p></div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Panorama</div><h2>As 15 ideias, ordenadas por retorno</h2></div>
+  <div class="slide-body">
+    <div class="tblwrap">
+    <table class="tbl full">
+      <thead><tr><th>#</th><th>Produto</th><th>Segmento</th><th class="num">Ticket R$<br><small>entrada/bump/upsell</small></th>
+      <th class="num">Vendas</th><th class="num">Faturamento</th><th class="num">Ads</th><th class="num">Lucro</th>
+      <th class="num">ROI</th><th>Concorr.</th></tr></thead>
+      <tbody><tr><td class="idn">07</td><td><span class="dot" style="background:#6A59CB"></span>Mestres do Prompt</td><td class="seg">Emergentes</td><td class="num">67 / 37 / 247</td><td class="num">800</td><td class="num">82.240</td><td class="num">20.000</td><td class="num">54.016</td><td class="num strong">270%</td><td>Média</td></tr><tr><td class="idn">10</td><td><span class="dot" style="background:#6A59CB"></span>Recomeço a Dois</td><td class="seg">Emergentes</td><td class="num">57 / 29 / 297</td><td class="num">900</td><td class="num">85.860</td><td class="num">22.000</td><td class="num">55.274</td><td class="num strong">251%</td><td>Alta</td></tr><tr><td class="idn">11</td><td><span class="dot" style="background:#0D7780"></span>Aprovado em 90 Dias <span class="badge-new">nova</span></td><td class="seg">Educação & Idiomas</td><td class="num">57 / 27 / 247</td><td class="num">900</td><td class="num">80.820</td><td class="num">22.000</td><td class="num">50.738</td><td class="num strong">231%</td><td>Média</td></tr><tr><td class="idn">05</td><td><span class="dot" style="background:#1C6CBB"></span>Investidor Iniciante</td><td class="seg">Finanças & Negócios</td><td class="num">57 / 27 / 197</td><td class="num">900</td><td class="num">76.320</td><td class="num">22.000</td><td class="num">46.688</td><td class="num strong">212%</td><td>Média</td></tr><tr><td class="idn">13</td><td><span class="dot" style="background:#8A5A2B"></span>Cão Equilibrado <span class="badge-new">nova</span></td><td class="seg">Casa, Pets & Artesanato</td><td class="num">47 / 24 / 177</td><td class="num">1.000</td><td class="num">71.900</td><td class="num">22.000</td><td class="num">42.710</td><td class="num strong">194%</td><td>Média</td></tr><tr><td class="idn">06</td><td><span class="dot" style="background:#1B7950"></span>Renove-se aos 40+</td><td class="seg">Saúde & Bem-estar</td><td class="num">47 / 22 / 177</td><td class="num">1.100</td><td class="num">78.430</td><td class="num">26.000</td><td class="num">44.587</td><td class="num strong">171%</td><td>Média</td></tr><tr><td class="idn">12</td><td><span class="dot" style="background:#0D7780"></span>Inglês de Entrevista <span class="badge-new">nova</span></td><td class="seg">Educação & Idiomas</td><td class="num">47 / 22 / 187</td><td class="num">1.000</td><td class="num">72.300</td><td class="num">24.000</td><td class="num">41.070</td><td class="num strong">171%</td><td>Baixa</td></tr><tr><td class="idn">01</td><td><span class="dot" style="background:#1C6CBB"></span>IA Lucrativa</td><td class="seg">Finanças & Negócios</td><td class="num">47 / 27 / 197</td><td class="num">1.000</td><td class="num">74.800</td><td class="num">25.000</td><td class="num">42.320</td><td class="num strong">169%</td><td>Média</td></tr><tr><td class="idn">03</td><td><span class="dot" style="background:#965F00"></span>Fábrica de Viral</td><td class="seg">Marketing & Vendas</td><td class="num">47 / 27 / 197</td><td class="num">1.000</td><td class="num">74.800</td><td class="num">25.000</td><td class="num">42.320</td><td class="num strong">169%</td><td>Alta</td></tr><tr><td class="idn">09</td><td><span class="dot" style="background:#B1492A"></span>Doce Lucro Fit</td><td class="seg">Gastronomia</td><td class="num">47 / 24 / 167</td><td class="num">1.000</td><td class="num">70.900</td><td class="num">25.000</td><td class="num">38.810</td><td class="num strong">155%</td><td>Baixa</td></tr><tr><td class="idn">15</td><td><span class="dot" style="background:#A8437B"></span>Currículo Aprovado <span class="badge-new">nova</span></td><td class="seg">Carreira & Recolocação</td><td class="num">37 / 19 / 157</td><td class="num">1.200</td><td class="num">70.080</td><td class="num">26.000</td><td class="num">37.072</td><td class="num strong">143%</td><td>Média</td></tr><tr><td class="idn">14</td><td><span class="dot" style="background:#8A5A2B"></span>Crochê que Vende <span class="badge-new">nova</span></td><td class="seg">Casa, Pets & Artesanato</td><td class="num">37 / 19 / 147</td><td class="num">1.300</td><td class="num">74.620</td><td class="num">28.000</td><td class="num">39.158</td><td class="num strong">140%</td><td>Média</td></tr><tr><td class="idn">08</td><td><span class="dot" style="background:#965F00"></span>Visibilidade Local</td><td class="seg">Marketing & Vendas</td><td class="num">37 / 19 / 147</td><td class="num">1.200</td><td class="num">68.880</td><td class="num">28.000</td><td class="num">33.992</td><td class="num strong">121%</td><td>Alta</td></tr><tr><td class="idn">02</td><td><span class="dot" style="background:#1B7950"></span>Mãe em Forma</td><td class="seg">Saúde & Bem-estar</td><td class="num">37 / 17 / 147</td><td class="num">1.200</td><td class="num">68.160</td><td class="num">28.000</td><td class="num">33.344</td><td class="num strong">119%</td><td>Baixa</td></tr><tr class="dim"><td class="idn">04</td><td><span class="dot" style="background:#5E6B82"></span>Fluxo Imparável</td><td class="seg">Desenvolvimento pessoal</td><td class="num">27 / 12 / 97</td><td class="num">1.800</td><td class="num">72.540</td><td class="num">43.200</td><td class="num">22.086</td><td class="num strong">51%</td><td>Alta</td></tr></tbody>
+      <tfoot><tr><td></td><td colspan="4">Portfólio — 15 ideias</td>
+      <td class="num">1.122.650</td><td class="num">386.200</td>
+      <td class="num">624.185</td><td class="num strong">162%</td><td></td></tr></tfoot>
+    </table></div>
+    <p class="note">Linha esmaecida: descartada. Valores em reais, projetados no modelo único da página anterior.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Matriz de decisão</div><h2>Concorrência × retorno projetado</h2></div>
+  <div class="slide-body">
+    <div class="chartwrap">
+    <svg viewBox="0 0 1000 430" preserveAspectRatio="xMidYMid meet" class="scatter" role="img" aria-label="Dispersão de concorrência por ROI das 15 ideias">
+      <rect x="90" y="40" width="870" height="345" rx="10" class="plot"/>
+      <line x1="90" y1="367" x2="960" y2="367" class="gl"/><text x="78" y="371" text-anchor="end" class="ax">50%</text><line x1="90" y1="299" x2="960" y2="299" class="gl"/><text x="78" y="303" text-anchor="end" class="ax">100%</text><line x1="90" y1="232" x2="960" y2="232" class="gl"/><text x="78" y="236" text-anchor="end" class="ax">150%</text><line x1="90" y1="164" x2="960" y2="164" class="gl"/><text x="78" y="168" text-anchor="end" class="ax">200%</text><line x1="90" y1="97" x2="960" y2="97" class="gl"/><text x="78" y="101" text-anchor="end" class="ax">250%</text>
+      <line x1="350" y1="40" x2="350" y2="385" class="vl"/>
+      <line x1="650" y1="40" x2="650" y2="385" class="vl"/>
+      <text x="200" y="410" text-anchor="middle" class="ax b">Concorrência baixa</text>
+      <text x="500" y="410" text-anchor="middle" class="ax b">Concorrência média</text>
+      <text x="800" y="410" text-anchor="middle" class="ax b">Concorrência alta</text>
+      <text x="30" y="215" text-anchor="middle" class="ax b" transform="rotate(-90 30 215)">ROI projetado sobre ads</text>
+      <g class="pt"><circle cx="200" cy="203" r="16" fill="#0D7780" fill-opacity="0.14" stroke="#0D7780" stroke-width="1.6"/><text x="200" y="207" text-anchor="middle" class="ptn" fill="#0D7780">12</text></g><g class="pt"><circle cx="239" cy="225" r="16" fill="#B1492A" fill-opacity="0.14" stroke="#B1492A" stroke-width="1.6"/><text x="239" y="229" text-anchor="middle" class="ptn" fill="#B1492A">09</text></g><g class="pt"><circle cx="200" cy="273" r="16" fill="#1B7950" fill-opacity="0.14" stroke="#1B7950" stroke-width="1.6"/><text x="200" y="277" text-anchor="middle" class="ptn" fill="#1B7950">02</text></g><g class="pt"><circle cx="500" cy="70" r="16" fill="#6A59CB" fill-opacity="0.14" stroke="#6A59CB" stroke-width="1.6"/><text x="500" y="74" text-anchor="middle" class="ptn" fill="#6A59CB">07</text></g><g class="pt"><circle cx="500" cy="123" r="16" fill="#0D7780" fill-opacity="0.14" stroke="#0D7780" stroke-width="1.6"/><text x="500" y="127" text-anchor="middle" class="ptn" fill="#0D7780">11</text></g><g class="pt"><circle cx="539" cy="148" r="16" fill="#1C6CBB" fill-opacity="0.14" stroke="#1C6CBB" stroke-width="1.6"/><text x="539" y="152" text-anchor="middle" class="ptn" fill="#1C6CBB">05</text></g><g class="pt"><circle cx="500" cy="172" r="16" fill="#8A5A2B" fill-opacity="0.14" stroke="#8A5A2B" stroke-width="1.6"/><text x="500" y="176" text-anchor="middle" class="ptn" fill="#8A5A2B">13</text></g><g class="pt"><circle cx="539" cy="203" r="16" fill="#1B7950" fill-opacity="0.14" stroke="#1B7950" stroke-width="1.6"/><text x="539" y="207" text-anchor="middle" class="ptn" fill="#1B7950">06</text></g><g class="pt"><circle cx="461" cy="206" r="16" fill="#1C6CBB" fill-opacity="0.14" stroke="#1C6CBB" stroke-width="1.6"/><text x="461" y="210" text-anchor="middle" class="ptn" fill="#1C6CBB">01</text></g><g class="pt"><circle cx="500" cy="242" r="16" fill="#A8437B" fill-opacity="0.14" stroke="#A8437B" stroke-width="1.6"/><text x="500" y="246" text-anchor="middle" class="ptn" fill="#A8437B">15</text></g><g class="pt"><circle cx="539" cy="246" r="16" fill="#8A5A2B" fill-opacity="0.14" stroke="#8A5A2B" stroke-width="1.6"/><text x="539" y="250" text-anchor="middle" class="ptn" fill="#8A5A2B">14</text></g><g class="pt"><circle cx="800" cy="95" r="16" fill="#6A59CB" fill-opacity="0.14" stroke="#6A59CB" stroke-width="1.6"/><text x="800" y="99" text-anchor="middle" class="ptn" fill="#6A59CB">10</text></g><g class="pt"><circle cx="800" cy="206" r="16" fill="#965F00" fill-opacity="0.14" stroke="#965F00" stroke-width="1.6"/><text x="800" y="210" text-anchor="middle" class="ptn" fill="#965F00">03</text></g><g class="pt"><circle cx="800" cy="270" r="16" fill="#965F00" fill-opacity="0.14" stroke="#965F00" stroke-width="1.6"/><text x="800" y="274" text-anchor="middle" class="ptn" fill="#965F00">08</text></g><g class="pt"><circle cx="800" cy="365" r="16" fill="#5E6B82" fill-opacity="0.14" stroke="#5E6B82" stroke-width="1.6"/><text x="800" y="369" text-anchor="middle" class="ptn" fill="#5E6B82">04</text></g>
+    </svg></div>
+    <ul class="leg"><li><span class="ln" style="color:#1C6CBB;border-color:#1C6CBB">01</span>IA Lucrativa</li><li><span class="ln" style="color:#1B7950;border-color:#1B7950">02</span>Mãe em Forma</li><li><span class="ln" style="color:#965F00;border-color:#965F00">03</span>Fábrica de Viral</li><li><span class="ln" style="color:#5E6B82;border-color:#5E6B82">04</span>Fluxo Imparável</li><li><span class="ln" style="color:#1C6CBB;border-color:#1C6CBB">05</span>Investidor Iniciante</li><li><span class="ln" style="color:#1B7950;border-color:#1B7950">06</span>Renove-se aos 40+</li><li><span class="ln" style="color:#6A59CB;border-color:#6A59CB">07</span>Mestres do Prompt</li><li><span class="ln" style="color:#965F00;border-color:#965F00">08</span>Visibilidade Local</li><li><span class="ln" style="color:#B1492A;border-color:#B1492A">09</span>Doce Lucro Fit</li><li><span class="ln" style="color:#6A59CB;border-color:#6A59CB">10</span>Recomeço a Dois</li><li><span class="ln" style="color:#0D7780;border-color:#0D7780">11</span>Aprovado em 90 Dias</li><li><span class="ln" style="color:#0D7780;border-color:#0D7780">12</span>Inglês de Entrevista</li><li><span class="ln" style="color:#8A5A2B;border-color:#8A5A2B">13</span>Cão Equilibrado</li><li><span class="ln" style="color:#8A5A2B;border-color:#8A5A2B">14</span>Crochê que Vende</li><li><span class="ln" style="color:#A8437B;border-color:#A8437B">15</span>Currículo Aprovado</li></ul>
+    <p class="note">Eixo horizontal <b>medido</b>: número de anúncios ativos no Meta Ad Library (Brasil, 26/08/2026)
+    — abaixo de 200 é baixa, até 2.000 é média, acima disso é alta. Quadrante alvo: alto e à esquerda.
+    <b>Doce Lucro Fit (09)</b> e <b>Inglês de Entrevista (12)</b> são os únicos que caem nele.
+    <b>Recomeço a Dois (10)</b> saiu do quadrante: 33.000 anúncios ativos.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Ranking</div><h2>Retorno sobre investimento em mídia</h2></div>
+  <div class="slide-body">
+    <div class="rank"><div class="rkrow"><span class="rkn">07</span><span class="rknome">Mestres do Prompt</span><div class="rkbar"><i style="width:100.0%;background:#6A59CB"></i></div><span class="rkval">270%</span><span class="rklucro">R$ 54.016</span></div><div class="rkrow"><span class="rkn">10</span><span class="rknome">Recomeço a Dois</span><div class="rkbar"><i style="width:93.0%;background:#6A59CB"></i></div><span class="rkval">251%</span><span class="rklucro">R$ 55.274</span></div><div class="rkrow"><span class="rkn">11</span><span class="rknome">Aprovado em 90 Dias <em>nova</em></span><div class="rkbar"><i style="width:85.4%;background:#0D7780"></i></div><span class="rkval">231%</span><span class="rklucro">R$ 50.738</span></div><div class="rkrow"><span class="rkn">05</span><span class="rknome">Investidor Iniciante</span><div class="rkbar"><i style="width:78.6%;background:#1C6CBB"></i></div><span class="rkval">212%</span><span class="rklucro">R$ 46.688</span></div><div class="rkrow"><span class="rkn">13</span><span class="rknome">Cão Equilibrado <em>nova</em></span><div class="rkbar"><i style="width:71.9%;background:#8A5A2B"></i></div><span class="rkval">194%</span><span class="rklucro">R$ 42.710</span></div><div class="rkrow"><span class="rkn">06</span><span class="rknome">Renove-se aos 40+</span><div class="rkbar"><i style="width:63.5%;background:#1B7950"></i></div><span class="rkval">171%</span><span class="rklucro">R$ 44.587</span></div><div class="rkrow"><span class="rkn">12</span><span class="rknome">Inglês de Entrevista <em>nova</em></span><div class="rkbar"><i style="width:63.4%;background:#0D7780"></i></div><span class="rkval">171%</span><span class="rklucro">R$ 41.070</span></div><div class="rkrow"><span class="rkn">01</span><span class="rknome">IA Lucrativa</span><div class="rkbar"><i style="width:62.7%;background:#1C6CBB"></i></div><span class="rkval">169%</span><span class="rklucro">R$ 42.320</span></div><div class="rkrow"><span class="rkn">03</span><span class="rknome">Fábrica de Viral</span><div class="rkbar"><i style="width:62.7%;background:#965F00"></i></div><span class="rkval">169%</span><span class="rklucro">R$ 42.320</span></div><div class="rkrow"><span class="rkn">09</span><span class="rknome">Doce Lucro Fit</span><div class="rkbar"><i style="width:57.5%;background:#B1492A"></i></div><span class="rkval">155%</span><span class="rklucro">R$ 38.810</span></div><div class="rkrow"><span class="rkn">15</span><span class="rknome">Currículo Aprovado <em>nova</em></span><div class="rkbar"><i style="width:52.8%;background:#A8437B"></i></div><span class="rkval">143%</span><span class="rklucro">R$ 37.072</span></div><div class="rkrow"><span class="rkn">14</span><span class="rknome">Crochê que Vende <em>nova</em></span><div class="rkbar"><i style="width:51.8%;background:#8A5A2B"></i></div><span class="rkval">140%</span><span class="rklucro">R$ 39.158</span></div><div class="rkrow"><span class="rkn">08</span><span class="rknome">Visibilidade Local</span><div class="rkbar"><i style="width:44.9%;background:#965F00"></i></div><span class="rkval">121%</span><span class="rklucro">R$ 33.992</span></div><div class="rkrow"><span class="rkn">02</span><span class="rknome">Mãe em Forma</span><div class="rkbar"><i style="width:44.1%;background:#1B7950"></i></div><span class="rkval">119%</span><span class="rklucro">R$ 33.344</span></div><div class="rkrow dim"><span class="rkn">04</span><span class="rknome">Fluxo Imparável</span><div class="rkbar"><i style="width:18.9%;background:#5E6B82"></i></div><span class="rkval">51%</span><span class="rklucro">R$ 22.086</span></div></div>
+    <p class="note">Barra proporcional ao ROI líquido. Valor à direita: lucro projetado por ideia, já
+    descontados taxa de plataforma e verba de anúncio. Média do portfólio: <b>162%</b>.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Distribuição</div><h2>Nove segmentos, um portfólio</h2></div>
+  <div class="slide-body">
+    <div class="seggrid"><div class="segcard" style="--acc:#6A59CB"><div class="segtop"><h4>Emergentes</h4><b>261%</b></div><div class="segn">2 ideias</div><p>07 Mestres do Prompt · 10 Recomeço a Dois</p></div><div class="segcard" style="--acc:#0D7780"><div class="segtop"><h4>Educação & Idiomas</h4><b>201%</b></div><div class="segn">2 ideias</div><p>11 Aprovado em 90 Dias · 12 Inglês de Entrevista</p></div><div class="segcard" style="--acc:#1C6CBB"><div class="segtop"><h4>Finanças & Negócios</h4><b>191%</b></div><div class="segn">2 ideias</div><p>01 IA Lucrativa · 05 Investidor Iniciante</p></div><div class="segcard" style="--acc:#8A5A2B"><div class="segtop"><h4>Casa, Pets & Artesanato</h4><b>167%</b></div><div class="segn">2 ideias</div><p>13 Cão Equilibrado · 14 Crochê que Vende</p></div><div class="segcard" style="--acc:#1B7950"><div class="segtop"><h4>Saúde & Bem-estar</h4><b>145%</b></div><div class="segn">2 ideias</div><p>02 Mãe em Forma · 06 Renove-se aos 40+</p></div><div class="segcard" style="--acc:#965F00"><div class="segtop"><h4>Marketing & Vendas</h4><b>145%</b></div><div class="segn">2 ideias</div><p>03 Fábrica de Viral · 08 Visibilidade Local</p></div><div class="segcard" style="--acc:#B1492A"><div class="segtop"><h4>Gastronomia</h4><b>155%</b></div><div class="segn">1 ideia</div><p>09 Doce Lucro Fit</p></div><div class="segcard" style="--acc:#A8437B"><div class="segtop"><h4>Carreira & Recolocação</h4><b>143%</b></div><div class="segn">1 ideia</div><p>15 Currículo Aprovado</p></div><div class="segcard" style="--acc:#5E6B82"><div class="segtop"><h4>Desenvolvimento pessoal</h4><b>51%</b></div><div class="segn">1 ideia</div><p>04 Fluxo Imparável</p></div></div>
+    <p class="note">Percentual = ROI médio das ideias do segmento. Os segmentos emergentes lideram porque a
+    concorrência ainda não precificou o espaço; os consolidados entregam menos retorno por real de mídia,
+    mas com demanda muito mais previsível.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 1 de 9 · nº 1 em volume na Hotmart</div><h2>Finanças & Negócios</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#1C6CBB">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 01 · FINANÇAS × IA</div><h4>IA Lucrativa </h4></div>
+    <div class="roi"><b>169%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“7 Hacks para Gerar R$3.000/mês com Ferramentas Gratuitas de IA”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“ver todo mundo lucrando com IA e não saber por onde começar sem parecer mais um”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — ferramentas gratuitas eliminam a objeção de custo</b></span><span class="pill">Formato: <b>Arsenal de prompts + kit de ferramentas</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Nicho nº 1 da Hotmart em volume. Busca por “ganhar dinheiro com IA” em forte crescimento; ~75% dos usuários de negócios já usam IA.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 27</b> → upsell <b>R$ 197</b></dd>
+    <dt>Projeção</dt><dd>1.000 vendas · faturamento <b>R$ 74.800</b> · ads R$ 25.000 · lucro <b>R$ 42.320</b></dd>
+    <dt>Concorrência</dt><dd>média — 1.300 anúncios ativos no Meta ("ganhar dinheiro com inteligência artificial")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Saturação crescente do tema</span><span class="tag ">Copy não pode prometer substituir emprego</span></footer>
+</article><article class="ficha" style="--acc:#1C6CBB">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 05 · FINANÇAS × INVESTIMENTOS</div><h4>Investidor Iniciante </h4></div>
+    <div class="roi"><b>212%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Primeiros Passos no Investimento: Comece com R$100 e Multiplique seu Dinheiro”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“dinheiro parado perdendo pra inflação e vergonha de admitir que não sabe investir”</p>
+    <div class="meta"><span class="pill">No-brain: <b>média — medo financeiro exige autoridade</b></span><span class="pill">Formato: <b>Planilha simuladora interativa</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:60%"></i></div><b>6</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Finanças é o nº 1 absoluto. Busca constante e estável por “como investir com pouco dinheiro”.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 57</b> → bump <b>R$ 27</b> → upsell <b>R$ 197</b></dd>
+    <dt>Projeção</dt><dd>900 vendas · faturamento <b>R$ 76.320</b> · ads R$ 22.000 · lucro <b>R$ 46.688</b></dd>
+    <dt>Concorrência</dt><dd>média — 530 anúncios ativos no Meta ("investir para iniciantes")</dd>
+  </dl>
+  <footer class="foot"><span class="tag high">Risco médio-alto</span><span class="tag ">CVM: conteúdo educativo, nunca recomendação</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>191%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 2 de 9 · nº 2 em volume</div><h2>Saúde & Bem-estar</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#1B7950">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 02 · SAÚDE × MATERNIDADE</div><h4>Mãe em Forma </h4></div>
+    <div class="roi"><b>119%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Guia de 15 Minutos de Exercícios e Dieta Flexível Pós-Parto”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“olhar no espelho e não reconhecer o próprio corpo sem ter 1h livre para academia”</p>
+    <div class="meta"><span class="pill">No-brain: <b>média — tema sensível pede confiança</b></span><span class="pill">Formato: <b>Planner físico-digital de 15 min/dia</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:100%"></i></div><b>10</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:60%"></i></div><b>6</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:60%"></i></div><b>6</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Saúde é o nº 2 geral. O subnicho maternidade tem menos concorrência que dieta genérica e engajamento altíssimo em comunidades de mães.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 17</b> → upsell <b>R$ 147</b></dd>
+    <dt>Projeção</dt><dd>1.200 vendas · faturamento <b>R$ 68.160</b> · ads R$ 28.000 · lucro <b>R$ 33.344</b></dd>
+    <dt>Concorrência</dt><dd>baixa — 94 anúncios ativos no Meta ("emagrecer pós parto")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Políticas rígidas de saúde em ads</span><span class="tag ">Proibido antes/depois</span></footer>
+</article><article class="ficha" style="--acc:#1B7950">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 06 · SAÚDE × PÚBLICO 40+</div><h4>Renove-se aos 40+ </h4></div>
+    <div class="roi"><b>171%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Guia de Jejum Intermitente e 50 Receitas Low-Carb Saborosas”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“comer igual aos 30 e ganhar barriga; sentir que o corpo travou”</p>
+    <div class="meta"><span class="pill">No-brain: <b>média</b></span><span class="pill">Formato: <b>Cardápio rotativo + lista de compras pronta</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:60%"></i></div><b>6</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:70%"></i></div><b>7</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>O público 40+ é a faixa que mais compra infoprodutos. Jejum intermitente e low-carb estão em alta permanente.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 22</b> → upsell <b>R$ 177</b></dd>
+    <dt>Projeção</dt><dd>1.100 vendas · faturamento <b>R$ 78.430</b> · ads R$ 26.000 · lucro <b>R$ 44.587</b></dd>
+    <dt>Concorrência</dt><dd>média — 710 anúncios ativos no Meta ("emagrecer depois dos 40")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Sazonalidade de verão</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>145%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 3 de 9 · nº 4 em volume</div><h2>Marketing & Vendas</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#965F00">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 03 · MARKETING × CONTEÚDO</div><h4>Fábrica de Viral </h4></div>
+    <div class="roi"><b>169%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“10 Modelos de Conteúdo Que Vendem no Instagram e TikTok”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“postar todo dia, ver 40 visualizações e ver o concorrente pior viralizar”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — resultado visível em dias</b></span><span class="pill">Formato: <b>Templates editáveis + banco de ganchos</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>TikTok Shop e Reels dominam a atenção; milhões de MEIs buscando alcance orgânico sem verba de mídia.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 27</b> → upsell <b>R$ 197</b></dd>
+    <dt>Projeção</dt><dd>1.000 vendas · faturamento <b>R$ 74.800</b> · ads R$ 25.000 · lucro <b>R$ 42.320</b></dd>
+    <dt>Concorrência</dt><dd>alta — 50.000 anúncios ativos no Meta ("viralizar no instagram")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Algoritmos mudam — exige atualização constante</span></footer>
+</article><article class="ficha" style="--acc:#965F00">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 08 · MARKETING × SEO LOCAL</div><h4>Visibilidade Local </h4></div>
+    <div class="roi"><b>121%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“O Guia SEO para Aparecer no Google Maps e Atrair Clientes Perto de Você”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“concorrente pior aparecer primeiro no Maps e levar o cliente que é meu”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta</b></span><span class="pill">Formato: <b>Checklist auditável + template otimizado</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:70%"></i></div><b>7</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>~46% das buscas no Google têm intenção local; 15+ milhões de MEIs no Brasil.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 19</b> → upsell <b>R$ 147</b></dd>
+    <dt>Projeção</dt><dd>1.200 vendas · faturamento <b>R$ 68.880</b> · ads R$ 28.000 · lucro <b>R$ 33.992</b></dd>
+    <dt>Concorrência</dt><dd>alta — 3.500 anúncios ativos no Meta ("google meu negócio")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Sem sensibilidade regulatória</span><span class="tag ">Única com back-end de consultoria</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>145%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 4 de 9 · fora do top 5 — e é essa a vantagem</div><h2>Emergentes</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#6A59CB">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 07 · TECNOLOGIA × PROMPT ENGINEERING</div><h4>Mestres do Prompt </h4></div>
+    <div class="roi"><b>270%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“O Guia Definitivo para Criar Comandos Perfeitos e Desbloquear o Poder da IA”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“usar ChatGPT como buscador e ver colega menos capacitado entregando 3x mais”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — aplicação imediata no dia seguinte</b></span><span class="pill">Formato: <b>Arsenal de 100+ prompts por profissão</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:100%"></i></div><b>10</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Segmento emergente com a menor concorrência do estudo. 53% dos profissionais já usam IA no trabalho; tendência dominante em 2026.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 67</b> → bump <b>R$ 37</b> → upsell <b>R$ 247</b></dd>
+    <dt>Projeção</dt><dd>800 vendas · faturamento <b>R$ 82.240</b> · ads R$ 20.000 · lucro <b>R$ 54.016</b></dd>
+    <dt>Concorrência</dt><dd>média — 650 anúncios ativos no Meta ("prompts para chatgpt")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Tema técnico verificável</span><span class="tag on">Onda 1</span></footer>
+</article><article class="ficha" style="--acc:#6A59CB">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 10 · RELACIONAMENTOS × CASAIS</div><h4>Recomeço a Dois </h4></div>
+    <div class="roi"><b>251%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“7 Ferramentas para Salvar seu Casamento e Reacender a Paixão”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“dormir de costas todas as noites sabendo que um dos dois vai desistir logo”</p>
+    <div class="meta"><span class="pill">No-brain: <b>baixa-média — decisão emocional pesada</b></span><span class="pill">Formato: <b>Diário de casal guiado + cartas-modelo</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:100%"></i></div><b>10</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:50%"></i></div><b>5</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:70%"></i></div><b>7</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Segmento emergente com engajamento emocional altíssimo e pouquíssimos produtos estruturados no Brasil.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 57</b> → bump <b>R$ 29</b> → upsell <b>R$ 297</b></dd>
+    <dt>Projeção</dt><dd>900 vendas · faturamento <b>R$ 85.860</b> · ads R$ 22.000 · lucro <b>R$ 55.274</b></dd>
+    <dt>Concorrência</dt><dd>alta — 33.000 anúncios ativos no Meta ("reconquistar o relacionamento")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Tom cuidadoso obrigatório</span><span class="tag on">Onda 2</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>261%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmentos 5 e 6 de 9 · o selecionado e o descartado</div><h2>Gastronomia & Desenvolvimento pessoal</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#B1492A">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 09 · GASTRONOMIA × DOCES FIT</div><h4>Doce Lucro Fit </h4></div>
+    <div class="roi"><b>155%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“30 Receitas de Doces Saudáveis para Vender e Faturar Alto”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“cliente pedir versão fit e ter que dizer que não faz; ver iniciante cobrando o dobro pelo mesmo brigadeiro”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta</b></span><span class="pill">Formato: <b>Kit de receitas + planilha de precificação automática</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:70%"></i></div><b>7</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Gastronomia é o nº 5 em volume. “Doces para vender” é formato recorrente na Hotmart; promessa de renda extra prática com investimento inicial baixíssimo.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 24</b> → upsell <b>R$ 167</b></dd>
+    <dt>Projeção</dt><dd>1.000 vendas · faturamento <b>R$ 70.900</b> · ads R$ 25.000 · lucro <b>R$ 38.810</b></dd>
+    <dt>Concorrência</dt><dd>baixa — 15 anúncios ativos no Meta ("doces fit para vender")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Produção simples e verificável</span><span class="tag on">Onda 1</span></footer>
+</article><article class="ficha" style="--acc:#5E6B82">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 04 · DESENV. PESSOAL × FREELANCERS</div><h4>Fluxo Imparável </h4></div>
+    <div class="roi"><b>51%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“O Método Anti-Procrastinação para Freelancers Ocupados”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“entregar tudo atrasado e ter medo de perder o cliente que sustenta a casa”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta pelo preço</b></span><span class="pill">Formato: <b>Planner digital + timer method</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:70%"></i></div><b>7</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:50%"></i></div><b>5</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Desenvolvimento pessoal lidera em volume de títulos publicados; trabalho remoto consolidado no Brasil.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 27</b> → bump <b>R$ 12</b> → upsell <b>R$ 97</b></dd>
+    <dt>Projeção</dt><dd>1.800 vendas · faturamento <b>R$ 72.540</b> · ads R$ 43.200 · lucro <b>R$ 22.086</b></dd>
+    <dt>Concorrência</dt><dd>alta — 3.500 anúncios ativos no Meta ("produtividade e foco")</dd>
+  </dl>
+  <footer class="foot"><span class="tag high">Descartada</span><span class="tag ">CPA normalizado revelou margem inviável no ticket de R$ 27</span></footer>
+</article></div>
+    <p class="note">Lado a lado: a ideia que passou no corte e a que não passou, no mesmo modelo de cálculo.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 7 de 9 · lote novo desta revisão</div><h2>Educação & Idiomas</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#0D7780">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 11 · EDUCAÇÃO × CONCURSOS</div><h4>Aprovado em 90 Dias <span class="badge-new">nova</span></h4></div>
+    <div class="roi"><b>231%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“O Plano de Estudo de 90 Dias para Passar no Seu Primeiro Concurso”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“estudar dois anos, ver o nome fora da lista de novo e não saber o que fez de errado”</p>
+    <div class="meta"><span class="pill">No-brain: <b>média — estudo é decisão planejada, não impulso</b></span><span class="pill">Formato: <b>Cronograma editável + ciclo de revisão + simulados</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:60%"></i></div><b>6</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Concursos é categoria consolidada de infoproduto no Brasil, com demanda contínua e pouco sensível a sazonalidade de consumo. Volume e CPC ainda não medidos.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 57</b> → bump <b>R$ 27</b> → upsell <b>R$ 247</b></dd>
+    <dt>Projeção</dt><dd>900 vendas · faturamento <b>R$ 80.820</b> · ads R$ 22.000 · lucro <b>R$ 50.738</b></dd>
+    <dt>Concorrência</dt><dd>média — 1.600 anúncios ativos no Meta ("concurso público aprovação")</dd>
+  </dl>
+  <footer class="foot"><span class="tag mid">Risco médio</span><span class="tag ">Não pode prometer aprovação</span><span class="tag val">Evidência de mercado a validar</span></footer>
+</article><article class="ficha" style="--acc:#0D7780">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 12 · IDIOMAS × CARREIRA</div><h4>Inglês de Entrevista <span class="badge-new">nova</span></h4></div>
+    <div class="roi"><b>171%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Inglês de Entrevista: 200 Respostas Prontas para Vagas Remotas”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“travar na primeira pergunta em inglês e perder uma vaga que pagava em dólar”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — recorte estreito e prazo dado pela própria entrevista</b></span><span class="pill">Formato: <b>Banco de respostas + áudios de pronúncia + simulador</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Idiomas é categoria tradicional de e-learning. O recorte “inglês para entrevista de vaga remota” é muito mais estreito que “aprender inglês” e tem gatilho de urgência próprio. Volume não medido.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 22</b> → upsell <b>R$ 187</b></dd>
+    <dt>Projeção</dt><dd>1.000 vendas · faturamento <b>R$ 72.300</b> · ads R$ 24.000 · lucro <b>R$ 41.070</b></dd>
+    <dt>Concorrência</dt><dd>baixa — 93 anúncios ativos no Meta ("inglês para entrevista de emprego")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Sem sensibilidade regulatória</span><span class="tag val">Evidência de mercado a validar</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>201%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 8 de 9 · lote novo desta revisão</div><h2>Casa, Pets & Artesanato</h2></div>
+  <div class="slide-body">
+    <div class="fichas"><article class="ficha" style="--acc:#8A5A2B">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 13 · PETS × COMPORTAMENTO</div><h4>Cão Equilibrado <span class="badge-new">nova</span></h4></div>
+    <div class="roi"><b>194%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Cão Equilibrado: 21 Dias para Parar o Latido, a Destruição e a Puxada de Guia”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“chegar em casa e achar o sofá destruído de novo, com o vizinho já tendo reclamado do latido duas vezes”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — problema diário, concreto e visível</b></span><span class="pill">Formato: <b>Protocolo de 21 dias + vídeos curtos de execução</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>O mercado pet brasileiro é um dos maiores do mundo, mas a oferta de infoproduto estruturado é rasa perto do tamanho do público. Tamanho e CPC não medidos.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 24</b> → upsell <b>R$ 177</b></dd>
+    <dt>Projeção</dt><dd>1.000 vendas · faturamento <b>R$ 71.900</b> · ads R$ 22.000 · lucro <b>R$ 42.710</b></dd>
+    <dt>Concorrência</dt><dd>média — 490 anúncios ativos no Meta ("adestramento de cachorro")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Sem sensibilidade regulatória</span><span class="tag val">Evidência de mercado a validar</span></footer>
+</article><article class="ficha" style="--acc:#8A5A2B">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 14 · ARTESANATO × RENDA EXTRA</div><h4>Crochê que Vende <span class="badge-new">nova</span></h4></div>
+    <div class="roi"><b>140%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Crochê que Vende: 20 Peças Rápidas e a Planilha que Diz Quanto Cobrar”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“passar seis horas numa peça, cobrar R$ 40 e só depois descobrir que saiu no prejuízo”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — ticket baixo e promessa de renda dentro do mesmo mês</b></span><span class="pill">Formato: <b>Receitas de peças + planilha de precificação + guia de venda</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:90%"></i></div><b>9</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Público majoritariamente feminino 35+, faixa de maior conversão em infoproduto de renda extra. Replica a mecânica já selecionada em Doce Lucro Fit. Volume não medido.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 19</b> → upsell <b>R$ 147</b></dd>
+    <dt>Projeção</dt><dd>1.300 vendas · faturamento <b>R$ 74.620</b> · ads R$ 28.000 · lucro <b>R$ 39.158</b></dd>
+    <dt>Concorrência</dt><dd>média — 850 anúncios ativos no Meta ("crochê para vender")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Espelha a mecânica do produto nº 1</span><span class="tag val">Evidência de mercado a validar</span></footer>
+</article></div>
+    <p class="note">ROI médio do par: <b>167%</b>. Projeções por benchmark, não resultado realizado.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Segmento 9 de 9 · lote novo desta revisão</div><h2>Carreira &amp; Recolocação</h2></div>
+  <div class="slide-body">
+    <div class="fichas solo">
+      <article class="ficha" style="--acc:#A8437B">
+  <header class="fh">
+    <div class="fhl"><div class="fn">IDEIA 15 · CARREIRA × RECOLOCAÇÃO</div><h4>Currículo Aprovado <span class="badge-new">nova</span></h4></div>
+    <div class="roi"><b>143%</b><small>ROI s/ ads</small></div>
+  </header>
+  <p class="concept">“Currículo Aprovado: Passe pelo Filtro Automático e Chegue na Entrevista”</p>
+  <div class="ltr">
+    <h5>Low Ticket Raiz</h5>
+    <p class="dor">“mandar 200 currículos, não receber uma resposta sequer e não saber se alguém chegou a ler”</p>
+    <div class="meta"><span class="pill">No-brain: <b>alta — dor urgente e promessa com prazo curto</b></span><span class="pill">Formato: <b>Templates ATS + banco de verbos + revisão guiada</b></span></div>
+    <div class="scores"><div class="scorebar"><span>Dor viva</span><div class="sbar"><i style="width:100%"></i></div><b>10</b></div><div class="scorebar"><span>Impulso</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div><div class="scorebar"><span>Tangibilidade</span><div class="sbar"><i style="width:80%"></i></div><b>8</b></div></div>
+  </div>
+  <dl>
+    <dt>Mercado</dt><dd>Recolocação tem demanda anticíclica e urgência alta. O recorte “passar no filtro ATS” é técnico e verificável, o que sustenta prova sem promessa de emprego. Volume não medido.</dd>
+    <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 19</b> → upsell <b>R$ 157</b></dd>
+    <dt>Projeção</dt><dd>1.200 vendas · faturamento <b>R$ 70.080</b> · ads R$ 26.000 · lucro <b>R$ 37.072</b></dd>
+    <dt>Concorrência</dt><dd>média — 360 anúncios ativos no Meta ("currículo para conseguir emprego")</dd>
+  </dl>
+  <footer class="foot"><span class="tag low">Risco baixo</span><span class="tag ">Não pode prometer contratação</span><span class="tag val">Evidência de mercado a validar</span></footer>
+</article>
+      <div class="panelbox">
+        <h3>Como as 5 novas entraram</h3>
+        <p>O lote novo aplicou a lição que a v1 aprendeu com Fluxo Imparável: <b>nenhuma ideia com entrada
+        abaixo de R$ 37</b>, porque abaixo disso o ticket não cobre um CPA realista de R$ 22 a R$ 25.</p>
+        <p>Os cinco recortes foram escolhidos por três filtros, nesta ordem:</p>
+        <ol class="crit">
+          <li><b>Dor datada.</b> A entrevista é semana que vem, o concurso tem edital, o sofá já foi destruído.
+          Prazo externo dispensa a urgência artificial na copy.</li>
+          <li><b>Recorte estreito dentro de segmento largo.</b> Não “inglês”, mas inglês de entrevista.
+          Não “pets”, mas os três comportamentos que fazem o dono procurar ajuda.</li>
+          <li><b>Prova verificável.</b> Passar num filtro ATS, precificar uma peça, cumprir um protocolo de
+          21 dias — tudo demonstrável sem promessa de resultado que não se controla.</li>
+        </ol>
+        <div class="alert warn tight">
+          <b>Ressalva.</b> As cinco novas rodam no mesmo modelo econômico das dez originais. O número de
+          concorrentes já foi medido (Meta Ad Library, adiante); <b>volume de busca e CPC real continuam por levantar</b>.
+          Estão marcadas “a validar” e não devem entrar em produção antes disso.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Estratégia</div><h2>Sequência de execução</h2></div>
+  <div class="slide-body">
+    <div class="ondas">
+      <div class="onda o1"><div class="ot"><span>Onda 1</span><b>Validar o motor</b></div>
+        <ul><li><b>07 Mestres do Prompt</b> — maior ROI do portfólio, concorrência média (650 anúncios), tema verificável</li>
+        <li><b>09 Doce Lucro Fit</b> — produção mais simples e o menor número de concorrentes medido (15 anúncios)</li></ul>
+        <p>Objetivo: provar CPA e conversão reais. Enquanto o CPA não for medido, todo o resto do estudo é hipótese.</p></div>
+      <div class="onda o2"><div class="ot"><span>Onda 2</span><b>Escalar o que funcionou</b></div>
+        <ul><li><b>12 Inglês de Entrevista</b> — o único do portfólio com ROI acima da média e concorrência baixa (93 anúncios)</li>
+        <li><b>11 Aprovado em 90 Dias</b> e <b>13 Cão Equilibrado</b> — bom retorno, concorrência média, dor datada</li></ul>
+        <p>Entram apenas se a Onda 1 confirmar CPA dentro de R$ 25 e conversão de landing acima de 1,5%.
+        <b>10 Recomeço a Dois saiu da Onda 2</b> — 33.000 anúncios ativos tornam a disputa de leilão o problema principal.</p></div>
+      <div class="onda o3"><div class="ot"><span>Onda 3</span><b>Preencher o portfólio</b></div>
+        <ul><li>Segmentos consolidados: <b>01</b>, <b>05</b>, <b>06</b>, <b>15</b>, <b>02</b></li>
+        <li>Alta concorrência, só com criativo diferenciado: <b>10</b>, <b>08</b>, <b>03</b>, <b>14</b></li></ul>
+        <p>Retorno menor por real de mídia, mas demanda previsível — servem para diluir o risco do portfólio.</p></div>
+    </div>
+    <div class="twocol">
+      <div class="panel"><h3>O que atravessa as 15</h3><p>Mesma esteira (entrada → bump → upsell), mesma
+      plataforma, mesmo modelo de mensuração. Um produto validado empresta landing, checkout e criativos
+      para o próximo, e o custo de lançar a segunda ideia é uma fração do custo da primeira.</p></div>
+      <div class="panel"><h3>Onde o plano quebra</h3><p>Se o CPA real ficar acima de R$ 30, apenas as três
+      primeiras ideias do ranking seguem viáveis e o portfólio deixa de fazer sentido como portfólio.
+      É a única medição que precisa acontecer antes de qualquer outra decisão.</p></div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Meta Ads · custo</div><h2>O que custa comprar atenção no Brasil</h2>
+  <p class="lede">Nenhuma projeção deste estudo sobrevive a um CPC errado. Estes são os números de referência
+  que o mercado publica para 2026 — e a aritmética que os liga.</p></div>
+  <div class="slide-body">
+    <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="kpi"><b>R$ 8–20</b><span>CPM em Stories e Reels — o posicionamento mais barato do inventário brasileiro</span><i>CPM</i></div>
+      <div class="kpi"><b>R$ 18–32</b><span>CPM em Feed para o segmento de infoprodutos e cursos</span><i>CPM</i></div>
+      <div class="kpi"><b>1,55–2,19%</b><span>CTR mediano no Meta; educação global fica em 0,73%</span><i>CTR</i></div>
+      <div class="kpi"><b>R$ 40</b><span>CPA médio global em educação (US$ 7,85 · câmbio R$ 5,15)</span><i>CPA</i></div>
+    </div>
+    <div class="twocol wide">
+      <div class="panelbox">
+        <h3>CPC não é um número que se escolhe</h3>
+        <p class="tiny" style="margin-bottom:10px">Ele é consequência: <b>CPC = CPM ÷ (1.000 × CTR)</b>.
+        A tabela mostra o que cada combinação produz.</p>
+        <div class="tblwrap"><table class="mini">
+          <tr><th>Posicionamento</th><th>CPM</th><th>CTR 2,19%</th><th>CTR 1,55%</th><th>CTR 1,00%</th></tr>
+          <tr><td>Reels / Stories · piso</td><td>R$ 8</td><td><b>R$ 0,37</b></td><td><b>R$ 0,52</b></td><td>R$ 0,80</td></tr>
+          <tr><td>Reels / Stories · meio</td><td>R$ 14</td><td>R$ 0,64</td><td>R$ 0,90</td><td>R$ 1,40</td></tr>
+          <tr><td>Reels / Stories · teto</td><td>R$ 20</td><td>R$ 0,91</td><td>R$ 1,29</td><td>R$ 2,00</td></tr>
+          <tr><td>Feed cursos · piso</td><td>R$ 18</td><td>R$ 0,82</td><td>R$ 1,16</td><td>R$ 1,80</td></tr>
+          <tr><td>Feed cursos · meio</td><td>R$ 25</td><td>R$ 1,14</td><td>R$ 1,61</td><td>R$ 2,50</td></tr>
+          <tr><td>Feed cursos · teto</td><td>R$ 32</td><td>R$ 1,46</td><td>R$ 2,06</td><td>R$ 3,20</td></tr>
+        </table></div>
+      </div>
+      <div class="panelbox">
+        <h3>A premissa deste estudo é o canto otimista</h3>
+        <p>As quinze projeções foram construídas sobre <b>CPC de R$ 0,50</b>. Na tabela ao lado, esse valor
+        aparece uma única vez: Reels no piso de CPM, com CTR na mediana. É um resultado possível, não o esperado.</p>
+        <p>O cenário provável para quem começa — Reels com CPM médio e CTR mediano — é <b>R$ 0,90 a R$ 1,10</b>.
+        Quem cair no Feed paga <b>R$ 1,16 a R$ 2,06</b>.</p>
+        <div class="alert warn tight">
+          <b>Qualidade da fonte.</b> Os intervalos de CPM em reais vêm de publicações de agência brasileira que
+          <b>não declaram amostra nem metodologia</b> e apresentam 2026 como projeção. O CPA de educação vem de
+          base com US$ 500 mi de investimento medido, mas sem recorte para o Brasil. Trate como ordem de
+          grandeza — a medição própria é o que substitui isso.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Meta Ads · teste de estresse</div><h2>O portfólio inteiro depende de uma variável</h2>
+  <p class="lede">Mesmo orçamento, mesma conversão de landing, mesma composição de oferta. Só o CPC muda.</p></div>
+  <div class="slide-body">
+    <div class="twocol wide">
+      <div class="panelbox" style="min-height:0;overflow:hidden;display:flex;flex-direction:column">
+        <div class="tblwrap" style="flex:1 1 auto;min-height:0;overflow:hidden"><table class="mini estresse">
+          <tr><th></th><th>Ideia</th>
+          <th style="text-align:right">CPC 0,50</th><th style="text-align:right">CPC 1,10</th><th style="text-align:right">CPC 1,80</th></tr>
+          <tr><td style="color:var(--faint)">01</td><td>IA Lucrativa</td><td style="text-align:right;font-weight:700;color:var(--ok)">169%</td><td style="text-align:right;font-weight:700;color:var(--warn)">22%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-25%</td></tr><tr><td style="color:var(--faint)">02</td><td>Mãe em Forma</td><td style="text-align:right;font-weight:700;color:var(--ok)">104%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-7%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-43%</td></tr><tr><td style="color:var(--faint)">03</td><td>Fábrica de Viral</td><td style="text-align:right;font-weight:700;color:var(--ok)">169%</td><td style="text-align:right;font-weight:700;color:var(--warn)">22%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-25%</td></tr><tr><td style="color:var(--faint)">04</td><td>Fluxo Imparável</td><td style="text-align:right;font-weight:700;color:var(--ok)">45%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-34%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-60%</td></tr><tr><td style="color:var(--faint)">05</td><td>Investidor Iniciante</td><td style="text-align:right;font-weight:700;color:var(--ok)">205%</td><td style="text-align:right;font-weight:700;color:var(--warn)">39%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-15%</td></tr><tr><td style="color:var(--faint)">06</td><td>Renove-se aos 40+</td><td style="text-align:right;font-weight:700;color:var(--ok)">157%</td><td style="text-align:right;font-weight:700;color:var(--warn)">17%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-29%</td></tr><tr><td style="color:var(--faint)">07</td><td>Mestres do Prompt</td><td style="text-align:right;font-weight:700;color:var(--ok)">270%</td><td style="text-align:right;font-weight:700;color:var(--warn)">68%</td><td style="text-align:right;font-weight:700;color:var(--bad)">3%</td></tr><tr><td style="color:var(--faint)">08</td><td>Visibilidade Local</td><td style="text-align:right;font-weight:700;color:var(--ok)">107%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-6%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-43%</td></tr><tr><td style="color:var(--faint)">09</td><td>Doce Lucro Fit</td><td style="text-align:right;font-weight:700;color:var(--ok)">155%</td><td style="text-align:right;font-weight:700;color:var(--warn)">16%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-29%</td></tr><tr><td style="color:var(--faint)">10</td><td>Recomeço a Dois</td><td style="text-align:right;font-weight:700;color:var(--ok)">243%</td><td style="text-align:right;font-weight:700;color:var(--warn)">56%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-5%</td></tr><tr><td style="color:var(--faint)">11</td><td>Aprovado em 90 Dias</td><td style="text-align:right;font-weight:700;color:var(--ok)">223%</td><td style="text-align:right;font-weight:700;color:var(--warn)">47%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-10%</td></tr><tr><td style="color:var(--faint)">12</td><td>Inglês de Entrevista</td><td style="text-align:right;font-weight:700;color:var(--ok)">160%</td><td style="text-align:right;font-weight:700;color:var(--warn)">18%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-28%</td></tr><tr><td style="color:var(--faint)">13</td><td>Cão Equilibrado</td><td style="text-align:right;font-weight:700;color:var(--ok)">159%</td><td style="text-align:right;font-weight:700;color:var(--warn)">18%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-28%</td></tr><tr><td style="color:var(--faint)">14</td><td>Crochê que Vende</td><td style="text-align:right;font-weight:700;color:var(--ok)">107%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-6%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-43%</td></tr><tr><td style="color:var(--faint)">15</td><td>Currículo Aprovado</td><td style="text-align:right;font-weight:700;color:var(--ok)">110%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-4%</td><td style="text-align:right;font-weight:700;color:var(--bad)">-42%</td></tr>
+          <tr style="border-top:2px solid var(--line)"><td></td><td><b style="color:var(--ink)">Portfólio</b></td><td style="text-align:right;font-weight:800;color:var(--ok)">149%</td><td style="text-align:right;font-weight:800;color:var(--warn)">13%</td><td style="text-align:right;font-weight:800;color:var(--bad)">-31%</td></tr>
+        </table></div>
+      </div>
+      <div class="panelbox">
+        <h3>Leitura</h3>
+        <p>A R$ 0,50 o portfólio devolve <b>162% sobre a mídia</b>. A R$ 1,10 devolve <b>13%</b> —
+        e sete das quinze ideias passam a dar prejuízo. A R$ 1,80 o portfólio inteiro perde
+        <b>R$ 119 mil</b> sobre R$ 386 mil investidos.</p>
+        <p>Não é uma faixa de erro confortável. É a diferença entre um negócio e um buraco.</p>
+        <div class="alert tight">
+          <b>Único sobrevivente do cenário conservador:</b> <b>07 Mestres do Prompt</b>, com 3% de ROI —
+          empatado com zero. Nenhuma ideia deste estudo aguenta CPC de R$ 1,80.
+        </div>
+        <div class="alert warn tight">
+          <b>O que isso muda na prática.</b> A medição de CPA com R$ 2.000 deixa de ser um passo de validação
+          e passa a ser <b>pré-condição</b>. Sem ela, escolher entre as quinze ideias é escolher entre números
+          que podem estar todos errados na mesma direção.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Meta Ads · concorrência medida</div><h2>Quantos já estão comprando esse público</h2>
+  <p class="lede">Anúncios ativos no Meta Ad Library, Brasil, consultados em 26 de agosto de 2026.
+  Escala logarítmica — a diferença entre 15 e 33.000 não cabe numa barra linear.</p></div>
+  <div class="slide-body">
+    <div class="rank" style="flex:1 1 auto;min-height:0;overflow:auto"><div class="rkrow"><div class="rkn" style="color:#965F00">03</div><div class="rknome">Fábrica de Viral<span style="display:block;font-size:9.5px;color:var(--faint)">“viralizar no instagram”</span></div><div class="rkbar"><i style="width:100.0%;background:#965F00"></i></div><div class="rkval">50.000</div><div class="rklucro">alta</div></div><div class="rkrow"><div class="rkn" style="color:#6A59CB">10</div><div class="rknome">Recomeço a Dois<span style="display:block;font-size:9.5px;color:var(--faint)">“reconquistar o relacionamento”</span></div><div class="rkbar"><i style="width:96.2%;background:#6A59CB"></i></div><div class="rkval">33.000</div><div class="rklucro">alta</div></div><div class="rkrow"><div class="rkn" style="color:#5E6B82">04</div><div class="rknome">Fluxo Imparável<span style="display:block;font-size:9.5px;color:var(--faint)">“produtividade e foco”</span></div><div class="rkbar"><i style="width:75.4%;background:#5E6B82"></i></div><div class="rkval">3.500</div><div class="rklucro">alta</div></div><div class="rkrow"><div class="rkn" style="color:#965F00">08</div><div class="rknome">Visibilidade Local<span style="display:block;font-size:9.5px;color:var(--faint)">“google meu negócio”</span></div><div class="rkbar"><i style="width:75.4%;background:#965F00"></i></div><div class="rkval">3.500</div><div class="rklucro">alta</div></div><div class="rkrow"><div class="rkn" style="color:#0D7780">11</div><div class="rknome">Aprovado em 90 Dias<span style="display:block;font-size:9.5px;color:var(--faint)">“concurso público aprovação”</span></div><div class="rkbar"><i style="width:68.2%;background:#0D7780"></i></div><div class="rkval">1.600</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#1C6CBB">01</div><div class="rknome">IA Lucrativa<span style="display:block;font-size:9.5px;color:var(--faint)">“ganhar dinheiro com inteligência artificial”</span></div><div class="rkbar"><i style="width:66.3%;background:#1C6CBB"></i></div><div class="rkval">1.300</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#8A5A2B">14</div><div class="rknome">Crochê que Vende<span style="display:block;font-size:9.5px;color:var(--faint)">“crochê para vender”</span></div><div class="rkbar"><i style="width:62.4%;background:#8A5A2B"></i></div><div class="rkval">850</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#1B7950">06</div><div class="rknome">Renove-se aos 40+<span style="display:block;font-size:9.5px;color:var(--faint)">“emagrecer depois dos 40”</span></div><div class="rkbar"><i style="width:60.7%;background:#1B7950"></i></div><div class="rkval">710</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#6A59CB">07</div><div class="rknome">Mestres do Prompt<span style="display:block;font-size:9.5px;color:var(--faint)">“prompts para chatgpt”</span></div><div class="rkbar"><i style="width:59.9%;background:#6A59CB"></i></div><div class="rkval">650</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#1C6CBB">05</div><div class="rknome">Investidor Iniciante<span style="display:block;font-size:9.5px;color:var(--faint)">“investir para iniciantes”</span></div><div class="rkbar"><i style="width:58.0%;background:#1C6CBB"></i></div><div class="rkval">530</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#8A5A2B">13</div><div class="rknome">Cão Equilibrado<span style="display:block;font-size:9.5px;color:var(--faint)">“adestramento de cachorro”</span></div><div class="rkbar"><i style="width:57.3%;background:#8A5A2B"></i></div><div class="rkval">490</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#A8437B">15</div><div class="rknome">Currículo Aprovado<span style="display:block;font-size:9.5px;color:var(--faint)">“currículo para conseguir emprego”</span></div><div class="rkbar"><i style="width:54.4%;background:#A8437B"></i></div><div class="rkval">360</div><div class="rklucro">média</div></div><div class="rkrow"><div class="rkn" style="color:#1B7950">02</div><div class="rknome">Mãe em Forma<span style="display:block;font-size:9.5px;color:var(--faint)">“emagrecer pós parto”</span></div><div class="rkbar"><i style="width:42.1%;background:#1B7950"></i></div><div class="rkval">94</div><div class="rklucro">baixa</div></div><div class="rkrow"><div class="rkn" style="color:#0D7780">12</div><div class="rknome">Inglês de Entrevista<span style="display:block;font-size:9.5px;color:var(--faint)">“inglês para entrevista de emprego”</span></div><div class="rkbar"><i style="width:42.0%;background:#0D7780"></i></div><div class="rkval">93</div><div class="rklucro">baixa</div></div><div class="rkrow"><div class="rkn" style="color:#B1492A">09</div><div class="rknome">Doce Lucro Fit<span style="display:block;font-size:9.5px;color:var(--faint)">“doces fit para vender”</span></div><div class="rkbar"><i style="width:25.6%;background:#B1492A"></i></div><div class="rkval">15</div><div class="rklucro">baixa</div></div></div>
+    <div class="twocol" style="flex:0 0 auto">
+      <div class="alert tight"><b>Nove das quinze mudaram de faixa.</b> A concorrência que o estudo atribuía
+      por julgamento errou em 60% dos casos — e errou nos dois sentidos.</div>
+      <div class="alert warn tight"><b>Ressalva de método.</b> A contagem é sensível ao termo:
+      “doces fit para vender” devolve 15 anúncios, mas “receitas fit” devolve ~1.400. O número mede
+      <b>a disputa por aquele recorte</b>, não pelo segmento inteiro.</div>
+    </div>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Meta Ads · como mudou</div><h2>Quatro mudanças que alteram a operação</h2>
+  <p class="lede">O que muda entre planejar a campanha em 2024 e rodá-la agora.</p></div>
+  <div class="slide-body">
+    <div class="concl">
+      <div class="cbox"><span>01</span><h3>Advantage+ virou o padrão</h3>
+      <p>A segmentação manual detalhada deixou de ser a rota principal: o Meta entrega melhor resultado deixando
+      o algoritmo achar o público a partir do criativo. <b>O criativo passou a ser a segmentação.</b></p></div>
+      <div class="cbox"><span>02</span><h3>Volume de criativo virou requisito</h3>
+      <p>A referência de mercado para conta em escala saiu de 3 a 5 peças para <b>15 a 50 criativos ativos</b>
+      simultâneos. Isso muda o custo de produção do lançamento, não só o de mídia.</p></div>
+      <div class="cbox"><span>03</span><h3>Sem CAPI, perde-se eficiência</h3>
+      <p>A Conversions API deixou de ser refinamento. Contas sem sinal de servidor perdem uma fatia
+      relevante da eficiência de otimização — e é gasto que não aparece no relatório.</p></div>
+      <div class="cbox"><span>04</span><h3>Reels é o inventário barato</h3>
+      <p>CPM de Reels e Stories roda 15% a 25% abaixo do Feed no Brasil. É exatamente a diferença entre a
+      premissa deste estudo e o cenário conservador — <b>o posicionamento decide a viabilidade</b>.</p></div>
+    </div>
+    <div class="alert tight" style="margin-top:2px">
+      <b>Consequência para o plano.</b> As três primeiras mudanças elevam o custo fixo de entrada de cada produto:
+      não dá para lançar com dois criativos e ajustar depois. Vale a favor da tese de portfólio —
+      um mesmo sistema de produção de criativo diluído entre vários produtos — e contra lançar as quinze em paralelo.
+    </div>
+    <p class="note">Fontes: publicações de mercado sobre Meta Ads 2026 (Advantage+, volume de criativo, CAPI, custo por
+    posicionamento). Nenhuma delas é documentação oficial do Meta; são leituras de agência e devem ser tratadas como tendência.</p>
+  </div>
+</section>
+<section class="slide">
+  <div class="slide-head"><div class="eyebrow">Conclusão</div><h2>O que este estudo sustenta</h2></div>
+  <div class="slide-body">
+    <div class="concl">
+      <div class="cbox"><span>01</span><h3>O ranking mudou com o método</h3>
+      <p>Recalculadas no mesmo modelo, quatro das dez projeções originais se moveram e o produto que estava
+      em primeiro caiu para décimo. O que ordena o portfólio é a consistência do cálculo, não a ordem de chegada das ideias.</p></div>
+      <div class="cbox"><span>02</span><h3>O prêmio está fora do top 5</h3>
+      <p>Medida a concorrência real, as melhores relações entre retorno e disputa — <b>doces fit</b> (15 anúncios)
+      e <b>inglês de entrevista</b> (93) — estão em recortes que não aparecem no ranking de volume da Hotmart.
+      Relacionamentos, que parecia estar aí, tem 33.000 anúncios ativos.</p></div>
+      <div class="cbox"><span>03</span><h3>O ticket define a viabilidade</h3>
+      <p>Abaixo de R$ 37 de entrada, o CPA come a margem antes do bump. Foi o que eliminou Fluxo Imparável e o
+      que define o piso das cinco ideias novas.</p></div>
+      <div class="cbox"><span>04</span><h3>Nada disso está validado</h3>
+      <p>Zero reais de mídia foram gastos. As quinze projeções assumem CPC de R$ 0,50 — o piso do mercado.
+      No CPC provável de R$ 1,10, o portfólio cai de 162% para 13% de ROI.</p></div>
+    </div>
+    <div class="prox">
+      <h3>Próximos passos, na ordem</h3>
+      <ol>
+        <li><b>Medir CPA real</b> com R$ 2.000 em Mestres do Prompt — a variável que sustenta ou derruba o estudo inteiro.</li>
+        <li><b>Levantar volume de busca</b> das 5 novas — concorrentes já mapeados no Meta Ad Library.</li>
+        <li><b>Testar conversão da landing</b> antes de escalar verba, com meta mínima de 1,5%.</li>
+        <li><b>Revisar compliance</b> das copies de saúde, finanças, relacionamento, concursos e carreira.</li>
+        <li><b>Reavaliar a plataforma</b>: migrar de Hotmart para Eduzz devolve ~5 pontos de margem ao portfólio.</li>
+      </ol>
+    </div>
+    <p class="note final">Estudo de mercado · versão 2 revisada · projeções por benchmark, sem resultado próprio realizado.</p>
+  </div>
+</section>
+<nav class="nav">
+  <button id="prev" aria-label="Slide anterior">&#8592;</button>
+  <button id="next" aria-label="Próximo slide">&#8594;</button>
+  <span class="counter"><b id="cur">1</b> / <span id="tot">19</span></span>
+  <div class="track"><i id="progress"></i></div>
+  <span class="navtitle" id="navtitle"></span>
+</nav>
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('section.slide'));
+  var cur = document.getElementById('cur'), tot = document.getElementById('tot');
+  var bar = document.getElementById('progress'), title = document.getElementById('navtitle');
+  var prev = document.getElementById('prev'), next = document.getElementById('next');
+  var i = 0;
+  tot.textContent = slides.length;
+  function titleOf(el){ var h = el.querySelector('h1,h2'); return h ? h.textContent.replace(/\s+/g,' ').trim() : ''; }
+  function go(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('active', k === i); });
+    cur.textContent = i + 1;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    title.textContent = titleOf(slides[i]);
+    prev.disabled = i === 0;
+    next.disabled = i === slides.length - 1;
+    slides[i].scrollTop = 0;
+  }
+  prev.addEventListener('click', function(){ go(i - 1); });
+  next.addEventListener('click', function(){ go(i + 1); });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+  });
+  go(0);
+})();
+</script>
+</body>
+</html>

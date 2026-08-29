@@ -116,7 +116,7 @@ export interface LlmOptions {
   campaignTarget: CampaignGuardTarget;
 }
 
-export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi';
+export type Provider = 'anthropic' | 'openai' | 'google' | 'grok' | 'ollama' | 'abacusai' | 'kimi' | 'openrouter';
 export const KIMI_MODELS = {
   K3: 'kimi-k3',
   K2_7_CODE: 'kimi-k2.7-code',
@@ -126,7 +126,7 @@ export const KIMI_MODELS = {
 // Provedores ativos na orquestração (abacusai fora — mantido só no callProvider por compatibilidade).
 // Kimi participa do roteamento automático com preferências por agente e fallback;
 // isso evita que uma credencial expirada derrube toda a geração.
-export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama', 'kimi'];
+export const ACTIVE_PROVIDERS: Provider[] = ['anthropic', 'openai', 'google', 'grok', 'ollama', 'kimi', 'openrouter'];
 export type Tier = 'premium' | 'standard' | 'light';
 
 type AgentRoutingPreference = {
@@ -221,6 +221,15 @@ export const AGENT_TIERS: Record<string, Tier> = {
   'presell-builder': 'standard',
   'bridge-page-builder': 'standard',
   'bridge-page-validator': 'standard',
+  // Produto próprio / infoproduto (importados de ~/infoprod, agnósticos de marca)
+  'fact-steward': 'premium',
+  'brand-dna-extractor': 'standard',
+  'offer-architect': 'standard',
+  'content-architect': 'standard',
+  'creative-producer': 'standard',
+  'anti-slop-editor': 'standard',
+  'visual-system-designer': 'standard',
+  'launch-strategist': 'standard',
 };
 
 // Ordem de preferência por tier, otimizada por custo real no Vertex (2026-07):
@@ -234,9 +243,9 @@ export const AGENT_TIERS: Record<string, Tier> = {
 // - light (chat, validação simples): Ollama grátis lidera; Grok non-reasoning (barato, baixa
 //   latência) como fallback pago antes de subir pra Gemini/Claude.
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'grok', 'google', 'openai', 'ollama'],
-  standard: ['grok', 'google', 'ollama', 'openai', 'anthropic'],
-  light: ['ollama', 'grok', 'google', 'openai', 'anthropic'],
+  premium: ['anthropic', 'grok', 'google', 'openai', 'openrouter', 'ollama'],
+  standard: ['openrouter', 'grok', 'google', 'openai', 'anthropic', 'ollama'],
+  light: ['ollama', 'openrouter', 'grok', 'google', 'openai', 'anthropic'],
 };
 
 const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
@@ -247,6 +256,7 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
   kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_5 },
+  openrouter: { premium: 'moonshotai/kimi-k3', standard: 'moonshotai/kimi-k2.5', light: 'moonshotai/kimi-k2.5' },
 };
 
 const ALLOWED_MODELS: Record<Provider, ReadonlySet<string>> = {
@@ -257,6 +267,7 @@ const ALLOWED_MODELS: Record<Provider, ReadonlySet<string>> = {
   ollama: new Set(['gpt-oss:120b', 'gpt-oss:20b']),
   abacusai: new Set(['gpt-5.4-mini']),
   kimi: new Set(Object.values(KIMI_MODELS)),
+  openrouter: new Set(['openrouter/auto', 'moonshotai/kimi-k3', 'moonshotai/kimi-k2.6', 'moonshotai/kimi-k2.5']),
 };
 
 export function assertAllowedProviderModel(provider: Provider, model: string): void {
@@ -289,6 +300,7 @@ const DEFAULT_BUDGETS: Record<Provider, number> = {
   ollama: 0,
   abacusai: 0,
   kimi: 0,
+  openrouter: 0,
 };
 
 // Origem da chave usada em cada provider: 'byok' = chave configurada pelo próprio
@@ -329,7 +341,7 @@ async function getMonthUsage(userId: string): Promise<Record<Provider, number>> 
     where: { userId, createdAt: { gte: monthStart }, totalTokens: { gt: 0 } },
     _sum: { totalTokens: true },
   });
-  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0, kimi: 0 };
+  const usage: Record<Provider, number> = { anthropic: 0, openai: 0, google: 0, grok: 0, ollama: 0, abacusai: 0, kimi: 0, openrouter: 0 };
   for (const g of grouped) {
     if (g.provider in usage) usage[g.provider as Provider] = g._sum.totalTokens ?? 0;
   }
@@ -346,6 +358,7 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     grok: process.env.XAI_API_KEY,
     ollama: process.env.OLLAMA_API_KEY,
     kimi: process.env.KIMI_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
   };
   const keySources: Partial<Record<Provider, KeySource>> = {};
   for (const p of ACTIVE_PROVIDERS) {
@@ -401,6 +414,7 @@ export async function getRoutingContext(userId: string, fallbackKey?: string): P
     ollama: { prompt: Number(map['cost_ollama_prompt']) || 1, completion: Number(map['cost_ollama_completion']) || 1 },
     kimi: { prompt: Number(map['cost_kimi_prompt']) || 1, completion: Number(map['cost_kimi_completion']) || 1 },
     abacusai: { prompt: Number(map['cost_abacusai_prompt']) || 1, completion: Number(map['cost_abacusai_completion']) || 1 },
+    openrouter: { prompt: Number(map['cost_openrouter_prompt']) || 1, completion: Number(map['cost_openrouter_completion']) || 1 },
   };
   return { mode, manualProvider, keys, keySources, models, budgets, monthUsage, disabled, costMultipliers };
 }
@@ -477,6 +491,36 @@ async function callProvider(
         }),
       });
       if (!response.ok) throw new Error(`Erro na API do OpenAI: ${await response.text()}`);
+      const data = await response.json();
+      return {
+        text: data?.choices?.[0]?.message?.content || '',
+        usage: {
+          promptTokens: data?.usage?.prompt_tokens,
+          completionTokens: data?.usage?.completion_tokens,
+          totalTokens: data?.usage?.total_tokens,
+        },
+        model: data?.model ?? model,
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    case 'openrouter': {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: maxOutputTokens,
+        }),
+      });
+      if (!response.ok) throw new Error(`Erro na API do OpenRouter: ${await response.text()}`);
       const data = await response.json();
       return {
         text: data?.choices?.[0]?.message?.content || '',

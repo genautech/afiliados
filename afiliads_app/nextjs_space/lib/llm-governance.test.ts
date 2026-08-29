@@ -32,6 +32,13 @@ import {
 describe('LLM governance', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // A cadeia de providers tambem le chaves do ambiente; sem neutralizar, uma maquina
+    // com credencial Vertex/xAI roteia para grok antes do openai e quebra os testes.
+    for (const envVar of [
+      'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY',
+      'OLLAMA_API_KEY', 'KIMI_API_KEY', 'OPENROUTER_API_KEY',
+      'GCP_PROJECT_ID', 'GCP_SERVICE_ACCOUNT_JSON',
+    ]) vi.stubEnv(envVar, '');
     integrationFindMany.mockResolvedValue([]);
     usageGroupBy.mockResolvedValue([]);
     runCreate.mockResolvedValue({});

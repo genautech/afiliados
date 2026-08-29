@@ -1,0 +1,18 @@
+produto:
+  id: "[preencher]"
+  versao: "[preencher]"
+
+coletado_em: "[preencher]"
+
+saturacao:
+  atingida: false
+  fontes_consecutivas_sem_claim_novo: 0
+
+claims:
+  - texto: "[preencher]"
+    tipo: DADO
+    url_ou_caminho: "[preencher]"
+    ancora: "[preencher]"
+    data_coleta: "[preencher]"
+    limite: "[preencher]"
+    destino: dados/mercado

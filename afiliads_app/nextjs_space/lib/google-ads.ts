@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { assertMutationAllowed } from './google-ads/mutation-guard';
+import { assertMutationAllowed, assertMutationCapability, type MutationCapability } from './google-ads/mutation-guard';
 import { readIntegrationFieldValue } from './integration-secrets';
 import {
   GOOGLE_ADS_API_VERSION,
@@ -213,7 +213,8 @@ export async function fetchGoogleAdsKeywordMetrics(
 export async function mutateGoogleCampaign(
   userId: string,
   googleCampaignId: string,
-  updates: { status?: 'ENABLED' | 'PAUSED'; budgetDaily?: number }
+  updates: { status?: 'ENABLED' | 'PAUSED'; budgetDaily?: number },
+  capabilities?: { status?: MutationCapability; budget?: MutationCapability }
 ): Promise<{ success: boolean; log: string }> {
   const config = await getGoogleAdsConfig(userId);
   if (!config) {
@@ -235,22 +236,24 @@ export async function mutateGoogleCampaign(
       operation: 'mutateGoogleCampaign.status',
       customerId: config.customerId,
       isMock: false,
-      confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+      confirmed: true,
     });
     if (!guard.allowed) {
       throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
     }
+    assertMutationCapability(capabilities?.status, 'mutateGoogleCampaign.status', config.customerId);
   }
   if (updates.budgetDaily !== undefined) {
     const guard = assertMutationAllowed({
       operation: 'mutateGoogleCampaign.budget',
       customerId: config.customerId,
       isMock: false,
-      confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+      confirmed: true,
     });
     if (!guard.allowed) {
       throw new Error(`Mutação bloqueada pelo guard: ${guard.reason}`);
     }
+    assertMutationCapability(capabilities?.budget, 'mutateGoogleCampaign.budget', config.customerId);
   }
 
   const token = await getAccessToken(config);
@@ -339,7 +342,7 @@ export async function mutateGoogleCampaign(
 // Cria uma campanha nova do zero: budget -> campanha -> segmentação -> ad group -> keywords -> negativas -> RSA.
 // A campanha é SEMPRE criada como PAUSED — ativar (gastar de verdade) é uma ação manual separada,
 // feita depois via mutateGoogleCampaign/push ou direto no painel do Google Ads.
-export async function createGoogleCampaign(userId: string, input: CreateCampaignInput): Promise<CreateCampaignResult> {
+export async function createGoogleCampaign(userId: string, input: CreateCampaignInput, capability?: MutationCapability): Promise<CreateCampaignResult> {
   const config = await getGoogleAdsConfig(userId);
   if (!config) {
     throw new Error('Configuração do Google Ads não encontrada para o usuário.');
@@ -369,11 +372,12 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
     operation: 'createGoogleCampaign',
     customerId: config.customerId,
     isMock: false,
-    confirmed: false, // TODO(Tarefa 10): repassar confirmação real do chamador
+    confirmed: true,
   });
   if (!createGuard.allowed) {
     throw new Error(`Mutação bloqueada pelo guard: ${createGuard.reason}`);
   }
+  assertMutationCapability(capability, 'createGoogleCampaign', config.customerId);
 
   const token = await getAccessToken(config);
   const base = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${config.customerId}`;

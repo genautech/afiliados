@@ -48,7 +48,7 @@ export async function GET(_request: NextRequest) {
     });
 
     return NextResponse.json({ campaigns: result });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('GET admin/campaigns error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

@@ -40,6 +40,7 @@ model User {
   marketIntelSnapshots MarketIntelSnapshot[]
   checklistLearnings   ChecklistLearning[]
   googleAdsExperiments GoogleAdsExperiment[]
+  marketResearches     MarketResearch[]
 }
 
 model Account {
@@ -126,6 +127,8 @@ model Campaign {
   loopAgents            String    @default("ads,compliance")
   lastLoopRunAt         DateTime?
   launchedAt            DateTime?
+  launchCheckpoint      String    @default("DRAFT") // DRAFT | CREATING_GOOGLE_ADS | SUCCESS_GOOGLE_ADS | CREATING_META_ADS | SUCCESS
+  launchIdempotencyKey  String?
 
   // Metadados de Experimentos A/B (Google Ads Experiments)
   isExperiment             Boolean @default(false)
@@ -150,6 +153,7 @@ model Campaign {
   bridgePageRecommendations BridgePageStrategyRecommendation[]
   presells                  Presell[]
   googleAdsExperiments      GoogleAdsExperiment[]
+  marketResearches          MarketResearch[]
 
   @@index([userId, status])
   @@index([userId, platform])
@@ -415,6 +419,12 @@ enum BridgePageType {
   OTHER
 }
 
+// Tipo de produto/estratégia usado pela pesquisa de mercado.
+enum ProductType {
+  AFFILIATE
+  PROPRIETARY_LOW_TICKET
+}
+
 model ProductResearch {
   id                        String                             @id @default(cuid())
   userId                    String
@@ -451,9 +461,36 @@ model ProductResearch {
   campaigns                 Campaign[]
   bridgePageRecommendations BridgePageStrategyRecommendation[]
   marketIntelSnapshots      MarketIntelSnapshot[]
+  marketResearch            MarketResearch?
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+// Inteligência de concorrência e pesquisa de mercado produzida pelo ad-scout-oracle.
+model MarketResearch {
+  id              String      @id @default(cuid())
+  userId          String
+  productId       String?     @unique
+  campaignId      String?
+  query           String      @db.Text
+  productType     ProductType @default(AFFILIATE)
+  adCount         Int         @default(0)
+  avgPrice        Float       @default(0.0)
+  competitors     Json        @default("[]")
+  audiencePain    Json        @default("[]")
+  anglesSuggested Json        @default("[]")
+  analyzedClaims  Json        @default("[]")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productResearch ProductResearch? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([campaignId])
 }
 
 model BridgePageStrategyRecommendation {

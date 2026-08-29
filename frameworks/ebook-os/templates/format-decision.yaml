@@ -1,0 +1,28 @@
+# Template — decisão de formato (Gate F0)
+# Se duas ou mais capacidades essenciais forem true, não classifique como ebook.
+
+produto:
+  id: "[preencher]"
+  versao: "0.1.0-rascunho"
+
+capacidades_nucleo:
+  login: false
+  progresso_persistente: false
+  notificacoes: false
+  liberacao_temporal: false
+  feedback_adaptativo: false
+  validacao_servidor: false
+  depende_online: false
+
+justificativa: "[preencher: por que o núcleo sobrevive ou não como documento offline]"
+
+sinais_observados:
+  - "[preencher: evidência concreta do formato, com origem]"
+
+classificacao: inconclusivo
+# Valores: ebook | sprint_interativo | curso | aplicacao | inconclusivo
+
+fontes:
+  - origem: "[preencher: caminho ou URL]"
+    data: "2026-08-15"
+    limite: "[preencher: o que esta observação não prova]"

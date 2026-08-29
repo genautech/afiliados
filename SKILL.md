@@ -76,6 +76,15 @@ ClickBank, BuyGoods, MaxWeb, Hotmart, Eduzz, Monetizze, Google Ads, Search, Perf
 
 **Shortlist:** 2–3 CB/BuyGoods + 1 path MaxWeb + 1 BR (lançamento ou evergreen).
 
+### PROSPERA / e-book low-ticket (catálogo próprio)
+
+Quando o pedido for e-book da plataforma (não ClickBank): trate como rede
+**própria**. Comissão e canais vêm do produtor no `affiliate-platform`, não
+de gravity. Preço típico R$ 29–67. Presell vende o e-book (nível PRODUTO);
+a página "seja afiliado" é nível MARCA. Hop + UTM + `variant_id` obrigatórios.
+VSL/YouTube: transcreva com `knowledge-scout` / `watch-video` antes de copiar
+ângulo. Se o canal estiver proibido no kit, pare — mesma regra das redes.
+
 ## Workflow 2: Funis
 
 1. **Direct** — anúncio → hop/smartlink (teste rápido; muitas verticals Google pedem bridge).
@@ -322,6 +331,7 @@ CTA → hop / smartlink
 FAQ + garantia do produto (se houver)
 Disclaimer afiliado + “resultados variam”
 Privacidade / contato
+Tipo de página: advertorial, pogo, vsl, interstitial, authority, tsl, cookie_popup, review
 ```
 
 ### RSA esqueleto

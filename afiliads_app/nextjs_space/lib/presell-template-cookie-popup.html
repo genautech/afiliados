@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="{{HTML_LANG}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITULO_DA_PAGINA}}</title>
+<meta name="description" content="{{META_DESCRICAO}}">
+{{GA4_TAG}}
+{{META_PIXEL_TAG}}
+{{GTM_HEAD}}
+<style>
+  body { margin: 0; padding: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #000; color: #fff; }
+  .background-image {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-image: url('{{IMAGEM_PRODUTO}}'); /* Placeholder for dynamic image */
+    background-size: cover; background-position: center;
+    filter: blur(8px) brightness(0.6); transform: scale(1.05);
+    z-index: 1;
+  }
+  .overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .popup {
+    background: #fff; border-radius: 8px; padding: 30px; text-align: center;
+    max-width: 400px; margin: 20px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    color: #333; z-index: 11;
+  }
+  .popup h2 { font-size: 24px; margin-bottom: 15px; color: #333; }
+  .popup p { font-size: 16px; line-height: 1.6; margin-bottom: 25px; }
+  .popup-button {
+    display: block; width: 100%; padding: 12px 20px;
+    background-color: #28a745; color: white;
+    text-decoration: none; border-radius: 5px;
+    font-size: 18px; font-weight: bold;
+    border: none; cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  .popup-button:hover { background-color: #218838; }
+  .disclaimer { font-size: 11px; color: #888; margin-top: 20px; line-height: 1.4; }
+  .disclosure-footer { font-size: 10px; color: #666; margin-top: 15px; }
+  .disclosure-footer a { color: #666; text-decoration: underline; }
+</style>
+</head>
+<body>
+{{GTM_BODY}}
+<div class="background-image"></div>
+<div class="overlay">
+  <div class="popup" id="cookie-popup">
+    <h2>{{HEADLINE}}</h2>
+    <p>{{SUBHEADLINE}}</p>
+    <a href="{{LINK_DE_AFILIADO_AQUI}}" class="popup-button">{{TEXTO_DO_CTA}}</a>
+    <div class="disclaimer">{{DISCLOSURE_TEXT}} {{DISCLAIMER_SAUDE}}</div>
+  </div>
+</div>
+{{TRACKING_SCRIPT}}
+{{CUSTOM_CODE}}
+<script>
+  // Script para simular o "clique em qualquer lugar" que ativa o popup
+  // e redireciona (se for o caso), ou fecha o popup.
+  const ctaLink = document.querySelector('.popup-button');
+  const popup = document.getElementById('cookie-popup');
+
+  if (ctaLink) {
+    // Redireciona imediatamente ao clicar no fundo (fora do popup)
+    document.addEventListener('click', (event) => {
+      if (!popup.contains(event.target) && event.target !== ctaLink) {
+        // Se clicar fora do popup e não for o botão, simula clique no botão
+        window.location.href = ctaLink.href;
+      }
+    });
+
+    // Garante que o clique no botão funcione como esperado
+    ctaLink.addEventListener('click', (event) => {
+      event.preventDefault(); // Evita redirecionamento duplo
+      window.location.href = ctaLink.href;
+    });
+  }
+
+  // Previne scroll quando o popup está ativo
+  document.body.style.overflow = 'hidden';
+</script>
+</body>
+</html>

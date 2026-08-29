@@ -8,7 +8,8 @@ export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    type SessionUser = { id: string };
+    const userId = (session.user as SessionUser)?.id;
 
     const grouped = await prisma.agentRun.groupBy({
       by: ['agent'],
@@ -98,7 +99,7 @@ export async function GET(_request: NextRequest) {
     const problems = Array.from(problemMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
 
     return NextResponse.json({ byAgent, recent, totals, statement, problems });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('GET agent-runs error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

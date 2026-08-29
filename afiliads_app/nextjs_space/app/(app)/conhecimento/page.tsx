@@ -61,6 +61,10 @@ const KNOWLEDGE_BASE = {
     icon: FileText,
     sections: [
       {
+        title: 'Tipos de Página para Afiliados (Mercado Internacional)',
+        content: `**Regra geral:** no mercado internacional (US, CA, AU, UK, EU) você precisa de uma **página própria** entre o anúncio do Google e o produtor. Links de afiliado criptografados (hop links) não são aceitos como URL final no Google Ads desde ~2022/2023.\n\n**VSL (Video Sales Letter)**\n- Página centrada em vídeo de vendas.\n- Use só se o produtor não liberar outra página ou se o vídeo for muito forte.\n- Não é o primeiro na lista de prioridades.\n\n**TSL (Text Sales Letter)**\n- Página longa de texto com botões de compra.\n- Funciona bem se a TSL oficial for atrativa: botões visíveis, imagem do produto, informações claras.\n- Se a TSL oficial for "feia" (botões escondidos, design ruim), prefira uma página própria.\n\n**Cookie / Popup**\n- Página simples para marcar o cookie do afiliado e redirecionar para a página oficial.\n- É o formato mais usado por afiliados iniciantes e intermediários.\n- Rápido de criar, funciona para produtos com marca já pesquisada.\n\n**Review / Robusta**\n- Artigo review com comparação, prós/contras, depoimentos, FAQ e CTA.\n- Melhor para quem já domina taxa de fuga, usa heatmap (Microsoft Clarity) e quer ranquear no Google.\n- Mais trabalho, mas tende a converter melhor a longo prazo.\n\n**Como escolher:**\n1. Iniciante → Cookie/Popup ou TSL boa do produtor.\n2. Intermediário → TSL otimizada ou Review simples.\n3. Avançado com dados → Review/Robusta + testes A/B.`,
+      },
+      {
         title: 'Playbook Search + ClickBank/BuyGoods (72h)',
         content: `1. BreakEven: comissão, refund 5-15%, CVR 1-2%\n2. 1 campanha, 2-3 ad groups, 3-5 RSA, bridge única\n3. Orçamento = 1-2× comissão média por dia\n4. Dia 1-2: matar keywords com gasto alto zero conv\n5. Dia 3: se EPC ≥ 1,3× CPC → SCALE +20-30%`,
       },
@@ -125,6 +129,9 @@ const COMMON_ERRORS = [
   'Misturar redes/ofertas sem naming',
   'Claims agressivos (ban)',
   'Um criativo só até fadiga',
+  'Usar HopLink criptografado como URL final do anúncio',
+  'Confundir URL do produtor com link de afiliado',
+  'Rodar "Maximizar conversões" sem estratégia madura',
 ];
 
 export default function ConhecimentoPage() {

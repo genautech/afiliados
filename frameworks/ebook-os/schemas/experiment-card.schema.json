@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/experiment-card.json",
+  "title": "Experiment card EBOOK-OS",
+  "description": "Separa hipótese, dado próprio e benchmark. Sem dado próprio, o resultado obrigatório é inconclusivo. Benchmark não declara vitória.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "produto",
+    "hipotese",
+    "dado_proprio",
+    "benchmark",
+    "metrica",
+    "baseline",
+    "janela",
+    "amostra_minima",
+    "variavel_unica",
+    "regra_decisao",
+    "resultado"
+  ],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versao"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 }
+      }
+    },
+    "hipotese": { "type": "string", "minLength": 16 },
+    "dado_proprio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["existe", "descricao", "origem"],
+      "properties": {
+        "existe": { "type": "boolean" },
+        "descricao": { "type": "string", "minLength": 8 },
+        "origem": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Caminho em dados/proprio/ ou a palavra ausente."
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usado", "descricao", "origem", "nao_e_resultado_proprio"],
+      "properties": {
+        "usado": { "type": "boolean" },
+        "descricao": { "type": "string", "minLength": 8 },
+        "origem": { "type": "string", "minLength": 3 },
+        "nao_e_resultado_proprio": {
+          "type": "boolean",
+          "const": true,
+          "description": "Sempre true. Benchmark dimensiona hipótese; nunca declara resultado."
+        }
+      }
+    },
+    "metrica": { "type": "string", "minLength": 4 },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "origem", "tipo"],
+      "properties": {
+        "valor": { "type": "string", "minLength": 1 },
+        "origem": { "type": "string", "minLength": 3 },
+        "tipo": {
+          "type": "string",
+          "enum": ["proprio", "benchmark", "ausente"]
+        }
+      }
+    },
+    "janela": { "type": "string", "minLength": 3 },
+    "amostra_minima": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "definida_antes_do_teste", "unidade"],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Definida antes de ver o resultado."
+        },
+        "definida_antes_do_teste": {
+          "type": "boolean",
+          "const": true
+        },
+        "unidade": { "type": "string", "minLength": 2 }
+      }
+    },
+    "variavel_unica": {
+      "type": "string",
+      "minLength": 4,
+      "description": "Uma variável por ciclo quando o objetivo é aprender causalmente."
+    },
+    "regra_decisao": { "type": "string", "minLength": 8 },
+    "resultado": {
+      "type": "string",
+      "enum": ["adotar", "rejeitar", "inconclusivo"]
+    }
+  }
+}

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const knownOperations = [
+  'CREATE_CAMPAIGN',
+  'MUTATE_CAMPAIGN',
   'SETUP_EXPERIMENT',
   'SCHEDULE_EXPERIMENT',
   'PROMOTE_EXPERIMENT',

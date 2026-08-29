@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/format-decision.json",
+  "title": "Decisão de formato EBOOK-OS",
+  "description": "Gate F0. Impede classificar curso ou aplicação como e-book quando o núcleo exige estado, tempo, resposta adaptativa ou persistência.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "produto",
+    "capacidades_nucleo",
+    "justificativa",
+    "sinais_observados",
+    "classificacao",
+    "fontes"
+  ],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versao"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capacidades_nucleo": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Marque true somente quando a capacidade for essencial ao núcleo do produto, não um extra opcional.",
+      "required": [
+        "login",
+        "progresso_persistente",
+        "notificacoes",
+        "liberacao_temporal",
+        "feedback_adaptativo",
+        "validacao_servidor",
+        "depende_online"
+      ],
+      "properties": {
+        "login": {
+          "type": "boolean",
+          "description": "O núcleo exige autenticação."
+        },
+        "progresso_persistente": {
+          "type": "boolean",
+          "description": "O sistema guarda progresso do usuário."
+        },
+        "notificacoes": {
+          "type": "boolean",
+          "description": "O núcleo depende de lembretes ou avisos do sistema."
+        },
+        "liberacao_temporal": {
+          "type": "boolean",
+          "description": "Conteúdo ou missão é liberado por dia, streak ou cadência."
+        },
+        "feedback_adaptativo": {
+          "type": "boolean",
+          "description": "A experiência muda conforme resposta, erro ou persistência."
+        },
+        "validacao_servidor": {
+          "type": "boolean",
+          "description": "A verificação da ação depende do servidor, não de autoavaliação."
+        },
+        "depende_online": {
+          "type": "boolean",
+          "description": "A experiência essencial não sobrevive offline."
+        }
+      }
+    },
+    "justificativa": {
+      "type": "string",
+      "minLength": 16
+    },
+    "sinais_observados": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 8 }
+    },
+    "classificacao": {
+      "type": "string",
+      "enum": [
+        "ebook",
+        "sprint_interativo",
+        "curso",
+        "aplicacao",
+        "inconclusivo"
+      ]
+    },
+    "fontes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["origem", "data", "limite"],
+        "properties": {
+          "origem": { "type": "string", "minLength": 4 },
+          "data": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "limite": { "type": "string", "minLength": 8 }
+        }
+      }
+    }
+  }
+}

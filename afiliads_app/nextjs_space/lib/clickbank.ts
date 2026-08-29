@@ -37,7 +37,7 @@ async function fetchTransactions(apiKey: string, startDate: string, endDate: str
   const all: CbTransaction[] = [];
   for (let page = 1; page <= 10; page++) {
     const res = await fetch(`${CB_API}/orders2/list?startDate=${startDate}&endDate=${endDate}`, {
-      headers: { Authorization: apiKey, Accept: 'application/json', Page: String(page) },
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', Page: String(page) },
     });
     if (res.status === 204) break;
     if (res.status === 403 || res.status === 401) throw new Error(`ClickBank rejeitou a API key (${res.status})`);
@@ -136,7 +136,7 @@ export async function syncClickbank(userId: string, days = 3): Promise<CbSyncRes
   }
 
   await prisma.integration.upsert({
-    where: { userId_serviceName_fieldName: { userId, serviceName: 'clickbank', fieldName: 'last_sync' } } as any,
+    where: { userId_serviceName_fieldName: { userId, serviceName: 'clickbank', fieldName: 'last_sync' } },
     update: { fieldValue: new Date().toISOString() },
     create: { userId, serviceName: 'clickbank', fieldName: 'last_sync', fieldValue: new Date().toISOString() },
   });

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/production-raci.json",
+  "title": "RACI de produção EBOOK-OS",
+  "description": "Toda atividade crítica tem responsável e aprovador humanos. Arquivos-fonte não podem ficar só com fornecedor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["produto", "atividades"],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versao"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 }
+      }
+    },
+    "atividades": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pesquisa",
+        "fatos",
+        "conteudo",
+        "revisao_tecnica",
+        "copy",
+        "design",
+        "qa",
+        "publicacao",
+        "suporte",
+        "reembolso",
+        "arquivos_fonte",
+        "atualizacao_descontinuacao"
+      ],
+      "properties": {
+        "pesquisa": { "$ref": "#/$defs/papel" },
+        "fatos": { "$ref": "#/$defs/papel" },
+        "conteudo": { "$ref": "#/$defs/papel" },
+        "revisao_tecnica": { "$ref": "#/$defs/papel" },
+        "copy": { "$ref": "#/$defs/papel" },
+        "design": { "$ref": "#/$defs/papel" },
+        "qa": { "$ref": "#/$defs/papel" },
+        "publicacao": { "$ref": "#/$defs/papel" },
+        "suporte": { "$ref": "#/$defs/papel" },
+        "reembolso": { "$ref": "#/$defs/papel" },
+        "arquivos_fonte": { "$ref": "#/$defs/papel" },
+        "atualizacao_descontinuacao": { "$ref": "#/$defs/papel" }
+      }
+    }
+  },
+  "$defs": {
+    "papel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["responsavel", "aprovador"],
+      "properties": {
+        "responsavel": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Quem executa. Não pode ser vazio nem um agente sem humano."
+        },
+        "aprovador": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Quem aceita. Deve ser distinto do executor quando a atividade for de risco."
+        },
+        "consultado": { "type": "string" },
+        "informado": { "type": "string" }
+      }
+    }
+  }
+}

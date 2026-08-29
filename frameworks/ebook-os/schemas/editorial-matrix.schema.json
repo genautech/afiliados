@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/editorial-matrix.json",
+  "title": "Matriz editorial EBOOK-OS",
+  "description": "Cada capítulo precisa mover o leitor por diagnóstico, decisão, ação e verificação. Capítulo sem ação observável ou critério de conclusão é bloqueante.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["capitulos"],
+  "properties": {
+    "capitulos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/capitulo" }
+    }
+  },
+  "$defs": {
+    "capitulo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "produto",
+        "versao",
+        "titulo",
+        "promessa_local",
+        "fonte",
+        "fonte_limite",
+        "conceito",
+        "exemplo",
+        "acao_observavel",
+        "artefato_acao",
+        "criterio_conclusao",
+        "erro_comum",
+        "recuperacao",
+        "dependencias",
+        "revisor_tecnico",
+        "status"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 2 },
+        "produto": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 },
+        "titulo": { "type": "string", "minLength": 4 },
+        "promessa_local": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que este capítulo entrega, sem inflar a promessa do produto."
+        },
+        "fonte": { "type": "string", "minLength": 4 },
+        "fonte_limite": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que a fonte do capítulo não prova."
+        },
+        "conceito": { "type": "string", "minLength": 8 },
+        "exemplo": { "type": "string", "minLength": 8 },
+        "acao_observavel": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que o leitor faz de forma verificável."
+        },
+        "artefato_acao": {
+          "type": "string",
+          "minLength": 4,
+          "description": "Checklist, planilha, roteiro ou diagnóstico preenchível."
+        },
+        "criterio_conclusao": {
+          "type": "string",
+          "minLength": 8,
+          "description": "Como o leitor sabe que o capítulo está feito."
+        },
+        "erro_comum": { "type": "string", "minLength": 8 },
+        "recuperacao": { "type": "string", "minLength": 8 },
+        "dependencias": {
+          "type": "string",
+          "minLength": 3,
+          "description": "IDs de capítulos anteriores ou a palavra nenhuma."
+        },
+        "revisor_tecnico": { "type": "string", "minLength": 3 },
+        "status": {
+          "type": "string",
+          "enum": ["rascunho", "revisao", "aprovado", "bloqueado"]
+        }
+      }
+    }
+  }
+}

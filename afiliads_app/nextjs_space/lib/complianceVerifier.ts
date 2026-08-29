@@ -1,5 +1,7 @@
 import { prisma } from './prisma';
 import type { Campaign, Keyword } from '@prisma/client';
+import { z } from 'zod';
+import { AnalyzedClaimItemSchema, type AnalyzedClaimItem } from './validations/market-research';
 import {
   ANTISTRIKE_ITEMS, BRIDGE_CHECKLIST, GOOGLE_ADS_CHECKLIST,
   TRACKING_CHECKLIST_MAXWEB, TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST,
@@ -295,4 +297,133 @@ export async function getChecklistLearningReferencia(
 
   const lines = rows.map((r) => `- [${r.itemKey}] Problema: ${r.problem} → Correção aplicada: ${r.correction}`);
   return `LIÇÕES APRENDIDAS (correções já aplicadas em campanhas anteriores desta vertical/canal — evite repetir os mesmos problemas de compliance/checklist):\n${lines.join('\n')}`;
+}
+
+// ---------------------------------------------------------------------------
+// Kill switch de compliance (Passo 4 — Pré-sell)
+// ---------------------------------------------------------------------------
+// O Ad Scout Oracle (Passo 2) coleta as claims reais que os concorrentes usam e o Compliance
+// Sentinel classifica cada uma em LOW/MEDIUM/HIGH. Claim HIGH é exatamente o tipo de frase que
+// derruba conta no Google Ads — e é também a frase mais tentadora pra IA "se inspirar" quando
+// recebe o dossiê de mercado no prompt. enforceCompliance() é a barreira final: roda no texto
+// JÁ GERADO e reprova se alguma claim HIGH (ou termo banido conhecido) sobreviveu, forçando
+// regeneração com a lista de proibições explícita.
+
+const CLAIM_MATCH_STOPWORDS = new Set([
+  'a', 'o', 'as', 'os', 'um', 'uma', 'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos',
+  'nas', 'por', 'para', 'pra', 'com', 'sem', 'que', 'e', 'ou', 'se', 'ao', 'aos', 'à', 'as',
+  'seu', 'sua', 'seus', 'suas', 'mais', 'menos', 'the', 'a', 'an', 'of', 'in', 'on', 'at',
+  'to', 'for', 'with', 'without', 'and', 'or', 'if', 'your', 'you', 'is', 'are', 'be', 'it',
+  'this', 'that', 'from', 'by', 'as', 'more', 'less',
+]);
+
+export interface ComplianceViolation {
+  claim: string;
+  sourceCompetitor: string;
+  justification: string;
+  // Trecho normalizado que casou — claim inteira quando a cópia foi literal, ou o n-grama
+  // quando a IA parafraseou só o começo/meio da frase.
+  matched: string;
+}
+
+export interface EnforceComplianceResult {
+  passed: boolean;
+  violations: ComplianceViolation[];
+  // Termo pego pelo checador genérico de claim banida (independe do dossiê de mercado).
+  bannedTerm: string | null;
+  // Texto pronto pra ser concatenado no prompt da regeneração.
+  guidance: string;
+}
+
+function normalizeForClaimMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// N-gramas de 4 palavras com pelo menos 2 termos de conteúdo — evita reprovar por coincidência
+// de conectivos ("para o seu corpo") mas ainda pega paráfrase parcial de claim de concorrente.
+function significantShingles(normalizedClaim: string): string[] {
+  const tokens = normalizedClaim.split(' ').filter(Boolean);
+  if (tokens.length < 4) return [];
+  const out: string[] = [];
+  for (let i = 0; i + 4 <= tokens.length; i++) {
+    const window = tokens.slice(i, i + 4);
+    const content = window.filter(t => t.length >= 4 && !CLAIM_MATCH_STOPWORDS.has(t));
+    if (content.length >= 2) out.push(window.join(' '));
+  }
+  return out;
+}
+
+// Pura de propósito (sem I/O): recebe o texto já gerado e as claims do dossiê e devolve o
+// veredito. Só claims HIGH bloqueiam — MEDIUM/LOW ficam a cargo do prompt e da revisão humana.
+export function enforceCompliance(generatedCopy: string, claims: AnalyzedClaimItem[]): EnforceComplianceResult {
+  const normalizedCopy = normalizeForClaimMatch(generatedCopy);
+  const violations: ComplianceViolation[] = [];
+
+  for (const item of claims) {
+    if (item.riskLevel !== 'HIGH') continue;
+    const normalizedClaim = normalizeForClaimMatch(item.claim);
+    if (!normalizedClaim) continue;
+
+    let matched: string | null = null;
+    if (normalizedCopy.includes(normalizedClaim)) {
+      matched = normalizedClaim;
+    } else {
+      matched = significantShingles(normalizedClaim).find(s => normalizedCopy.includes(s)) ?? null;
+    }
+    if (matched) {
+      violations.push({
+        claim: item.claim,
+        sourceCompetitor: item.sourceCompetitor,
+        justification: item.justification,
+        matched,
+      });
+    }
+  }
+
+  const bannedTerm = findBannedClaim(generatedCopy);
+  const passed = violations.length === 0 && !bannedTerm;
+
+  const guidanceLines: string[] = [];
+  if (violations.length > 0) {
+    guidanceLines.push(
+      'BLOQUEIO DE COMPLIANCE — a versão anterior reproduziu claims de risco ALTO mapeadas nos concorrentes. É PROIBIDO usar estas frases, suas traduções, sinônimos diretos ou paráfrases:',
+      ...violations.map(v => `- "${v.claim}" (fonte: ${v.sourceCompetitor}) — ${v.justification}`),
+    );
+  }
+  if (bannedTerm) {
+    guidanceLines.push(`BLOQUEIO DE COMPLIANCE — termo banido encontrado no texto gerado: "${bannedTerm}". Reescreva sem promessa de resultado, cura ou garantia.`);
+  }
+  if (guidanceLines.length > 0) {
+    guidanceLines.push('Reescreva usando exclusivamente linguagem condicional ("pode ajudar", "entenda como funciona", "resultados individuais variam") e mantenha o disclaimer obrigatório.');
+  }
+
+  return { passed, violations, bannedTerm, guidance: guidanceLines.join('\n') };
+}
+
+// Claims do dossiê de mercado (Ad Scout Oracle) associadas ao produto ou à campanha. Devolve
+// só o que passa no schema — Json solto no banco não é contrato.
+export async function getAnalyzedClaims(
+  userId: string,
+  scope: { productId?: string | null; campaignId?: string | null },
+): Promise<AnalyzedClaimItem[]> {
+  const or = [
+    ...(scope.productId ? [{ productId: scope.productId }] : []),
+    ...(scope.campaignId ? [{ campaignId: scope.campaignId }] : []),
+  ];
+  if (or.length === 0) return [];
+
+  const research = await prisma.marketResearch.findFirst({
+    where: { userId, OR: or },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!research) return [];
+
+  const parsed = z.array(AnalyzedClaimItemSchema).safeParse(research.analyzedClaims);
+  return parsed.success ? parsed.data : [];
 }

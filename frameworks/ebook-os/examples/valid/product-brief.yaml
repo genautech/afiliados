@@ -1,0 +1,60 @@
+produto:
+  id: lowticket-classificacao-formato
+  nome: "a marca · Classificar o formato antes de escrever"
+  versao: "0.1.0-fixture"
+
+publico: "Editores e operadores da fábrica de e-books da marca que recebem um pedido de produto e precisam decidir o formato antes de escrever."
+contexto: "A fábrica já misturou curso interativo, jornada de 30 dias e e-book low-ticket no mesmo pipeline."
+dor_urgente: "Começar a escrever ou desenhar antes de provar qual produto deve existir e em qual formato."
+comportamento_alvo: "Preencher product-brief, format-decision e claim-ledger e só então autorizar outline."
+
+transformacao:
+  estado_inicial: "Pedido vago entra direto em outline, copy e capa."
+  estado_final: "O produto tem classificação de formato, claims com origem e um responsável humano nomeado."
+  mecanismo: "Contratos do EBOOK-OS: brief, decisão de formato, ledger, matriz e RACI, validados por script."
+  primeira_vitoria: "Em uma sessão, classificar um pedido como ebook, sprint, curso, aplicação ou inconclusivo."
+  hipotese: "Para editores da fábrica da marca, o produto ajuda a recusar curso disfarçado de e-book por meio de um gate de capacidades, sem prometer demanda, venda ou escala."
+  limite: "Não promete receita, CPA, ROAS, número de alunos nem que o OPERADOR esteja completo."
+
+formato_pretendido: ebook
+
+restricoes:
+  - "Não inventar fatos, métricas, depoimentos ou número de alunos."
+  - "Não preencher as 29 missões faltantes do OPERADOR sem fonte."
+  - "Não executar campanha paga. campaign_guard.py OPERADOR retornou exit 2."
+
+nao_objetivos:
+  - "Não converter o OPERADOR em PDF."
+  - "Não escrever um e-book comercial novo neste fixture."
+  - "Não usar benchmark como resultado próprio."
+
+responsavel_humano:
+  nome: "Editor de produto da fábrica da marca"
+  papel: "Product Editor"
+
+fontes_autorizadas:
+  - id: F01
+    origem: "docs/exemplos/analise-estrategica-exemplo.md"
+    data: "2026-08-15"
+    tipo: documento
+    limite: "Consolida inspeção, áudios e documentos locais. Não prova vendas, retenção, satisfação nem eficácia do OPERADOR."
+  - id: F02
+    origem: "docs/exemplos/analise-ebook-exemplo.md"
+    data: "2026-08-15"
+    tipo: documento
+    limite: "O scrape e a classificação de e-book estão obsoletos como destino de produto. Serve como evidência histórica de que OPERADOR não é e-book."
+  - id: F03
+    origem: "operador-course/conteudo/matriz.md"
+    data: "2026-08-10"
+    tipo: documento
+    limite: "Mostra cobertura 1/30 da matriz gerada. Não autoriza inventar as 29 posições vazias."
+  - id: F04
+    origem: "frameworks/ebook-os/README.md"
+    data: "2026-08-15"
+    tipo: documento
+    limite: "Define a fábrica de e-books. Não cobre execução de campanha paga e não declara performance comercial."
+  - id: F05
+    origem: "frameworks/entregas/transcricoes-audios-criador/transcricoes.json"
+    data: "2026-08-15"
+    tipo: documento
+    limite: "Registra transcrição automática dos seis áudios. Não comprova vendas, demanda ou conversão; nomes próprios exigem confirmação humana."

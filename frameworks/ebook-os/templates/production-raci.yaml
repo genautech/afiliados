@@ -1,0 +1,49 @@
+# Template — RACI de produção e coprodução
+# Responsável executa. Aprovador aceita. Agente não aprova sozinho.
+
+produto:
+  id: "[preencher]"
+  versao: "0.1.0-rascunho"
+
+atividades:
+  pesquisa:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+    consultado: "Researcher / VOC"
+    informado: "Product Editor"
+  fatos:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+    consultado: "Fact Steward"
+    informado: "Copywriter"
+  conteudo:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  revisao_tecnica:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  copy:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  design:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  qa:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  publicacao:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  suporte:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  reembolso:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+  arquivos_fonte:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"
+    informado: "Operação / coprodução"
+  atualizacao_descontinuacao:
+    responsavel: "[preencher]"
+    aprovador: "[preencher]"

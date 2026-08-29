@@ -2,6 +2,37 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/admin';
+import { User, UsagePayment, AgentRun } from '@prisma/client';
+
+// Define tipos para os resultados agregados do Prisma, que são parciais e não o tipo completo do modelo
+type AgentRunGroupByResult = {
+  userId: string;
+  keySource: 'platform' | 'byok';
+  _count: { _all: number };
+  _sum: { totalTokens: number | null; costUsd: number | null };
+};
+
+type UsagePaymentSelectResult = Pick<UsagePayment, 'userId' | 'amountUsd' | 'status' | 'paidAt' | 'notes'>;
+
+type UserSelectResult = Pick<User, 'id' | 'name' | 'email' | 'isActive'>;
+
+type UsageBucket = {
+  runs: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+type UserUsageMapEntry = {
+  platform: UsageBucket;
+  byok: UsageBucket;
+};
+
+type RowItem = {
+  user: UserSelectResult;
+  platform: UsageBucket;
+  byok: UsageBucket;
+  payment: UsagePaymentSelectResult | null;
+};
 
 function parsePeriod(period: string | null): { period: string; start: Date; end: Date } | null {
   const now = new Date();
@@ -32,17 +63,17 @@ export async function GET(request: NextRequest) {
       _sum: { totalTokens: true, costUsd: true },
     });
 
-    const users = await prisma.user.findMany({
+    const users: UserSelectResult[] = await prisma.user.findMany({
       select: { id: true, name: true, email: true, isActive: true },
       orderBy: { createdAt: 'asc' },
     });
-    const payments = await prisma.usagePayment.findMany({
+    const payments: UsagePaymentSelectResult[] = await prisma.usagePayment.findMany({
       where: { period },
       select: { userId: true, amountUsd: true, status: true, paidAt: true, notes: true },
     });
-    const paymentMap = new Map(payments.map((p) => [p.userId, p]));
+    const paymentMap = new Map<string, UsagePaymentSelectResult>(payments.map((p) => [p.userId, p]));
 
-    const byUser = new Map<string, { platform: { runs: number; totalTokens: number; costUsd: number }; byok: { runs: number; totalTokens: number; costUsd: number } }>();
+    const byUser = new Map<string, UserUsageMapEntry>();
     for (const g of grouped) {
       const entry = byUser.get(g.userId) ?? {
         platform: { runs: 0, totalTokens: 0, costUsd: 0 },
@@ -55,7 +86,7 @@ export async function GET(request: NextRequest) {
       byUser.set(g.userId, entry);
     }
 
-    const rows = users.map((u) => {
+    const rows: RowItem[] = users.map((u: UserSelectResult) => {
       const usage = byUser.get(u.id) ?? {
         platform: { runs: 0, totalTokens: 0, costUsd: 0 },
         byok: { runs: 0, totalTokens: 0, costUsd: 0 },
@@ -69,7 +100,7 @@ export async function GET(request: NextRequest) {
     });
 
     const totals = rows.reduce(
-      (acc, r) => ({
+      (acc: { platformCostUsd: number; byokCostUsd: number; runs: number }, r: RowItem) => ({
         platformCostUsd: acc.platformCostUsd + r.platform.costUsd,
         byokCostUsd: acc.byokCostUsd + r.byok.costUsd,
         runs: acc.runs + r.platform.runs + r.byok.runs,
@@ -78,23 +109,21 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({ period, rows, totals });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('GET admin/agent-costs error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
 
-// Gera ou atualiza a cobrança do período de um usuário.
-// action: 'generate' (cria/atualiza com o custo plataforma do período) | 'mark_paid' | 'mark_pending'
 export async function POST(request: NextRequest) {
   try {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Acesso restrito ao admin' }, { status: 403 });
 
-    const body = await request.json();
-    const { userId, action, notes } = body ?? {};
+    const body: { userId?: string; action?: 'generate' | 'mark_paid' | 'mark_pending'; notes?: string; period?: string } = await request.json();
+    const { userId, action, notes } = body;
     const parsed = parsePeriod(body?.period ?? null);
-    if (!userId || !parsed || !['generate', 'mark_paid', 'mark_pending'].includes(action)) {
+    if (!userId || !parsed || !['generate', 'mark_paid', 'mark_pending'].includes(action as string)) {
       return NextResponse.json({ error: 'userId, period (YYYY-MM) e action válidos são obrigatórios' }, { status: 400 });
     }
     const { period, start, end } = parsed;
@@ -121,7 +150,7 @@ export async function POST(request: NextRequest) {
       data: { status: isPaid ? 'PAGO' : 'PENDENTE', paidAt: isPaid ? new Date() : null, notes: notes ?? undefined },
     });
     return NextResponse.json(payment);
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('POST admin/agent-costs error:', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }

@@ -1,0 +1,34 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+modelo: proprio
+geografia: "BR — pendente de decisão jurídica"
+
+comissao:
+  valor: PENDENTE
+  base_calculo: "percentual sobre líquido — PENDENTE"
+
+hop: PENDENTE-humano
+utm_padrao: "utm_source=afiliado&utm_medium=proprio&utm_campaign=lowticket-classificacao-formato"
+postback: PENDENTE
+
+canais_permitidos:
+  - organico
+  - email
+canais_proibidos:
+  - brand-bidding
+  - trafego-pago-sem-gate
+
+brand_bidding: proibido
+disclaimer: "Programa próprio de produto próprio da marca. Sem conta publicada."
+kit_minimo:
+  - angulo
+  - headlines
+  - objecoes
+  - disclaimer
+gates_humanos:
+  - conta
+  - contrato
+  - checkout
+  - publicacao

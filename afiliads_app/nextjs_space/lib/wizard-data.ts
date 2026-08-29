@@ -1,4 +1,6 @@
 export const PLATFORMS = ['ClickBank', 'BuyGoods', 'MaxWeb', 'Hotmart', 'Eduzz', 'Monetizze'] as const;
+export const PLATFORMS_EXTENDED = [...PLATFORMS, 'Digistore24', 'Outro'] as const;
+export type ExtendedPlatform = (typeof PLATFORMS_EXTENDED)[number];
 export const VERTICALS = ['Weight Loss', 'Nutra', 'Make Money', 'Relationships', 'Health', 'Beauty', 'Cursos BR', 'Outro'] as const;
 export const CHANNELS = ['SEARCH', 'YOUTUBE', 'DEMAND_GEN', 'PMAX'] as const;
 export const GEOS = ['US', 'UK', 'AU', 'CA', 'BR', 'DE', 'FR', 'ES', 'IT', 'MX', 'GLOBAL'] as const;

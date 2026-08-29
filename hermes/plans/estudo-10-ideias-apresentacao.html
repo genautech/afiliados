@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROSPERA · 10 Oportunidades Low-Ticket no Brasil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B1220; --card:#121C2E; --card2:#16233A; --line:#22334F;
+  --cyan:#00D5FF; --green:#3DDC84; --amber:#FFC24B; --red:#FF6B6B;
+  --text:#E7EEF9; --muted:#93A5C1;
+  --seg-fin:#00D5FF; --seg-sau:#3DDC84; --seg-mkt:#FFC24B;
+  --seg-eme:#B39DFF; --seg-gas:#FF9F6B; --seg-pro:#93A5C1;
+  --pad-y:clamp(24px,3.4vh,48px); --pad-x:clamp(28px,4.6vw,88px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.5;overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- deck ---------- */
+.deck{position:relative;width:100%;height:100vh}
+.slide{
+  position:absolute;inset:0;
+  padding:var(--pad-y) var(--pad-x) calc(var(--pad-y) + 46px);
+  display:flex;flex-direction:column;
+  opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .32s ease;
+  overflow:hidden;
+}
+.slide.active{opacity:1;visibility:visible;pointer-events:auto}
+
+/* ---------- tipografia ---------- */
+.eyebrow{color:var(--cyan);font-size:clamp(10.5px,.78vw,13px);letter-spacing:.2em;text-transform:uppercase;font-weight:700}
+h1{font-size:clamp(34px,4.4vw,62px);line-height:1.05;font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(21px,2.15vw,34px);font-weight:800;line-height:1.12;letter-spacing:-.01em;display:flex;align-items:center;gap:12px}
+h2::before{content:"";width:26px;height:3px;background:var(--cyan);border-radius:2px;flex:none}
+.sub{color:var(--muted);font-size:clamp(13px,1.05vw,17px);margin-top:10px;max-width:78ch}
+.slide-head{flex:none;margin-bottom:clamp(14px,2vh,26px)}
+.slide-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:clamp(10px,1.6vh,18px)}
+.note{color:var(--muted);font-size:clamp(10.5px,.8vw,12.5px);line-height:1.45}
+.note b{color:var(--text);font-weight:600}
+strong,b{font-weight:700}
+
+/* ---------- componentes ---------- */
+.badge{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-size:clamp(11px,.85vw,13.5px);color:var(--muted)}
+.badge b{color:var(--text)}
+.badge.cy{border-color:rgba(0,213,255,.45);background:rgba(0,213,255,.08);color:var(--cyan)}
+.badge.cy b{color:var(--cyan)}
+.badges{display:flex;flex-wrap:wrap;gap:10px}
+
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:clamp(10px,1vw,16px)}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(14px,1.7vh,24px);display:flex;flex-direction:column;justify-content:center}
+.kpi .v{font-size:clamp(24px,2.6vw,40px);font-weight:800;color:var(--cyan);line-height:1.05;letter-spacing:-.02em}
+.kpi .l{color:var(--muted);font-size:clamp(11px,.82vw,13.5px);margin-top:8px;line-height:1.35}
+
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:clamp(11.5px,.92vw,14.5px)}
+th{background:var(--card2);color:var(--muted);text-transform:uppercase;font-size:clamp(9.5px,.68vw,11.5px);letter-spacing:.1em;text-align:left;padding:clamp(8px,1.1vh,13px) 14px;border-bottom:1px solid var(--line);font-weight:700}
+td{padding:clamp(6px,.95vh,12px) 14px;border-bottom:1px solid rgba(34,51,79,.55);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+td.right,th.right{text-align:right}
+.hi{color:var(--green);font-weight:700}
+.dim{color:var(--muted)}
+tr.out td{opacity:.55}
+tr.mark td{background:rgba(0,213,255,.07)}
+tr.mark td:first-child{box-shadow:inset 3px 0 0 var(--cyan)}
+
+.tag{display:inline-block;font-size:clamp(9.5px,.7vw,11.5px);padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.low{border-color:rgba(61,220,132,.4);color:var(--green);background:rgba(61,220,132,.09)}
+.tag.mid{border-color:rgba(255,194,75,.4);color:var(--amber);background:rgba(255,194,75,.09)}
+.tag.high{border-color:rgba(255,107,107,.4);color:var(--red);background:rgba(255,107,107,.09)}
+.tag.cy{border-color:rgba(0,213,255,.4);color:var(--cyan);background:rgba(0,213,255,.09)}
+
+.cols{display:grid;gap:clamp(10px,1.1vw,18px)}
+.c2{grid-template-columns:repeat(2,1fr)}
+.c3{grid-template-columns:repeat(3,1fr)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(14px,1.9vh,26px);min-height:0;display:flex;flex-direction:column}
+.panel h3{font-size:clamp(11px,.82vw,13px);color:var(--cyan);letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:12px}
+.panel ul{list-style:none}
+.panel li{padding:clamp(4px,.7vh,8px) 0 clamp(4px,.7vh,8px) 20px;position:relative;color:var(--muted);font-size:clamp(11.5px,.9vw,14.5px);line-height:1.45}
+.panel li::before{content:"→";position:absolute;left:0;color:var(--cyan)}
+.panel li b{color:var(--text)}
+
+/* ficha de ideia */
+.ficha{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(14px,1.9vh,24px);display:flex;flex-direction:column;gap:clamp(7px,1vh,12px);min-height:0;position:relative;overflow:hidden}
+.ficha::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc,var(--cyan))}
+.ficha .fh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ficha .fn{font-size:clamp(10px,.72vw,12px);color:var(--muted);letter-spacing:.14em;font-weight:700}
+.ficha h4{font-size:clamp(17px,1.55vw,25px);font-weight:800;letter-spacing:-.01em;line-height:1.1}
+.ficha .concept{color:var(--muted);font-size:clamp(11.5px,.88vw,14px);font-style:italic;line-height:1.4}
+.ficha dl{display:grid;grid-template-columns:auto 1fr;gap:clamp(4px,.6vh,8px) 14px;font-size:clamp(11px,.86vw,13.5px)}
+.ficha dt{color:var(--muted);white-space:nowrap;font-size:clamp(9.5px,.7vw,11.5px);text-transform:uppercase;letter-spacing:.09em;font-weight:700;padding-top:2px}
+.ficha dd{color:var(--text);line-height:1.4}
+.ficha .roi{font-size:clamp(21px,2vw,32px);font-weight:800;color:var(--green);line-height:1;font-variant-numeric:tabular-nums}
+.ficha .roi small{font-size:clamp(10px,.72vw,12px);color:var(--muted);font-weight:600;display:block;margin-top:3px;letter-spacing:.08em;text-transform:uppercase}
+.ficha .foot{margin-top:auto;padding-top:10px;border-top:1px solid rgba(34,51,79,.7);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* barras */
+.barrow{display:grid;grid-template-columns:26px 1.15fr 150px 1fr;gap:clamp(10px,1vw,18px);align-items:center;padding:clamp(7px,1.15vh,14px) 0;border-bottom:1px solid rgba(34,51,79,.55)}
+.barrow:last-child{border-bottom:none}
+.barrow .rk{font-size:clamp(15px,1.35vw,22px);font-weight:800;color:var(--cyan);font-variant-numeric:tabular-nums}
+.barrow .nm{font-weight:700;font-size:clamp(12.5px,1.02vw,17px)}
+.barrow .nm span{display:block;color:var(--muted);font-weight:400;font-size:clamp(10.5px,.78vw,12.5px);margin-top:2px}
+.bar{height:9px;background:rgba(34,51,79,.6);border-radius:999px;overflow:hidden;position:relative}
+.bar i{display:block;height:100%;background:var(--cyan);border-radius:999px}
+.barrow .lv{font-size:clamp(9.5px,.72vw,11.5px);color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-top:6px;font-weight:700}
+.barrow .px{font-size:clamp(11.5px,.9vw,14.5px);color:var(--muted);font-variant-numeric:tabular-nums}
+.barrow .px b{color:var(--text);display:block;font-size:clamp(12px,.95vw,15px);margin-bottom:3px}
+
+/* funil */
+.funnel{display:flex;flex-direction:column;gap:clamp(6px,.9vh,11px);align-items:center}
+.fstep{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:clamp(9px,1.25vh,16px) clamp(16px,1.7vw,28px);display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;position:relative}
+.fstep .fs-t{font-weight:700;font-size:clamp(12.5px,1vw,16px)}
+.fstep .fs-d{color:var(--muted);font-size:clamp(10.5px,.8vw,13px);margin-top:2px}
+.fstep .fs-v{font-variant-numeric:tabular-nums;font-weight:800;color:var(--cyan);font-size:clamp(13px,1.15vw,19px);white-space:nowrap}
+.fstep.s2{width:92%} .fstep.s3{width:84%} .fstep.s4{width:76%} .fstep.s5{width:68%}
+.fstep .arrow{position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);color:var(--line);font-size:14px;z-index:1}
+
+/* scatter */
+.chart{flex:1;min-height:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(10px,1.5vh,20px);display:flex;flex-direction:column}
+.chart svg{flex:1;min-height:0;width:100%;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:clamp(10px,1.3vw,22px);justify-content:center;padding-top:10px;border-top:1px solid rgba(34,51,79,.7);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:7px;font-size:clamp(10px,.78vw,12.5px);color:var(--muted)}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+/* capa */
+.cover{justify-content:center}
+.cover .rule{width:64px;height:4px;background:var(--cyan);border-radius:2px;margin:26px 0}
+.cover-meta{display:flex;gap:clamp(24px,3vw,56px);flex-wrap:wrap;margin-top:clamp(28px,4vh,52px);padding-top:clamp(18px,2.4vh,30px);border-top:1px solid var(--line)}
+.cover-meta div .k{color:var(--muted);font-size:clamp(9.5px,.7vw,11.5px);text-transform:uppercase;letter-spacing:.14em;font-weight:700}
+.cover-meta div .v{font-size:clamp(13px,1.05vw,17px);font-weight:700;margin-top:5px}
+
+/* ranking final */
+.podium{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(10px,1.1vw,18px)}
+.pod{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(14px,1.9vh,24px);display:flex;flex-direction:column;gap:9px;position:relative;overflow:hidden}
+.pod.first{border-color:rgba(0,213,255,.5);background:linear-gradient(180deg,rgba(0,213,255,.07),var(--card) 70%)}
+.pod .pos{font-size:clamp(10px,.72vw,12px);letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);font-weight:800}
+.pod h4{font-size:clamp(16px,1.45vw,24px);font-weight:800;line-height:1.1}
+.pod .why{color:var(--muted);font-size:clamp(11px,.86vw,13.5px);line-height:1.45;flex:1}
+.pod .mt{display:flex;gap:16px;padding-top:10px;border-top:1px solid rgba(34,51,79,.7)}
+.pod .mt div .k{font-size:clamp(9px,.66vw,10.5px);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+.pod .mt div .v{font-size:clamp(14px,1.2vw,19px);font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;margin-top:2px}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(10px,1.1vw,16px)}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(12px,1.6vh,20px)}
+.step .n{width:26px;height:26px;border-radius:8px;background:rgba(0,213,255,.12);border:1px solid rgba(0,213,255,.4);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;margin-bottom:10px}
+.step .t{font-weight:700;font-size:clamp(12px,.95vw,15px);margin-bottom:5px}
+.step .d{color:var(--muted);font-size:clamp(10.5px,.82vw,13px);line-height:1.4}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 var(--pad-x);background:linear-gradient(180deg,rgba(11,18,32,0),rgba(11,18,32,.96) 45%);z-index:50}
+.nav .brand{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.nav .ctrl{display:flex;align-items:center;gap:10px}
+.nav button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color .18s,color .18s,background .18s;font-family:inherit}
+.nav button:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+.nav button:disabled{opacity:.3;cursor:default}
+.nav .count{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:58px;text-align:center;letter-spacing:.06em}
+.nav .count b{color:var(--text);font-weight:700}
+.progress{position:fixed;top:0;left:0;height:2px;background:var(--cyan);z-index:60;transition:width .32s ease;width:0}
+
+    .ltr{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:rgba(0,213,255,.05)}
+    .ltr h4{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan);margin-bottom:8px}
+    .ltr .dor{font-size:13.5px;color:var(--text);font-style:italic;margin-bottom:8px}
+    .ltr .meta{display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+    .ltr .pill{border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted)}
+    .ltr .pill b{color:var(--text)}
+    .scorebar{display:flex;gap:6px;align-items:center;margin-top:8px}
+    .scorebar span{font-size:11px;color:var(--muted);min-width:86px}
+    .bar{flex:1;height:6px;background:#1a2740;border-radius:3px;overflow:hidden;max-width:140px}
+    .bar i{display:block;height:100%;background:var(--cyan);border-radius:3px}
+  </style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="deck" id="deck">
+
+<!-- ============ 1 · CAPA ============ -->
+<section class="slide cover active">
+  <div class="eyebrow">PROSPERA · Estúdio de Infoprodutos</div>
+  <div class="rule"></div>
+  <h1>10 Oportunidades<br>Low-Ticket no Brasil</h1>
+  <p class="sub" style="font-size:clamp(15px,1.25vw,21px);margin-top:20px">Estudo de mercado completo · Hotmart + fontes agregadoras · coleta 2026-08</p>
+  <div class="badges" style="margin-top:26px">
+    <span class="badge cy">Pesquisa Firecrawl validada</span>
+    <span class="badge">Segmentos analisados: <b>7</b></span>
+    <span class="badge">Ideias fichadas: <b>10</b></span>
+    <span class="badge">Priorizadas para Onda 1: <b>3</b></span>
+  </div>
+  <div class="cover-meta">
+    <div><div class="k">Escopo</div><div class="v">E-books R$27–67 + esteira</div></div>
+    <div><div class="k">Fontes</div><div class="v">Hotmart · Accio · Loja Integrada · RF Digital · FGV</div></div>
+    <div><div class="k">Método</div><div class="v">Firecrawl CLI + busca multi-fonte</div></div>
+    <div><div class="k">Natureza dos números</div><div class="v">Benchmark de mercado + projeção</div></div>
+  </div>
+</section>
+
+<!-- ============ 2 · MERCADO ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>O mercado brasileiro de infoprodutos</h2>
+    <p class="sub">Um mercado maduro, em expansão de dois dígitos, com barreira de entrada quase nula para produto digital de ticket baixo.</p>
+  </div>
+  <div class="slide-body">
+    <div class="kpis">
+      <div class="kpi"><div class="v">R$ 30 bi</div><div class="l">faturamento acumulado na Hotmart desde 2011 (FGV / Hotmart)</div></div>
+      <div class="kpi"><div class="v">380 mil+</div><div class="l">produtos digitais ativos na plataforma (Hotmart 2026)</div></div>
+      <div class="kpi"><div class="v">389 mil</div><div class="l">empregos diretos e indiretos da creator economy (FGV)</div></div>
+      <div class="kpi"><div class="v">+30% a.a.</div><div class="l">crescimento anual do setor (Hotmart 2026)</div></div>
+      <div class="kpi"><div class="v">163 mi</div><div class="l">brasileiros conectados — 88% da população (TIC Domicílios 2025)</div></div>
+    </div>
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="panel">
+        <h3>Contexto de demanda</h3>
+        <ul>
+          <li><b>US$ 279 bi</b> — mercado global de e-learning projetado até 2029, crescendo <b>9,1% a.a.</b> (Mordor Intelligence)</li>
+          <li>Profissionais digitais registram faturamento <b>154% maior</b> que a média da carreira corporativa equivalente (FGV)</li>
+          <li>Ticket low-ticket (<b>R$27–97</b>) é a faixa confirmada como campeã de volume em 4+ fontes independentes</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Taxas de plataforma — impacto direto na margem</h3>
+        <table style="margin-top:2px">
+          <thead><tr><th>Plataforma</th><th class="right">Taxa por venda</th><th class="right">Custo em R$47</th></tr></thead>
+          <tbody>
+            <tr><td>Eduzz (venda direta)</td><td class="num right">4,9% + R$ 2,49</td><td class="num right hi">R$ 4,79</td></tr>
+            <tr><td>Kiwify</td><td class="num right">8,99% + R$ 2,49</td><td class="num right">R$ 6,72</td></tr>
+            <tr><td>Hotmart</td><td class="num right">9,9% + R$ 1,00</td><td class="num right">R$ 5,65</td></tr>
+          </tbody>
+        </table>
+        <p class="note" style="margin-top:10px">Custo em R$47 calculado a partir das taxas publicadas — o modelo das projeções deste estudo assume ~10% (padrão Hotmart), o cenário mais conservador entre os três.</p>
+      </div>
+    </div>
+    <p class="note">Benchmark de mercado a partir de fontes públicas. Nenhum número desta página é resultado próprio da fábrica.</p>
+  </div>
+</section>
+
+<!-- ============ 3 · TOP 5 SEGMENTOS ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Top 5 segmentos por volume de vendas</h2>
+    <p class="sub">Ranking consistente em 4+ fontes agregadoras independentes — tratável como benchmark de mercado, não como dado de venda.</p>
+  </div>
+  <div class="slide-body">
+    <div class="panel" style="flex:1;min-height:0;justify-content:center">
+      <div class="barrow">
+        <div class="rk">1</div>
+        <div class="nm">Finanças e Negócios<span>Renda extra · investimentos iniciantes · MEI · IA para negócios</span></div>
+        <div><div class="bar"><i style="width:100%"></i></div><div class="lv">Volume muito alto</div></div>
+        <div class="px"><b>R$ 27–97</b>2 ideias no estudo</div>
+      </div>
+      <div class="barrow">
+        <div class="rk">2</div>
+        <div class="nm">Saúde e Bem-estar<span>Low-carb/keto/jejum · treinos em casa · saúde mental · pós-parto</span></div>
+        <div><div class="bar"><i style="width:100%"></i></div><div class="lv">Volume muito alto</div></div>
+        <div class="px"><b>R$ 29–97</b>2 ideias no estudo</div>
+      </div>
+      <div class="barrow">
+        <div class="rk">3</div>
+        <div class="nm">Desenvolvimento Pessoal<span>Produtividade · oratória · inteligência emocional · freelancers</span></div>
+        <div><div class="bar"><i style="width:70%"></i></div><div class="lv">Volume alto</div></div>
+        <div class="px"><b>R$ 47–147</b>1 ideia no estudo</div>
+      </div>
+      <div class="barrow">
+        <div class="rk">4</div>
+        <div class="nm">Marketing e Vendas<span>Tráfego pago · copywriting · SEO local · conteúdo viral</span></div>
+        <div><div class="bar"><i style="width:70%"></i></div><div class="lv">Volume alto</div></div>
+        <div class="px"><b>R$ 29–97</b>2 ideias no estudo</div>
+      </div>
+      <div class="barrow">
+        <div class="rk">5</div>
+        <div class="nm">Gastronomia<span>Doces para vender · receitas fit · panificação artesanal</span></div>
+        <div><div class="bar"><i style="width:45%"></i></div><div class="lv">Volume médio-alto</div></div>
+        <div class="px"><b>R$ 37–67</b>1 ideia no estudo</div>
+      </div>
+    </div>
+    <div class="cols c2">
+      <div class="panel" style="padding:clamp(12px,1.5vh,18px)">
+        <h3>Emergentes fora do Top 5</h3>
+        <p class="note" style="font-size:clamp(11px,.86vw,13.5px)"><b>Tecnologia / IA</b> (prompt engineering) e <b>Relacionamentos</b> (casais em crise) têm volume total menor, mas alta conversão e pouca concorrência direta — de onde saíram as duas maiores margens do portfólio.</p>
+      </div>
+      <div class="panel" style="padding:clamp(12px,1.5vh,18px)">
+        <h3>Leitura estratégica</h3>
+        <p class="note" style="font-size:clamp(11px,.86vw,13.5px)">Volume alto significa demanda garantida <b>e</b> concorrência alta. O estudo não escolhe segmento pelo topo do ranking: escolhe <b>recorte de subnicho</b> dentro dele — é lá que a margem sobrevive.</p>
+      </div>
+    </div>
+    <p class="note">Barras representam o nível qualitativo de volume declarado pelas fontes (muito alto / alto / médio-alto), não uma medição numérica de buscas.</p>
+  </div>
+</section>
+
+<!-- ============ 4 · METODOLOGIA ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Como este estudo foi feito</h2>
+    <p class="sub">A metodologia está aqui porque a credibilidade do número depende de saber de onde ele veio — e o que ele não é.</p>
+  </div>
+  <div class="slide-body">
+    <div class="cols c3" style="flex:1;min-height:0">
+      <div class="panel">
+        <h3>1 · Coleta</h3>
+        <ul>
+          <li><b>Firecrawl CLI</b> — scrape e busca multi-nicho em fontes agregadoras</li>
+          <li>Fontes cruzadas: <b>Hotmart Blog, Accio, Loja Integrada, RF Digital</b></li>
+          <li>Macro do setor: <b>FGV</b>, <b>TIC Domicílios 2025</b>, <b>Mordor Intelligence</b></li>
+          <li>Coleta em <b>2026-08-26</b>; período dos dados: 2025–2026</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>2 · Registro de origem</h3>
+        <ul>
+          <li>Cada bloco de dado tem arquivo de origem com <b>URL, método, data e moeda</b></li>
+          <li>Registro em <b>dados/mercado/hotmart-nichos-top5.origem.yaml</b></li>
+          <li>Dado de marketplace fica na gaveta <b>dados/mercado/</b> — proibido usar como resultado próprio</li>
+          <li>Rankings de nicho só entraram por serem consistentes em <b>4+ fontes</b></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>3 · Premissas da projeção</h3>
+        <ul>
+          <li>Conversão do order bump: <b>25–35%</b></li>
+          <li>Conversão do upsell imediato: <b>8–12%</b></li>
+          <li>CPC médio Meta/Google Brasil: <b>R$ 0,40–0,70</b></li>
+          <li>Conversão da landing page: <b>1–3%</b></li>
+          <li>Taxa de plataforma assumida: <b>~10%</b></li>
+          <li>Margem líquida após taxas e ads: <b>60–75%</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="panel" style="border-color:rgba(255,194,75,.35);background:rgba(255,194,75,.05)">
+      <h3 style="color:var(--amber)">O que este estudo não é</h3>
+      <p class="note" style="font-size:clamp(11.5px,.88vw,14px);line-height:1.55">Os volumes de venda em milhões de unidades que aparecem em agregadores como o Accio misturam dados de marketplaces estrangeiros e <b>não são vendas reais da Hotmart Brasil</b> — foram usados apenas como indicador de tendência e nunca como base das projeções. Toda projeção financeira deste deck é <b>hipótese dimensionada por benchmark</b>: nenhum número vira resultado antes da primeira campanha rodar.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 · PANORAMA DAS 10 ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Panorama das 10 ideias</h2>
+    <p class="sub">Ordenado por ROI projetado. Faturamento estimado = entrada + bump + upsell sobre o volume de vendas modelado.</p>
+  </div>
+  <div class="slide-body">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px">#</th><th>Produto</th><th>Segmento</th>
+          <th class="right">Entrada / Bump / Upsell</th>
+          <th class="right">Vendas est.</th><th class="right">Faturamento est.</th>
+          <th class="right">Ads est.</th><th class="right">ROI proj.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="mark"><td class="dim">07</td><td><b>Mestres do Prompt</b></td><td class="dim">Tecnologia / IA</td><td class="num right">R$ 67 / 37 / 247</td><td class="num right">800</td><td class="num right">R$ 73.120</td><td class="num right dim">R$ 20.000</td><td class="num right hi">266%</td></tr>
+        <tr><td class="dim">10</td><td><b>Recomeço a Dois</b></td><td class="dim">Relacionamentos</td><td class="num right">R$ 57 / 29 / 297</td><td class="num right">900</td><td class="num right">R$ 76.230</td><td class="num right dim">R$ 22.000</td><td class="num right hi">246%</td></tr>
+        <tr><td class="dim">05</td><td><b>Investidor Iniciante</b></td><td class="dim">Finanças</td><td class="num right">R$ 57 / 27 / 197</td><td class="num right">900</td><td class="num right">R$ 75.330</td><td class="num right dim">R$ 22.000</td><td class="num right hi">242%</td></tr>
+        <tr class="mark"><td class="dim">09</td><td><b>Doce Lucro Fit</b></td><td class="dim">Gastronomia</td><td class="num right">R$ 47 / 24 / 167</td><td class="num right">1.000</td><td class="num right">R$ 76.500</td><td class="num right dim">R$ 25.000</td><td class="num right hi">206%</td></tr>
+        <tr class="mark"><td class="dim">01</td><td><b>IA Lucrativa</b></td><td class="dim">Finanças / IA</td><td class="num right">R$ 47 / 27 / 197</td><td class="num right">1.000</td><td class="num right">R$ 74.800</td><td class="num right dim">R$ 25.000</td><td class="num right">199%</td></tr>
+        <tr><td class="dim">03</td><td><b>Fábrica de Viral</b></td><td class="dim">Marketing</td><td class="num right">R$ 47 / 27 / 197</td><td class="num right">1.000</td><td class="num right">R$ 74.800</td><td class="num right dim">R$ 25.000</td><td class="num right">199%</td></tr>
+        <tr><td class="dim">06</td><td><b>Renove-se aos 40+</b></td><td class="dim">Saúde</td><td class="num right">R$ 47 / 22 / 177</td><td class="num right">1.100</td><td class="num right">R$ 75.140</td><td class="num right dim">R$ 26.000</td><td class="num right">189%</td></tr>
+        <tr><td class="dim">08</td><td><b>Visibilidade Local</b></td><td class="dim">Marketing local</td><td class="num right">R$ 37 / 19 / 147</td><td class="num right">1.200</td><td class="num right">R$ 70.440</td><td class="num right dim">R$ 28.000</td><td class="num right">152%</td></tr>
+        <tr><td class="dim">02</td><td><b>Mãe em Forma</b></td><td class="dim">Saúde / maternidade</td><td class="num right">R$ 37 / 17 / 147</td><td class="num right">1.200</td><td class="num right">R$ 70.380</td><td class="num right dim">R$ 28.000</td><td class="num right">151%</td></tr>
+        <tr class="out"><td class="dim">04</td><td><b>Fluxo Imparável</b></td><td class="dim">Desenvolvimento pessoal</td><td class="num right">R$ 27 / 12 / 97</td><td class="num right">1.800</td><td class="num right">R$ 55.440</td><td class="num right dim">R$ 30.000</td><td class="num right">85%</td></tr>
+      </tbody>
+    </table>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <span class="tag cy">Linhas destacadas = Onda 1 sugerida</span>
+      <span class="tag">Linha esmaecida = descartada na v1</span>
+      <p class="note" style="flex:1;min-width:260px">Projeções são hipóteses dimensionadas por benchmark, não resultados. O maior faturamento estimado (Doce Lucro Fit) não é o maior ROI — o custo de aquisição é que decide.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 · MATRIZ RISCO × RETORNO ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Matriz risco × retorno</h2>
+    <p class="sub">Eixo horizontal: risco de compliance e de bloqueio em anúncios. Eixo vertical: ROI projetado. O quadrante destacado é onde a fábrica deve começar.</p>
+  </div>
+  <div class="slide-body">
+    <div class="chart">
+      <svg viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Dispersão de risco por ROI das 10 ideias">
+        <!-- quadrante destaque -->
+        <rect x="90" y="30" width="290" height="140" fill="#00D5FF" opacity="0.07" rx="10"/>
+        <text x="100" y="52" fill="#00D5FF" font-size="13" font-weight="700" letter-spacing="1.4">ALTO ROI · BAIXO RISCO</text>
+        <!-- grid -->
+        <line x1="90" y1="450" x2="960" y2="450" stroke="#22334F" stroke-width="1.5"/>
+        <line x1="90" y1="450" x2="90" y2="30" stroke="#22334F" stroke-width="1.5"/>
+        <line x1="90" y1="310" x2="960" y2="310" stroke="#22334F" stroke-width="1" stroke-dasharray="4 6"/>
+        <line x1="90" y1="170" x2="960" y2="170" stroke="#22334F" stroke-width="1" stroke-dasharray="4 6"/>
+        <line x1="90" y1="30"  x2="960" y2="30"  stroke="#22334F" stroke-width="1" stroke-dasharray="4 6"/>
+        <text x="78" y="455" fill="#93A5C1" font-size="12" text-anchor="end">0%</text>
+        <text x="78" y="315" fill="#93A5C1" font-size="12" text-anchor="end">100%</text>
+        <text x="78" y="175" fill="#93A5C1" font-size="12" text-anchor="end">200%</text>
+        <text x="78" y="35"  fill="#93A5C1" font-size="12" text-anchor="end">300%</text>
+        <text x="30" y="240" fill="#93A5C1" font-size="12" font-weight="700" letter-spacing="1.6" transform="rotate(-90 30 240)" text-anchor="middle">ROI PROJETADO</text>
+        <!-- eixo x -->
+        <line x1="380" y1="450" x2="380" y2="30" stroke="#22334F" stroke-width="1" stroke-dasharray="4 6"/>
+        <line x1="670" y1="450" x2="670" y2="30" stroke="#22334F" stroke-width="1" stroke-dasharray="4 6"/>
+        <text x="235" y="478" fill="#93A5C1" font-size="12.5" font-weight="700" text-anchor="middle" letter-spacing="1.2">RISCO BAIXO</text>
+        <text x="525" y="478" fill="#93A5C1" font-size="12.5" font-weight="700" text-anchor="middle" letter-spacing="1.2">RISCO MÉDIO</text>
+        <text x="815" y="478" fill="#93A5C1" font-size="12.5" font-weight="700" text-anchor="middle" letter-spacing="1.2">RISCO MÉDIO-ALTO</text>
+
+        <!-- pontos -->
+        <g font-size="13" font-weight="600" fill="#E7EEF9">
+          <circle cx="235" cy="78" r="13" fill="#B39DFF" opacity="0.9"/>
+          <text x="255" y="83">Mestres do Prompt · 266%</text>
+
+          <circle cx="293" cy="162" r="13" fill="#FF9F6B" opacity="0.9"/>
+          <text x="273" y="167" text-anchor="end">Doce Lucro Fit · 206%</text>
+
+          <circle cx="192" cy="237" r="13" fill="#FFC24B" opacity="0.9"/>
+          <text x="212" y="242">Visibilidade Local · 152%</text>
+
+          <circle cx="250" cy="331" r="13" fill="#93A5C1" opacity="0.9"/>
+          <text x="270" y="336" fill="#93A5C1">Fluxo Imparável · 85%</text>
+
+          <circle cx="525" cy="106" r="13" fill="#B39DFF" opacity="0.9"/>
+          <text x="545" y="111">Recomeço a Dois · 246%</text>
+
+          <circle cx="482" cy="171" r="13" fill="#00D5FF" opacity="0.9"/>
+          <text x="462" y="176" text-anchor="end">IA Lucrativa · 199%</text>
+
+          <circle cx="569" cy="171" r="13" fill="#FFC24B" opacity="0.9"/>
+          <text x="589" y="176">Fábrica de Viral · 199%</text>
+
+          <circle cx="525" cy="186" r="13" fill="#3DDC84" opacity="0.9"/>
+          <text x="525" y="216" text-anchor="middle">Renove-se aos 40+ · 189%</text>
+
+          <circle cx="569" cy="239" r="13" fill="#3DDC84" opacity="0.9"/>
+          <text x="589" y="244">Mãe em Forma · 151%</text>
+
+          <circle cx="815" cy="111" r="13" fill="#00D5FF" opacity="0.9"/>
+          <text x="795" y="148" text-anchor="end">Investidor Iniciante · 242%</text>
+        </g>
+      </svg>
+      <div class="legend">
+        <span><i style="background:var(--seg-fin)"></i>Finanças &amp; Negócios</span>
+        <span><i style="background:var(--seg-sau)"></i>Saúde &amp; Bem-estar</span>
+        <span><i style="background:var(--seg-mkt)"></i>Marketing &amp; Vendas</span>
+        <span><i style="background:var(--seg-eme)"></i>Emergentes (IA · Relacionamentos)</span>
+        <span><i style="background:var(--seg-gas)"></i>Gastronomia</span>
+        <span><i style="background:var(--seg-pro)"></i>Produtividade</span>
+      </div>
+    </div>
+    <p class="note">Posição horizontal é qualitativa (baixo / médio / médio-alto), derivada da avaliação de compliance de cada ficha — não é um índice numérico. Deslocamentos dentro de cada faixa servem apenas para separar bolhas sobrepostas.</p>
+  </div>
+</section>
+
+<!-- ============ 7 · CATEGORIZAÇÃO ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Categorização por segmento</h2>
+    <p class="sub">As 10 ideias agrupadas em 6 blocos — cada bloco tem uma lógica de risco e de margem própria.</p>
+  </div>
+  <div class="slide-body">
+    <div class="cols c3" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-fin)">
+        <div class="fh"><div><div class="fn">FINANÇAS &amp; NEGÓCIOS</div><h4>2 ideias</h4></div><div class="roi">220%<small>ROI médio</small></div></div>
+        <p class="concept">Volume máximo de demanda no mercado brasileiro.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· IA Lucrativa — <b style="color:var(--text)">199%</b></li>
+          <li style="padding:4px 0">· Investidor Iniciante — <b style="color:var(--text)">242%</b></li>
+        </ul>
+        <div class="foot"><span class="tag mid">Compliance a vigiar</span><span class="tag">Concorrência alta</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-sau)">
+        <div class="fh"><div><div class="fn">SAÚDE &amp; BEM-ESTAR</div><h4>2 ideias</h4></div><div class="roi" style="color:var(--amber)">170%<small>ROI médio</small></div></div>
+        <p class="concept">Evergreen puro — demanda que não desaparece.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· Mãe em Forma — <b style="color:var(--text)">151%</b></li>
+          <li style="padding:4px 0">· Renove-se aos 40+ — <b style="color:var(--text)">189%</b></li>
+        </ul>
+        <div class="foot"><span class="tag mid">Políticas de ads rígidas</span><span class="tag">Sem antes/depois</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-mkt)">
+        <div class="fh"><div><div class="fn">MARKETING &amp; VENDAS</div><h4>2 ideias</h4></div><div class="roi" style="color:var(--amber)">176%<small>ROI médio</small></div></div>
+        <p class="concept">Demanda de 15+ milhões de MEIs por alcance e cliente.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· Fábrica de Viral — <b style="color:var(--text)">199%</b></li>
+          <li style="padding:4px 0">· Visibilidade Local — <b style="color:var(--text)">152%</b></li>
+        </ul>
+        <div class="foot"><span class="tag low">Risco regulatório baixo</span><span class="tag">Exige atualização</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-eme)">
+        <div class="fh"><div><div class="fn">EMERGENTES DE ALTA MARGEM</div><h4>2 ideias</h4></div><div class="roi">256%<small>ROI médio</small></div></div>
+        <p class="concept">Baixa concorrência é o que sustenta a margem aqui.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· Mestres do Prompt — <b style="color:var(--text)">266%</b></li>
+          <li style="padding:4px 0">· Recomeço a Dois — <b style="color:var(--text)">246%</b></li>
+        </ul>
+        <div class="foot"><span class="tag cy">Maior margem do portfólio</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-gas)">
+        <div class="fh"><div><div class="fn">GASTRONOMIA</div><h4>1 ideia</h4></div><div class="roi">206%<small>ROI</small></div></div>
+        <p class="concept">A validação mais rápida do portfólio inteiro.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· Doce Lucro Fit — <b style="color:var(--text)">206%</b></li>
+        </ul>
+        <div class="foot"><span class="tag low">Produção simples</span><span class="tag low">Risco baixo</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-pro)">
+        <div class="fh"><div><div class="fn">PRODUTIVIDADE</div><h4>1 ideia</h4></div><div class="roi" style="color:var(--red)">85%<small>ROI</small></div></div>
+        <p class="concept">Ticket baixo demais para pagar a aquisição.</p>
+        <ul style="list-style:none;font-size:clamp(11.5px,.88vw,14px);color:var(--muted)">
+          <li style="padding:4px 0">· Fluxo Imparável — <b style="color:var(--text)">85%</b></li>
+        </ul>
+        <div class="foot"><span class="tag high">Descartada na v1</span></div>
+      </div>
+    </div>
+    <p class="note">O agrupamento revela o padrão central do estudo: <b>margem não vem do tamanho do segmento, vem do recorte</b>. Os dois maiores ROIs estão fora do Top 5 de volume.</p>
+  </div>
+</section>
+
+<!-- ============ 8 · FINANÇAS ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <div class="eyebrow">Segmento 1 de 5 · Top 5 · posição nº 1 em volume</div>
+    <h2 style="margin-top:8px">Finanças &amp; Negócios</h2>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-fin)">
+        <div class="fh"><div><div class="fn">IDEIA 01 · FINANÇAS × IA</div><h4>IA Lucrativa</h4></div><div class="roi">199%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"ver todo mundo lucrando com IA e não saber por onde começar sem parecer mais um"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta — ferramentas gratuitas eliminam objeção</b></span><span class="pill">Formato: <b>Arsenal de Prompts + Kit de Ferramentas</b></span></div>
+      <div class="scorebar"><span>Dor Viva 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Impulso 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+    </div></div>
+        <p class="concept">“7 Hacks para Gerar R$3.000/mês com Ferramentas Gratuitas de IA”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Nicho nº 1 da Hotmart em volume. Busca por “ganhar dinheiro com IA” em forte crescimento; ~75% dos usuários de negócios já usam IA.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 27</b> (pack de prompts) → upsell <b>R$ 197</b> (mini-curso avançado)</dd>
+          <dt>Projeção</dt><dd>1.000 vendas · <b>R$ 74.800</b> est. · ads R$ 25.000</dd>
+          <dt>Concorrência</dt><dd>Média — muitos e-books genéricos de “ganhar dinheiro com IA”, poucos específicos em ferramentas gratuitas.</dd>
+        </dl>
+        <div class="foot"><span class="tag mid">Risco médio</span><span class="tag">Saturação crescente do tema</span><span class="tag">Copy não pode prometer substituir emprego</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-fin)">
+        <div class="fh"><div><div class="fn">IDEIA 05 · FINANÇAS × INVESTIMENTOS</div><h4>Investidor Iniciante</h4></div><div class="roi">242%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"dinheiro parado perdendo pra inflação e vergonha de admitir que não sabe investir"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>média — medo financeiro exige autoridade</b></span><span class="pill">Formato: <b>Planilha simuladora interativa</b></span></div>
+      <div class="scorebar"><span>Dor Viva 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+      <div class="scorebar"><span>Impulso 6/10</span><div class="bar"><i style="width:60%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+    </div></div>
+        <p class="concept">“Primeiros Passos no Investimento: Comece com R$100 e Multiplique seu Dinheiro”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Finanças é o nº 1 absoluto. Busca constante e estável por “como investir com pouco dinheiro”.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 57</b> → bump <b>R$ 27</b> (planilha + simulador) → upsell <b>R$ 197</b> (comunidade vitalícia)</dd>
+          <dt>Projeção</dt><dd>900 vendas · <b>R$ 75.330</b> est. · ads R$ 22.000</dd>
+          <dt>Concorrência</dt><dd>Alta — mas a demanda é maior ainda; espaço para recorte de entrada acessível.</dd>
+        </dl>
+        <div class="foot"><span class="tag high">Risco médio-alto</span><span class="tag">CVM: conteúdo educativo, nunca recomendação</span></div>
+      </div>
+    </div>
+    <p class="note">ROI médio do segmento: <b>220%</b>. Todas as projeções são estimativas por benchmark.</p>
+  </div>
+</section>
+
+<!-- ============ 9 · SAÚDE ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <div class="eyebrow">Segmento 2 de 5 · Top 5 · posição nº 2 em volume</div>
+    <h2 style="margin-top:8px">Saúde &amp; Bem-estar</h2>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-sau)">
+        <div class="fh"><div><div class="fn">IDEIA 02 · SAÚDE × MATERNIDADE</div><h4>Mãe em Forma</h4></div><div class="roi" style="color:var(--amber)">151%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"olhar no espelho e não reconhecer o próprio corpo sem ter 1h livre para academia"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>média — tema sensível pede confiança</b></span><span class="pill">Formato: <b>Planner físico-digital de 15 min/dia</b></span></div>
+      <div class="scorebar"><span>Dor Viva 10/10</span><div class="bar"><i style="width:100%"></i></div></div>
+      <div class="scorebar"><span>Impulso 6/10</span><div class="bar"><i style="width:60%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 6/10</span><div class="bar"><i style="width:60%"></i></div></div>
+    </div></div>
+        <p class="concept">“Guia de 15 Minutos de Exercícios e Dieta Flexível Pós-Parto”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Saúde é o nº 2 geral. O subnicho maternidade tem menos concorrência que dieta genérica e engajamento altíssimo em comunidades de mães.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 17</b> (planilha alimentar) → upsell <b>R$ 147</b> (programa completo)</dd>
+          <dt>Projeção</dt><dd>1.200 vendas · <b>R$ 70.380</b> est. · ads R$ 28.000</dd>
+          <dt>Concorrência</dt><dd>Baixa no subnicho específico.</dd>
+        </dl>
+        <div class="foot"><span class="tag mid">Risco médio</span><span class="tag">Políticas rígidas de saúde em ads</span><span class="tag">Proibido antes/depois</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-sau)">
+        <div class="fh"><div><div class="fn">IDEIA 06 · SAÚDE × PÚBLICO 40+</div><h4>Renove-se aos 40+</h4></div><div class="roi" style="color:var(--amber)">189%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"comer igual aos 30 e ganhar barriga; sentir que o corpo travou"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>média</b></span><span class="pill">Formato: <b>Cardápio rotativo + lista de compras pronta</b></span></div>
+      <div class="scorebar"><span>Dor Viva 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+      <div class="scorebar"><span>Impulso 6/10</span><div class="bar"><i style="width:60%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 7/10</span><div class="bar"><i style="width:70%"></i></div></div>
+    </div></div>
+        <p class="concept">“Guia de Jejum Intermitente e 50 Receitas Low-Carb Saborosas”</p>
+        <dl>
+          <dt>Mercado</dt><dd>O público 40+ é a faixa que mais compra infoprodutos. Jejum intermitente e low-carb estão em alta permanente.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 22</b> (lista de compras + sobremesas) → upsell <b>R$ 177</b> (desafio 21 dias)</dd>
+          <dt>Projeção</dt><dd>1.100 vendas · <b>R$ 75.140</b> est. · ads R$ 26.000</dd>
+          <dt>Concorrência</dt><dd>Alta no tema geral, média no recorte etário.</dd>
+        </dl>
+        <div class="foot"><span class="tag mid">Risco médio</span><span class="tag">Sazonalidade de verão</span></div>
+      </div>
+    </div>
+    <p class="note">ROI médio do segmento: <b>170%</b>. O custo do segmento é regulatório: toda a copy precisa passar por revisão antes de subir campanha.</p>
+  </div>
+</section>
+
+<!-- ============ 10 · MARKETING ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <div class="eyebrow">Segmento 3 de 5 · Top 5 · posição nº 4 em volume</div>
+    <h2 style="margin-top:8px">Marketing &amp; Vendas</h2>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-mkt)">
+        <div class="fh"><div><div class="fn">IDEIA 03 · MARKETING × CONTEÚDO</div><h4>Fábrica de Viral</h4></div><div class="roi">199%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"postar todo dia, ver 40 visualizações e ver o concorrente pior viralizar"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta — resultado visível em dias</b></span><span class="pill">Formato: <b>Templates editáveis + banco de ganchos</b></span></div>
+      <div class="scorebar"><span>Dor Viva 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+      <div class="scorebar"><span>Impulso 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+    </div></div>
+        <p class="concept">“10 Modelos de Conteúdo Que Vendem no Instagram e TikTok”</p>
+        <dl>
+          <dt>Mercado</dt><dd>TikTok Shop e Reels dominam a atenção; milhões de MEIs buscando alcance orgânico sem verba de mídia.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 27</b> (templates Canva) → upsell <b>R$ 197</b> (mini-curso de algoritmo)</dd>
+          <dt>Projeção</dt><dd>1.000 vendas · <b>R$ 74.800</b> est. · ads R$ 25.000</dd>
+          <dt>Concorrência</dt><dd>Alta no geral, média no recorte “para MEI”.</dd>
+        </dl>
+        <div class="foot"><span class="tag mid">Risco médio</span><span class="tag">Algoritmos mudam — exige atualização constante</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-mkt)">
+        <div class="fh"><div><div class="fn">IDEIA 08 · MARKETING × SEO LOCAL</div><h4>Visibilidade Local</h4></div><div class="roi" style="color:var(--amber)">152%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"concorrente pior aparecer primeiro no Maps e levar o cliente que é meu"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta</b></span><span class="pill">Formato: <b>Checklist auditável + template otimizado</b></span></div>
+      <div class="scorebar"><span>Dor Viva 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Impulso 7/10</span><div class="bar"><i style="width:70%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+    </div></div>
+        <p class="concept">“O Guia SEO para Aparecer no Google Maps e Atrair Clientes Perto de Você”</p>
+        <dl>
+          <dt>Mercado</dt><dd>~46% das buscas no Google têm intenção local; 15+ milhões de MEIs no Brasil.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 37</b> → bump <b>R$ 19</b> (checklist de auditoria) → upsell <b>R$ 147</b> (workshop) → back-end <b>R$ 397</b> (consultoria)</dd>
+          <dt>Projeção</dt><dd>1.200 vendas · <b>R$ 70.440</b> est. · ads R$ 28.000</dd>
+          <dt>Concorrência</dt><dd>Baixa — quase ninguém ataca esse recorte no Brasil.</dd>
+        </dl>
+        <div class="foot"><span class="tag low">Risco baixo</span><span class="tag low">Sem sensibilidade regulatória</span><span class="tag cy">Única com back-end de consultoria</span></div>
+      </div>
+    </div>
+    <p class="note">ROI médio do segmento: <b>176%</b>. Visibilidade Local tem o ROI menor do par, mas a única esteira que termina em serviço de alto valor.</p>
+  </div>
+</section>
+
+<!-- ============ 11 · EMERGENTES ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <div class="eyebrow">Segmento 4 de 5 · Fora do Top 5 de volume · maiores margens do estudo</div>
+    <h2 style="margin-top:8px">Emergentes de alta margem</h2>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-eme)">
+        <div class="fh"><div><div class="fn">IDEIA 07 · TECNOLOGIA × PROMPT ENGINEERING</div><h4>Mestres do Prompt</h4></div><div class="roi">266%<small>maior ROI do portfólio</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"usar ChatGPT como buscador e ver colega menos capacitado entregando 3x mais"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta — aplicação imediata no dia seguinte</b></span><span class="pill">Formato: <b>Arsenal de 100+ prompts por profissão</b></span></div>
+      <div class="scorebar"><span>Dor Viva 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+      <div class="scorebar"><span>Impulso 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 10/10</span><div class="bar"><i style="width:100%"></i></div></div>
+    </div></div>
+        <p class="concept">“O Guia Definitivo para Criar Comandos Perfeitos e Desbloquear o Poder da IA”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Segmento emergente com a menor concorrência do estudo. 53% dos profissionais já usam IA no trabalho; tendência dominante em 2026.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 67</b> → bump <b>R$ 37</b> (100 prompts prontos) → upsell <b>R$ 247</b> (imersão profissional)</dd>
+          <dt>Projeção</dt><dd>800 vendas · <b>R$ 73.120</b> est. · ads R$ 20.000 — <b>o menor investimento em mídia do portfólio</b></dd>
+          <dt>Concorrência</dt><dd>Baixa — subnicho novo, para não-programadores.</dd>
+        </dl>
+        <div class="foot"><span class="tag low">Risco baixo</span><span class="tag low">Tema técnico verificável</span><span class="tag cy">Onda 1</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-eme)">
+        <div class="fh"><div><div class="fn">IDEIA 10 · RELACIONAMENTOS × CASAIS</div><h4>Recomeço a Dois</h4></div><div class="roi">246%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"dormir de costas todas as noites sabendo que um dos dois vai desistir logo"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>baixa-média — decisão emocional pesada</b></span><span class="pill">Formato: <b>Diário de casal guiado + cartas-modelo</b></span></div>
+      <div class="scorebar"><span>Dor Viva 10/10</span><div class="bar"><i style="width:100%"></i></div></div>
+      <div class="scorebar"><span>Impulso 5/10</span><div class="bar"><i style="width:50%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 7/10</span><div class="bar"><i style="width:70%"></i></div></div>
+    </div></div>
+        <p class="concept">“7 Ferramentas para Salvar seu Casamento e Reacender a Paixão”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Segmento emergente com engajamento emocional altíssimo e pouquíssimos produtos estruturados no Brasil.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 57</b> → bump <b>R$ 29</b> (diário de casal) → upsell <b>R$ 297</b> (workshop) → back-end <b>R$ 600/h</b> (aconselhamento)</dd>
+          <dt>Projeção</dt><dd>900 vendas · <b>R$ 76.230</b> est. · ads R$ 22.000</dd>
+          <dt>Concorrência</dt><dd>Baixa em produtos sérios — o espaço está ocupado por conteúdo raso.</dd>
+        </dl>
+        <div class="foot"><span class="tag mid">Risco médio</span><span class="tag">Tom cuidadoso obrigatório</span><span class="tag">Meta pode restringir temas relacionais</span></div>
+      </div>
+    </div>
+    <p class="note">ROI médio do grupo: <b>256%</b> — o maior do estudo. A conclusão central: onde há menos concorrência, o CPC cai e a margem sobra.</p>
+  </div>
+</section>
+
+<!-- ============ 12 · GASTRONOMIA + PRODUTIVIDADE ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <div class="eyebrow">Segmento 5 de 5 · a validação mais rápida e a única descartada</div>
+    <h2 style="margin-top:8px">Gastronomia &amp; Produtividade</h2>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0">
+      <div class="ficha" style="--acc:var(--seg-gas)">
+        <div class="fh"><div><div class="fn">IDEIA 09 · GASTRONOMIA × DOCES FIT</div><h4>Doce Lucro Fit</h4></div><div class="roi">206%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"cliente pedir versão fit e ter que dizer que não faz; ver iniciante cobrando o dobro pelo mesmo brigadeiro"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta</b></span><span class="pill">Formato: <b>Kit receitas + planilha de precificação automática</b></span></div>
+      <div class="scorebar"><span>Dor Viva 7/10</span><div class="bar"><i style="width:70%"></i></div></div>
+      <div class="scorebar"><span>Impulso 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 9/10</span><div class="bar"><i style="width:90%"></i></div></div>
+    </div></div>
+        <p class="concept">“30 Receitas de Doces Saudáveis para Vender e Faturar Alto”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Gastronomia é o nº 5 em volume. “Doces para vender” é formato recorrente na Hotmart; promessa de renda extra prática com investimento inicial baixíssimo.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 47</b> → bump <b>R$ 24</b> (planilha de precificação) → upsell <b>R$ 167</b> (mini-curso de embalagens)</dd>
+          <dt>Projeção</dt><dd>1.000 vendas · <b>R$ 76.500</b> est. — <b>o maior faturamento estimado do portfólio</b> · ads R$ 25.000</dd>
+          <dt>Concorrência</dt><dd>Média — doces tradicionais saturados, versão fit bem menos explorada.</dd>
+        </dl>
+        <div class="foot"><span class="tag low">Risco baixo</span><span class="tag low">Produção simples e verificável</span><span class="tag cy">Onda 1</span></div>
+      </div>
+
+      <div class="ficha" style="--acc:var(--seg-pro)">
+        <div class="fh"><div><div class="fn">IDEIA 04 · DESENVOLVIMENTO PESSOAL × FREELANCERS</div><h4>Fluxo Imparável</h4></div><div class="roi" style="color:var(--red)">85%<small>ROI projetado</small></div><div class="ltr"><h4>Low Ticket Raiz</h4>
+      <div class="dor">"entregar tudo atrasado e ter medo de perder o cliente que sustenta a casa"</div>
+      <div class="meta"><span class="pill">No-Brain: <b>alta pelo preço</b></span><span class="pill">Formato: <b>Planner digital + timer method</b></span></div>
+      <div class="scorebar"><span>Dor Viva 8/10</span><div class="bar"><i style="width:80%"></i></div></div>
+      <div class="scorebar"><span>Impulso 7/10</span><div class="bar"><i style="width:70%"></i></div></div>
+      <div class="scorebar"><span>Tangibilidade 5/10</span><div class="bar"><i style="width:50%"></i></div></div>
+    </div></div>
+        <p class="concept">“O Método Anti-Procrastinação para Freelancers Ocupados”</p>
+        <dl>
+          <dt>Mercado</dt><dd>Desenvolvimento pessoal lidera em volume de títulos publicados; trabalho remoto consolidado no Brasil.</dd>
+          <dt>Esteira</dt><dd>Entrada <b>R$ 27</b> → bump <b>R$ 12</b> (planner digital) → upsell <b>R$ 97</b> (workshop)</dd>
+          <dt>Projeção</dt><dd>1.800 vendas · <b>R$ 55.440</b> est. · ads R$ 30.000 — <b>o maior volume e o pior retorno</b></dd>
+          <dt>Concorrência</dt><dd>Alta em produtividade geral.</dd>
+        </dl>
+        <div class="foot"><span class="tag low">Compliance baixo</span><span class="tag high">Descartada na v1 — margem apertada pelo ticket</span></div>
+      </div>
+    </div>
+    <p class="note">O contraste do slide é a lição de precificação do estudo: 1.800 vendas a R$27 rendem menos que 800 vendas a R$67. <b>Ticket de entrada define a viabilidade da mídia paga.</b></p>
+  </div>
+</section>
+
+<!-- ============ 13 · ESTRATÉGIA TRANSVERSAL ============ -->
+<section class="slide">
+  <div class="slide-head">
+    <h2>Estratégia transversal de funil</h2>
+    <p class="sub">A mesma arquitetura de esteira vale para as 10 ideias — o que muda é o preço, não a estrutura.</p>
+  </div>
+  <div class="slide-body">
+    <div class="cols c2" style="flex:1;min-height:0;grid-template-columns:1.15fr 1fr">
+      <div class="panel">
+        <h3>Arquitetura da esteira</h3>
+        <div class="funnel" style="margin-top:6px">
+          <div class="fstep">
+            <div><div class="fs-t">Lead Magnet</div><div class="fs-d">captura e aquecimento</div></div>
+            <div class="fs-v">Grátis</div><div class="arrow">▼</div>
+          </div>
+          <div class="fstep s2">
+            <div><div class="fs-t">E-book Low-Ticket</div><div class="fs-d">produto de aquisição — paga a mídia</div></div>
+            <div class="fs-v">R$ 27–67</div><div class="arrow">▼</div>
+          </div>
+          <div class="fstep s3">
+            <div><div class="fs-t">Order Bump</div><div class="fs-d">+30% no ticket médio · conversão 25–35%</div></div>
+            <div class="fs-v">R$ 12–37</div><div class="arrow">▼</div>
+          </div>
+          <div class="fstep s4">
+            <div><div class="fs-t">Upsell Imediato</div><div class="fs-d">+25% de aceitação sobre a base · conversão 8–12%</div></div>
+            <div class="fs-v">R$ 97–297</div><div class="arrow">▼</div>
+          </div>
+          <div class="fstep s5">
+            <div><div class="fs-t">Back-end</div><div class="fs-d">mentoria, comunidade ou recorrência — a margem real</div></div>
+            <div class="fs-v">R$ 297–597</div>
+          </div>
+        </div>
+        <p class="note" style="margin-top:12px">Casos de referência pública citados no Hotmart Cast: esteira “que vende todo dia” e e-book que gerou R$ 100 mil na primeira semana. <b>Referência de terceiros, não resultado próprio.</b></p>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:clamp(10px,1.1vw,16px);min-height:0">
+        <div class="panel" style="flex:1">
+          <h3>Ondas de lançamento sugeridas</h3>
+          <ul>
+            <li><b>Onda 1 — validar a fábrica:</b> Mestres do Prompt (266%), Doce Lucro Fit (206%), IA Lucrativa (199%). Combinação de maior margem, menor risco e produção mais rápida.</li>
+            <li><b>Onda 2 — escalar margem:</b> Recomeço a Dois, Investidor Iniciante, Visibilidade Local. Exigem revisão de compliance antes de subir mídia.</li>
+            <li><b>Onda 3 — volume evergreen:</b> Fábrica de Viral, Renove-se aos 40+, Mãe em Forma. Entram quando a operação de ads já estiver calibrada.</li>
+            <li><b>Fora da fila:</b> Fluxo Imparável — reentra apenas se o ticket de entrada for repensado.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Por que a estrutura importa mais que a ideia</h3>
+          <p class="note" style="font-size:clamp(11.5px,.88vw,14px);line-height:1.55">Sem bump e upsell, nenhuma das 10 ideias fecha a conta com CPC de R$ 0,40–0,70 e conversão de landing de 1–3%. O e-book não é o produto: é o <b>custo de aquisição de um cliente</b> que será monetizado nas duas etapas seguintes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15 · CONCLUSÃO ============ -->
+<section class="slide">
+    <div class="eyebrow">Validação qualitativa</div>
+    <h2>Scores consolidados — Low Ticket Raiz × Skills</h2>
+    <p class="lead" style="margin-bottom:18px">Scores validados com as metodologias locais: Hundred Million Offers (força da oferta) · CRO Methodology (potencial de conversão) · StoryBrand (cliente como herói). Escala 0–10.</p>
+    <table>
+      <tr><th>#</th><th>Ideia</th><th>Dor Viva</th><th>Impulso</th><th>Tangibilidade</th><th>Oferta (HMO)</th><th>Conversão (CRO)</th><th>Mensagem (SB)</th><th>Média</th></tr>
+      <tr><td>7</td><td><b>Mestres do Prompt</b></td><td class="num">9</td><td class="num">9</td><td class="num">10</td><td class="num top">9.5</td><td class="num top">9</td><td class="num top">9</td><td class="num top"><b>9.3</b></td></tr>
+      <tr><td>9</td><td><b>Doce Lucro Fit</b></td><td class="num">7</td><td class="num">8</td><td class="num">9</td><td class="num top">9</td><td class="num top">8.5</td><td class="num">8</td><td class="num top"><b>8.4</b></td></tr>
+      <tr><td>1</td><td>IA Lucrativa</td><td class="num">8</td><td class="num">8</td><td class="num">9</td><td class="num">8.5</td><td class="num">8</td><td class="num">7.5</td><td class="num"><b>8.2</b></td></tr>
+      <tr><td>3</td><td>Fábrica de Viral</td><td class="num">9</td><td class="num">8</td><td class="num">8</td><td class="num">8</td><td class="num">8</td><td class="num">8</td><td class="num"><b>8.2</b></td></tr>
+      <tr><td>10</td><td>Recomeço a Dois</td><td class="num">10</td><td class="num">5</td><td class="num">7</td><td class="num top">9</td><td class="num">6.5</td><td class="num top">9.5</td><td class="num"><b>7.8</b></td></tr>
+      <tr><td>5</td><td>Investidor Iniciante</td><td class="num">9</td><td class="num">6</td><td class="num">8</td><td class="num">7.5</td><td class="num">7.5</td><td class="num">7.5</td><td class="num"><b>7.6</b></td></tr>
+      <tr><td>8</td><td>Visibilidade Local</td><td class="num">8</td><td class="num">7</td><td class="num">9</td><td class="num">7.5</td><td class="num">7.5</td><td class="num">7</td><td class="num"><b>7.6</b></td></tr>
+      <tr><td>2</td><td>Mãe em Forma</td><td class="num">10</td><td class="num">6</td><td class="num">6</td><td class="num">7.5</td><td class="num">7</td><td class="num">8</td><td class="num"><b>7.4</b></td></tr>
+      <tr><td>6</td><td>Renove-se aos 40+</td><td class="num">9</td><td class="num">6</td><td class="num">7</td><td class="num">7</td><td class="num">7.5</td><td class="num">7.5</td><td class="num"><b>7.2</b></td></tr>
+      <tr><td>4</td><td>Fluxo Imparável</td><td class="num">8</td><td class="num">7</td><td class="num">5</td><td class="num">6</td><td class="num">6.5</td><td class="num">6.5</td><td class="num"><b>6.5</b></td></tr>
+    </table>
+    <p style="color:var(--muted);font-size:12.5px;margin-top:12px">Divergências vs. ordem por ROI: Recomeço a Dois cai (impulso baixo = ciclo de venda mais longo); Doce Lucro Fit sobe (tangibilidade + conversão compensam Dor Viva menor). Onda 1 confirmada: Mestres do Prompt · Doce Lucro Fit · IA Lucrativa.</p>
+  </section>
+  <section class="slide">
+  <div class="slide-head">
+    <h2>Conclusão e roadmap</h2>
+    <p class="sub">Três produtos priorizados por ROI projetado, concorrência e risco de compliance — nesta ordem.</p>
+  </div>
+  <div class="slide-body">
+    <div class="podium">
+      <div class="pod first">
+        <div class="pos">Prioridade 1</div>
+        <h4>Mestres do Prompt</h4>
+        <p class="why">Maior ROI do portfólio com a <b>menor concorrência</b> e o <b>menor investimento em mídia</b> (R$ 20 mil). Tema técnico e verificável — praticamente sem risco de bloqueio de anúncio.</p>
+        <div class="mt"><div><div class="k">ROI proj.</div><div class="v">266%</div></div><div><div class="k">Fat. est.</div><div class="v" style="color:var(--text)">R$ 73,1 mil</div></div></div>
+      </div>
+      <div class="pod first">
+        <div class="pos">Prioridade 2</div>
+        <h4>Doce Lucro Fit</h4>
+        <p class="why">Maior faturamento estimado do estudo e a <b>validação mais rápida</b>: conteúdo produzível e testável em dias. Risco de compliance baixo, subnicho fit ainda pouco explorado.</p>
+        <div class="mt"><div><div class="k">ROI proj.</div><div class="v">206%</div></div><div><div class="k">Fat. est.</div><div class="v" style="color:var(--text)">R$ 76,5 mil</div></div></div>
+      </div>
+      <div class="pod first">
+        <div class="pos">Prioridade 3</div>
+        <h4>IA Lucrativa</h4>
+        <p class="why">Ataca o nicho nº 1 em volume por um recorte defensável (ferramentas <b>gratuitas</b>). Aproveita o mesmo repertório de pesquisa do Mestres do Prompt — <b>custo marginal de produção baixo</b>.</p>
+        <div class="mt"><div><div class="k">ROI proj.</div><div class="v">199%</div></div><div><div class="k">Fat. est.</div><div class="v" style="color:var(--text)">R$ 74,8 mil</div></div></div>
+      </div>
+    </div>
+
+    <div class="cols c2" style="flex:1;min-height:0;grid-template-columns:1fr 1.25fr">
+      <div class="panel">
+        <h3>Backlog completo</h3>
+        <ul>
+          <li><b>Onda 2:</b> Recomeço a Dois (246%) · Investidor Iniciante (242%) · Visibilidade Local (152%)</li>
+          <li><b>Onda 3:</b> Fábrica de Viral (199%) · Renove-se aos 40+ (189%) · Mãe em Forma (151%)</li>
+          <li><b>Fora da fila:</b> Fluxo Imparável (85%) — ticket de entrada não paga a aquisição</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Próximos passos do estudo</h3>
+        <div class="steps" style="margin-top:2px">
+          <div class="step"><div class="n">1</div><div class="t">Validar CPC real</div><div class="d">Teste de mídia de R$ 300 por ideia da Onda 1 para trocar o CPC estimado por CPC medido.</div></div>
+          <div class="step"><div class="n">2</div><div class="t">Testar a landing</div><div class="d">Confirmar a conversão de 1–3% assumida antes de dimensionar qualquer verba.</div></div>
+          <div class="step"><div class="n">3</div><div class="t">Revisar compliance</div><div class="d">Passar copy de saúde, finanças e relacionamentos por revisão antes de subir campanha.</div></div>
+          <div class="step"><div class="n">4</div><div class="t">Refazer a projeção</div><div class="d">Substituir premissas por números medidos e reordenar a fila de ondas.</div></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Todo número deste deck é <b>benchmark de mercado ou projeção por hipótese</b>. A primeira campanha da Onda 1 é o que converte projeção em resultado — e o que reordena esta lista.</p>
+  </div>
+</section>
+
+</div>
+
+<nav class="nav">
+  <div class="brand">PROSPERA · Estudo de mercado 2026-08</div>
+  <div class="ctrl">
+    <button id="prev" aria-label="Slide anterior">&#8592;</button>
+    <div class="count"><b id="cur">1</b> / <span id="tot">15</span></div>
+    <button id="next" aria-label="Próximo slide">&#8594;</button>
+  </div>
+</nav>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var total = slides.length;
+  var i = 0;
+  var elCur = document.getElementById('cur');
+  var elTot = document.getElementById('tot');
+  var elPrev = document.getElementById('prev');
+  var elNext = document.getElementById('next');
+  var elBar = document.getElementById('progress');
+
+  elTot.textContent = total;
+
+  function show(n){
+    i = Math.max(0, Math.min(total - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('active', k === i); });
+    elCur.textContent = i + 1;
+    elPrev.disabled = (i === 0);
+    elNext.disabled = (i === total - 1);
+    elBar.style.width = ((i + 1) / total * 100) + '%';
+  }
+
+  elPrev.addEventListener('click', function(){ show(i - 1); });
+  elNext.addEventListener('click', function(){ show(i + 1); });
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); show(i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(i - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); show(0); }
+    else if (e.key === 'End') { e.preventDefault(); show(total - 1); }
+  });
+
+  show(0);
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,46 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+atividades:
+  pesquisa:
+    responsavel: "Researcher da fábrica"
+    aprovador: "Product Editor da fábrica"
+    consultado: "Voice-of-Customer Analyst"
+    informado: "Offer Strategist"
+  fatos:
+    responsavel: ""
+    aprovador: ""
+    consultado: "SME Reviewer"
+    informado: "Copywriter"
+  conteudo:
+    responsavel: "Editorial Architect da fábrica"
+    aprovador: "Product Editor da fábrica"
+  revisao_tecnica:
+    responsavel: "SME Reviewer da fábrica"
+    aprovador: "Product Editor da fábrica"
+  copy:
+    responsavel: "Copywriter da fábrica"
+    aprovador: "Fact Steward da fábrica"
+  design:
+    responsavel: "Art Director da fábrica"
+    aprovador: "QA Lead da fábrica"
+  qa:
+    responsavel: "QA Lead da fábrica"
+    aprovador: "Product Editor da fábrica"
+  publicacao:
+    responsavel: "Product Editor da fábrica"
+    aprovador: "Product Editor da fábrica"
+  suporte:
+    responsavel: "Support Designer da fábrica"
+    aprovador: "Product Editor da fábrica"
+  reembolso:
+    responsavel: "Support Designer da fábrica"
+    aprovador: "Product Editor da fábrica"
+  arquivos_fonte:
+    responsavel: "Product Editor da fábrica"
+    aprovador: "Product Editor da fábrica"
+    informado: "Operação / coprodução"
+  atualizacao_descontinuacao:
+    responsavel: "Knowledge Curator da fábrica"
+    aprovador: "Product Editor da fábrica"

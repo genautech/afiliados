@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/knowledge-dossier.json",
+  "title": "Dossiê de conhecimento EBOOK-OS",
+  "description": "Contrato opcional. Só é validado se knowledge-dossier.yaml existir. Cada claim exige âncora; YouTube/GitHub/Firecrawl não entram em dados/proprio/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["produto", "coletado_em", "saturacao", "claims"],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versao"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coletado_em": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Data da coleta, ISO ou equivalente explícito."
+    },
+    "saturacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["atingida", "fontes_consecutivas_sem_claim_novo"],
+      "properties": {
+        "atingida": { "type": "boolean" },
+        "fontes_consecutivas_sem_claim_novo": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "texto",
+          "tipo",
+          "url_ou_caminho",
+          "ancora",
+          "data_coleta",
+          "limite",
+          "destino"
+        ],
+        "properties": {
+          "texto": { "type": "string", "minLength": 8 },
+          "tipo": { "type": "string", "enum": ["DADO", "OPINIAO"] },
+          "url_ou_caminho": { "type": "string", "minLength": 3 },
+          "ancora": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Timestamp, linha, seção, #L88 ou página. Sem âncora o claim não existe."
+          },
+          "data_coleta": { "type": "string", "minLength": 8 },
+          "limite": {
+            "type": "string",
+            "minLength": 8,
+            "description": "O que esta fonte não prova."
+          },
+          "destino": {
+            "type": "string",
+            "enum": ["dados/mercado", "dados/benchmark"]
+          }
+        }
+      }
+    }
+  }
+}

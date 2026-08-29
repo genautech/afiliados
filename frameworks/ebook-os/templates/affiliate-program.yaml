@@ -1,0 +1,29 @@
+produto:
+  id: "[preencher]"
+  versao: "[preencher]"
+
+modelo: proprio
+geografia: "[preencher]"
+
+comissao:
+  valor: PENDENTE
+  base_calculo: "[preencher]"
+
+hop: PENDENTE-humano
+utm_padrao: "[preencher]"
+postback: PENDENTE
+
+canais_permitidos:
+  - organico
+canais_proibidos:
+  - brand-bidding
+
+brand_bidding: proibido
+disclaimer: "[preencher]"
+kit_minimo:
+  - angulo
+gates_humanos:
+  - conta
+  - contrato
+  - checkout
+  - publicacao

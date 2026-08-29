@@ -1,0 +1,14 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+superficie: pdf
+
+motores:
+  css_svg: true
+  lottie: true
+  gsap: false
+
+justificativa: "Fixture inválido: Lottie não cabe em PDF."
+reduced_motion: obrigatorio
+variant_id: motion-invalido-lottie-pdf

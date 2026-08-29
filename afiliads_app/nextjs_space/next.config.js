@@ -44,16 +44,10 @@ const nextConfig = {
     }
 
     // Garante que arquivos .ts em lib/google-ads-experiments sejam transpilados como ES Modules pelo SWC.
-    config.module.rules.push({
-      test: /\.ts$/,
-      include: [
-        path.resolve(__dirname, 'lib/google-ads-experiments'),
-      ],
-      use: {
-        loader: 'next-swc-loader',
-        options: {},
-      },
-    });
+    // NOTA: regra manual removida em 2026-08-19 porque o next-swc-loader era invocado sem o
+    // contexto esperado (issuerLayer/from undefined), quebrando o build. O Next.js 14 já
+    // transpila arquivos .ts do projeto automaticamente; a regra extra era redundante.
+    // Se necessário no futuro, usar transpilePackages em vez de loader manual.
 
     return config;
   },

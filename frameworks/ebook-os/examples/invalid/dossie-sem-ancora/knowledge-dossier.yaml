@@ -1,0 +1,18 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+coletado_em: "2026-08-15"
+
+saturacao:
+  atingida: true
+  fontes_consecutivas_sem_claim_novo: 3
+
+claims:
+  - texto: "campaign_guard.py OPERADOR retornou exit 2 em 15/08/2026."
+    tipo: DADO
+    url_ou_caminho: "docs/exemplos/analise-estrategica-exemplo.md"
+    ancora: "-"
+    data_coleta: "2026-08-15"
+    limite: "Não prova que outra campanha exista ou esteja autorizada."
+    destino: dados/benchmark

@@ -1,0 +1,28 @@
+produto:
+  id: lowticket-classificacao-formato
+  versao: "0.1.0-fixture"
+
+capacidades_nucleo:
+  login: true
+  progresso_persistente: true
+  notificacoes: true
+  liberacao_temporal: true
+  feedback_adaptativo: true
+  validacao_servidor: true
+  depende_online: true
+
+justificativa: "Exemplo inválido de propósito: o núcleo observado no OPERADOR exige estado, tempo e resposta do sistema, mas a classificação foi marcada como ebook."
+
+sinais_observados:
+  - "A estratégia local descreve missão diária, validação, D+48h, progresso e notificações."
+  - "O site observado em 15/08/2026 mostra área de membros com progresso e retomada."
+
+classificacao: ebook
+
+fontes:
+  - origem: "dna/operator-course-strategy.md"
+    data: "2026-08-15"
+    limite: "Descreve o produto pretendido. Não prova que todas as capacidades já estão implementadas no protótipo."
+  - origem: "docs/exemplos/analise-ebook-exemplo.md"
+    data: "2026-08-15"
+    limite: "O scrape histórico não autoriza classificar OPERADOR como e-book. Esta decisão inválida existe só para o teste do validador."

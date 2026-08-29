@@ -113,6 +113,22 @@ Planilha personalizada → rode `scripts/gerar_planilha.py` (parametrize comiss�
 
 Se o usuário falar em criar o próprio produto, virar produtor, recrutar afiliados ou coprodução → carregue `references/produto-proprio.md`.
 
+## Trilha PROSPERA / e-book low-ticket
+
+Quando o destino for e-book da plataforma (não hop ClickBank/Hotmart):
+
+1. Confirme nível: anúncio do **e-book** (Fluxos 2–4, CTA "Quero o e-book")
+   vs anúncio da **plataforma** (CTA "Criar meu e-book agora"). Nunca os dois
+   no mesmo grupo.
+2. Leia canais permitidos/proibidos no kit (`affiliate-platform`). Mesma
+   regra 1 — Search vetado é Search vetado.
+3. Presell: `content-landing` modo AFILIADO ou o gerador do AfiliAds. Um
+   hop, UTM, `variant_id`.
+4. VSL ou criativo de YouTube: `watch-video` / `knowledge-scout` antes de
+   extrair ângulo. Descrição do vídeo não é prova.
+5. Break-even com comissão do e-book (R$ 29–67 × %), não com avg ClickBank.
+6. Copy: `scripts/validar_copy.py` + DNA do produto. Sem "dinheiro fácil".
+
 ## Scripts disponíveis
 
 | Script | Uso |

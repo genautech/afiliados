@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/affiliate-program.json",
+  "title": "Programa de afiliados próprios EBOOK-OS",
+  "description": "Contrato opcional. Só é validado se affiliate-program.yaml existir. Hop é obrigatório; PENDENTE-humano é valor válido, campo ausente não é.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "produto",
+    "modelo",
+    "geografia",
+    "comissao",
+    "hop",
+    "utm_padrao",
+    "postback",
+    "canais_permitidos",
+    "canais_proibidos",
+    "brand_bidding",
+    "disclaimer",
+    "kit_minimo",
+    "gates_humanos"
+  ],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "versao"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3 },
+        "versao": { "type": "string", "minLength": 1 }
+      }
+    },
+    "modelo": { "type": "string", "enum": ["proprio", "marketplace"] },
+    "geografia": { "type": "string", "minLength": 2 },
+    "comissao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valor", "base_calculo"],
+      "properties": {
+        "valor": { "type": "string", "minLength": 1 },
+        "base_calculo": { "type": "string", "minLength": 3 }
+      }
+    },
+    "hop": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URL do hop ou o literal PENDENTE-humano."
+    },
+    "utm_padrao": { "type": "string", "minLength": 3 },
+    "postback": { "type": "string", "minLength": 1 },
+    "canais_permitidos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 2 }
+    },
+    "canais_proibidos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 2 }
+    },
+    "brand_bidding": { "type": "string", "enum": ["proibido", "autorizado"] },
+    "disclaimer": { "type": "string", "minLength": 8 },
+    "kit_minimo": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 2 }
+    },
+    "gates_humanos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 2 }
+    }
+  }
+}

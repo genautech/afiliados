@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const campaignId = typeof body?.campaignId === 'string' ? body.campaignId : undefined;
     if (productId) {
       const product = await prisma.productResearch.findFirst({
-        where: { id: productId, userId }, select: { id: true },
+        where: { id: productId, userId }, select: { id: true, network: true, hopLink: true },
       });
       if (!product) return NextResponse.json({ error: 'Produto não encontrado' }, { status: 404 });
     }

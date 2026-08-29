@@ -1,0 +1,2 @@
+id,produto,versao,titulo,promessa_local,fonte,fonte_limite,conceito,exemplo,acao_observavel,artefato_acao,criterio_conclusao,erro_comum,recuperacao,dependencias,revisor_tecnico,status
+CAP01,{{produto.id}},{{produto.versao}},[preencher título],[o que este capítulo entrega],[caminho ou URL],[o que a fonte não prova],[conceito mínimo],[exemplo concreto],[ação que dá para observar],[checklist ou template],[como saber que está feito],[erro frequente],[como retomar],nenhuma,[revisor humano],rascunho

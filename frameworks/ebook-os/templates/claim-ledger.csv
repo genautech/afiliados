@@ -1,0 +1,2 @@
+id,texto,produto,versao,fonte,data,status,forca_evidencia,canais_permitidos,revisor,validade,limite,uso_copy_final
+C01,[preencher afirmação literal],[id-do-produto],{{produto.versao}},[caminho ou URL],2026-08-15,a-verificar,nenhuma,interno,[revisor humano],2026-12-31,[o que a fonte não prova],nao

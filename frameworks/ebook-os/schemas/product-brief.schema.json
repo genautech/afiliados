@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marca-propria.local/schema/product-brief.json",
+  "title": "Product brief EBOOK-OS",
+  "description": "Contrato de constituição do produto. Sem dor específica, responsável humano e fonte autorizada, a fábrica não inicia.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "produto",
+    "publico",
+    "contexto",
+    "dor_urgente",
+    "comportamento_alvo",
+    "transformacao",
+    "formato_pretendido",
+    "restricoes",
+    "nao_objetivos",
+    "responsavel_humano",
+    "fontes_autorizadas"
+  ],
+  "properties": {
+    "produto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "nome", "versao"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Identificador estável do produto, sem espaços."
+        },
+        "nome": {
+          "type": "string",
+          "minLength": 3
+        },
+        "versao": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Versão semântica ou rótulo de rascunho, por exemplo 0.1.0-fixture."
+        }
+      }
+    },
+    "publico": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Quem deve usar o produto, em linguagem concreta."
+    },
+    "contexto": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Situação em que a dor aparece."
+    },
+    "dor_urgente": {
+      "type": "string",
+      "minLength": 8
+    },
+    "comportamento_alvo": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Ação observável que prova aplicação, não apenas leitura."
+    },
+    "transformacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estado_inicial",
+        "estado_final",
+        "mecanismo",
+        "primeira_vitoria",
+        "hipotese",
+        "limite"
+      ],
+      "properties": {
+        "estado_inicial": { "type": "string", "minLength": 8 },
+        "estado_final": { "type": "string", "minLength": 8 },
+        "mecanismo": { "type": "string", "minLength": 8 },
+        "primeira_vitoria": {
+          "type": "string",
+          "minLength": 8,
+          "description": "Resultado alcançável em uma sessão ou em até sete dias."
+        },
+        "hipotese": {
+          "type": "string",
+          "minLength": 16,
+          "description": "Para [público em contexto], o produto ajuda a [ação observável] por meio de [mecanismo], sem prometer [limite]."
+        },
+        "limite": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que a transformação não promete."
+        }
+      }
+    },
+    "formato_pretendido": {
+      "type": "string",
+      "enum": ["ebook", "sprint_interativo", "curso", "aplicacao"],
+      "description": "Intenção inicial. A classificação final sai de format-decision, não daqui."
+    },
+    "restricoes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 3 }
+    },
+    "nao_objetivos": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 3 }
+    },
+    "responsavel_humano": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nome", "papel"],
+      "properties": {
+        "nome": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Pessoa ou papel humano nomeado. Não pode ser um agente."
+        },
+        "papel": { "type": "string", "minLength": 3 }
+      }
+    },
+    "fontes_autorizadas": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fonte" }
+    }
+  },
+  "$defs": {
+    "fonte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "origem", "data", "tipo", "limite"],
+      "properties": {
+        "id": { "type": "string", "minLength": 2 },
+        "origem": {
+          "type": "string",
+          "minLength": 4,
+          "description": "Caminho, URL ou identificador da fonte."
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "tipo": {
+          "type": "string",
+          "enum": ["proprio", "benchmark", "mercado", "documento"]
+        },
+        "limite": {
+          "type": "string",
+          "minLength": 8,
+          "description": "O que esta fonte não prova. Campo obrigatório."
+        }
+      }
+    }
+  }
+}

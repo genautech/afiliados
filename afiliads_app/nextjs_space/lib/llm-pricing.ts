@@ -37,6 +37,10 @@ const MODEL_PRICES: Array<{ match: string; price: ModelPrice }> = [
   { match: 'kimi-k3', price: { inputPer1M: 3, outputPer1M: 15 } },
   // Ollama (local ou cloud) — sem custo por token
   { match: 'gpt-oss', price: { inputPer1M: 0, outputPer1M: 0 } },
+  // OpenRouter — preços da API pública em 2026-08. 'openrouter/auto' e
+  // 'stealth/*' variam por rota; usam o default do provedor como estimativa.
+  { match: 'deepseek-chat', price: { inputPer1M: 0.26, outputPer1M: 1.03 } },
+  { match: 'ox-alpha', price: { inputPer1M: 0, outputPer1M: 0 } },
 ];
 
 // Fallback por provedor quando o modelo não está na tabela.
@@ -48,6 +52,7 @@ const PROVIDER_DEFAULTS: Record<string, ModelPrice> = {
   ollama: { inputPer1M: 0, outputPer1M: 0 },
   abacusai: { inputPer1M: 0.15, outputPer1M: 0.6 },
   kimi: { inputPer1M: 0.6, outputPer1M: 3 },
+  openrouter: { inputPer1M: 0.6, outputPer1M: 3 },
 };
 
 export function getModelPrice(provider: string, model: string): ModelPrice {
@@ -66,6 +71,7 @@ export interface CostMultipliers {
   ollama: { prompt: number; completion: number };
   kimi: { prompt: number; completion: number };
   abacusai: { prompt: number; completion: number };
+  openrouter: { prompt: number; completion: number };
 }
 
 export function estimateCostUsd(
