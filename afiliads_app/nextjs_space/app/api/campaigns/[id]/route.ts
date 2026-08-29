@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         decisions: { orderBy: { createdAt: 'desc' } },
         presells: {
           where: { userId },
-          select: { id: true },
+          select: { id: true, slug: true, publishedUrl: true, pageType: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },

@@ -143,6 +143,12 @@ model Campaign {
   launchCheckpoint      String    @default("DRAFT") // DRAFT | CREATING_GOOGLE_ADS | SUCCESS_GOOGLE_ADS | CREATING_META_ADS | SUCCESS
   launchIdempotencyKey  String?
 
+  // Estado do produto Low Ticket. draftData é editável por agentes em background;
+  // activeData só muda após aprovação explícita do usuário.
+  productType String?
+  draftData   Json?
+  activeData  Json?
+
   // Metadados de Experimentos A/B (Google Ads Experiments)
   isExperiment             Boolean @default(false)
   experimentId             String?
@@ -175,10 +181,28 @@ model Campaign {
   visualSystems             VisualSystem[]
   launchPlans               LaunchPlan[]
   channelLaunches           ChannelLaunch[]
+  globalKnowledgeInsights   GlobalKnowledgeInsight[]
 
   @@index([userId, status])
   @@index([userId, platform])
   @@index([productResearchId])
+}
+
+model GlobalKnowledgeInsight {
+  id        String     @id @default(cuid())
+  videoUrl  String     @unique
+  title     String
+  channel   String?
+  vertical  String?
+  summary   String     @db.Text
+  insights  Json
+  tags      String[]
+  createdAt DateTime   @default(now())
+  campaigns Campaign[]
+
+  @@index([vertical])
+  @@index([createdAt])
+  @@index([tags], type: Gin)
 }
 
 model CampaignChecklist {
@@ -988,26 +1012,26 @@ enum LaunchMode {
 }
 
 model ChannelLaunch {
-  id                String              @id @default(cuid())
-  campaignId        String
-  userId            String
-  channel           LaunchChannel
-  status            ChannelLaunchStatus @default(PENDING)
-  mode              LaunchMode          @default(MOCK)
-  idempotencyKey    String
-  attempt           Int                 @default(0)
+  id             String              @id @default(cuid())
+  campaignId     String
+  userId         String
+  channel        LaunchChannel
+  status         ChannelLaunchStatus @default(PENDING)
+  mode           LaunchMode          @default(MOCK)
+  idempotencyKey String
+  attempt        Int                 @default(0)
   // Mapa de IDs remotos criados por este canal (campaign/adset/ad...). É Json e
   // não colunas fixas porque a compensação precisa devolver exatamente o que o
   // adapter criou, e cada canal tem sua própria árvore de recursos.
-  externalIds       Json?
-  error             String?             @db.Text
-  logs              Json?
-  startedAt         DateTime?
-  finishedAt        DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  campaign          Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalIds    Json?
+  error          String?             @db.Text
+  logs           Json?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  campaign       Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, channel, idempotencyKey])
   @@index([campaignId])

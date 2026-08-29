@@ -100,20 +100,22 @@ describe('GET /api/campaigns/[id]', () => {
     mockPrisma.campaign.findFirst.mockResolvedValueOnce({
       id: 'c1',
       userId: 'u1',
-      presells: [{ id: 'presell-latest' }],
+      presells: [{ id: 'presell-latest', slug: 'oferta-x', publishedUrl: 'https://ex.com/p/oferta-x', pageType: 'advertorial', status: 'PUBLISHED', createdAt: new Date(0) }],
     });
 
     const request = new NextRequest('http://localhost/api/campaigns/c1');
     const response = await GET(request, { params: { id: 'c1' } });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(expect.objectContaining({ presells: [{ id: 'presell-latest' }] }));
+    expect(await response.json()).toEqual(expect.objectContaining({
+      presells: [expect.objectContaining({ id: 'presell-latest', slug: 'oferta-x', publishedUrl: 'https://ex.com/p/oferta-x' })],
+    }));
     expect(mockPrisma.campaign.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'c1', userId: 'u1' },
       include: expect.objectContaining({
         presells: {
           where: { userId: 'u1' },
-          select: { id: true },
+          select: { id: true, slug: true, publishedUrl: true, pageType: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },

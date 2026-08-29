@@ -704,7 +704,7 @@ export default function WizardPage() {
       const response = await fetch('/api/keywords', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId: cid, isSelected: true })) }),
+        body: JSON.stringify({ keywords: kws.map(k => ({ ...k, relevanceScore: k.relevance, campaignId: cid, isSelected: k.selected === true })) }),
       });
       await requireOk(response, 'Erro ao salvar keywords');
     }
@@ -1200,6 +1200,7 @@ export default function WizardPage() {
                   />
                 )}
               <StepProductSearch
+                campaignId={campaignId}
                 productType={productType}
                 name={name}
                 setName={setName}
@@ -1351,6 +1352,15 @@ export default function WizardPage() {
                   setPopupGate={setPopupGate}
                   videoUrl={videoUrl}
                   setVideoUrl={setVideoUrl}
+                  presellUrl={presellUrl}
+                  generating={generatingPresell}
+                  onGenerate={() => generatePresellHtml()}
+                  bridgeChecks={bridgeChecks}
+                  onToggleCheck={(key, value) => setBridgeChecks((prevChecks) => ({ ...prevChecks, [key]: value }))}
+                  checklistMeta={checklistMeta}
+                  verifyingChecklist={verifyingChecklist}
+                  onVerifyChecklist={() => runChecklistVerify()}
+                  onFixChecklistItem={fixChecklistItem}
                   onPrev={prev}
                   onNext={next}
                 />

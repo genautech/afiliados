@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { AgentHelp, applyEnumIfValid } from './agent-help';
+import { KnowledgeInjector } from './knowledge-injector';
 import type { ProductType } from './step-product-type';
 import {
   Search, Bot, Loader2, AlertTriangle, CheckCircle2, ArrowLeft, ArrowRight,
@@ -17,6 +18,7 @@ import {
 import { PLATFORMS_EXTENDED, VERTICALS, GEOS, CHANNELS, ExtendedPlatform } from '@/lib/wizard-data';
 
 interface StepProductSearchProps {
+  campaignId?: string | null;
   productType: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET' | 'MENTORSHIP';
   
   // State variables and setters
@@ -70,6 +72,7 @@ interface StepProductSearchProps {
 }
 
 export function StepProductSearch({
+  campaignId = null,
   productType,
   name,
   setName,
@@ -674,6 +677,12 @@ export function StepProductSearch({
           )}
         </CardContent>
       </Card>
+
+      {/* 4b. Injeção de conhecimento (YouTube / GitHub / LP concorrente) */}
+      <KnowledgeInjector
+        campaignId={campaignId}
+        extraTags={[vertical, productType].filter(Boolean) as string[]}
+      />
 
       {/* 5. Navigation Footer */}
       <div className="flex justify-between items-center pt-4 border-t border-[#334155]/60">

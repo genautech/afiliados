@@ -1,44 +1,156 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Sparkles, ExternalLink, ShieldCheck, ArrowLeft, ArrowRight, Save, MonitorPlay } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  Wand2, ShieldCheck, Eye, Loader2, ExternalLink, RefreshCw, Sparkles, Tag, Check, Info, ArrowLeft, ArrowRight
-} from 'lucide-react';
-import { AgentHelp, ChecklistItemRow } from './agent-help';
+import { ChecklistItemRow } from './agent-help';
 import { BRIDGE_CHECKLIST } from '@/lib/wizard-data';
-import { PresellPageType, PRESELL_PAGE_TYPES } from '@/lib/presell-types';
+import type { PresellPageType } from '@/lib/presell-types';
+import type { ProductType } from './step-product-type';
+import { PreviewFrame } from './preview-frame';
+import { AiProposalPanel } from './ai-proposal-panel';
 
-export interface StepLandingPageProps {
+interface StepLandingPageProps {
   campaignId: string | null;
-  productType: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET' | 'MENTORSHIP';
+  productType: ProductType;
   productName: string;
   vertical: string;
   channel: string;
-  pageType: string;
-  setPageType: (type: any) => void;
+  pageType: PresellPageType;
+  setPageType: (v: PresellPageType) => void;
   popupGate: boolean;
   setPopupGate: (v: boolean) => void;
   videoUrl: string;
   setVideoUrl: (v: string) => void;
-  
-  // Tracking states
-  gtmContainerId?: string;
-  setGtmContainerId?: (v: string) => void;
-  metaPixelId?: string;
-  setMetaPixelId?: (v: string) => void;
-  metaCapiToken?: string;
-  setMetaCapiToken?: (v: string) => void;
-
+  presellUrl: string;
+  generating: boolean;
+  onGenerate: () => Promise<void> | void;
+  bridgeChecks: Record<string, boolean>;
+  onToggleCheck: (key: string, value: boolean) => void;
+  checklistMeta: Record<string, { verificationType: string; note?: string | null }>;
+  verifyingChecklist: boolean;
+  onVerifyChecklist: () => Promise<any>;
+  onFixChecklistItem: (step: number, itemKey: string) => Promise<any>;
   onPrev: () => void;
   onNext: () => void;
+}
+
+const TRACKING_FIELDS = {
+  gtm: 'gtm_container_id',
+  pixel: 'meta_pixel_id',
+  capi: 'meta_access_token',
+} as const;
+
+/** Extrai a copy legível do HTML da presell para o painel de proposta da IA. */
+function htmlToPlainCopy(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/(h1|h2|h3|h4|p|li|div|section|header|footer)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+const HTML_ESCAPE: Record<string, string> = {
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => HTML_ESCAPE[c]);
+}
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** Casa o trecho ignorando diferenças de espaço em branco — a copy do agente vem normalizada. */
+function excerptMatcher(excerpt: string): RegExp {
+  const escaped = excerpt.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return new RegExp(escaped, 'i');
+}
+
+export interface CopyRewrite {
+  excerpt: string;
+  rewrite: string;
+}
+
+/**
+ * Aplica cada `excerpt -> rewrite` apenas nos nós de texto do HTML, deixando tags,
+ * atributos, script e style intactos. Trecho que atravessa tags não casa e volta
+ * em `missed` — preferimos reportar do que reescrever a página inteira às cegas.
+ */
+export function applyRewritesToHtml(
+  html: string,
+  rewrites: CopyRewrite[],
+): { html: string; applied: number; missed: string[] } {
+  const pending = rewrites.filter((r) => r?.excerpt?.trim() && r?.rewrite?.trim());
+  if (!html || pending.length === 0) return { html, applied: 0, missed: [] };
+
+  const matchers = pending.map((r) => excerptMatcher(r.excerpt));
+  const done = new Set<number>();
+
+  const rewriteTextNode = (raw: string): string => {
+    if (!raw.trim()) return raw;
+    let decoded = decodeEntities(raw);
+    let changed = false;
+    for (let i = 0; i < pending.length; i++) {
+      if (done.has(i)) continue;
+      if (!matchers[i].test(decoded)) continue;
+      const replacement = pending[i].rewrite.trim();
+      decoded = decoded.replace(matchers[i], () => replacement);
+      done.add(i);
+      changed = true;
+    }
+    return changed ? escapeHtml(decoded) : raw;
+  };
+
+  const OPAQUE = /^(script|style|noscript|textarea)$/i;
+  const tokenRe = /<!--[\s\S]*?-->|<\/?([a-zA-Z][\w:-]*)\b[^>]*>/g;
+  let out = '';
+  let cursor = 0;
+  let opaqueDepth = 0;
+  let token: RegExpExecArray | null;
+
+  while ((token = tokenRe.exec(html)) !== null) {
+    const text = html.slice(cursor, token.index);
+    out += opaqueDepth > 0 ? text : rewriteTextNode(text);
+    out += token[0];
+    cursor = token.index + token[0].length;
+
+    const tag = token[1];
+    if (tag && OPAQUE.test(tag)) {
+      if (token[0].startsWith('</')) opaqueDepth = Math.max(0, opaqueDepth - 1);
+      else if (!token[0].endsWith('/>')) opaqueDepth++;
+    }
+  }
+  const tail = html.slice(cursor);
+  out += opaqueDepth > 0 ? tail : rewriteTextNode(tail);
+
+  const missed = pending.filter((_, i) => !done.has(i)).map((r) => r.excerpt);
+  return { html: out, applied: done.size, missed };
 }
 
 export function StepLandingPage({
@@ -53,360 +165,389 @@ export function StepLandingPage({
   setPopupGate,
   videoUrl,
   setVideoUrl,
+  presellUrl,
+  generating,
+  onGenerate,
+  bridgeChecks,
+  onToggleCheck,
+  checklistMeta,
+  verifyingChecklist,
+  onVerifyChecklist,
+  onFixChecklistItem,
   onPrev,
-  onNext
+  onNext,
 }: StepLandingPageProps) {
-  const [generating, setGenerating] = useState(false);
-  const [verifyingChecklist, setVerifyingChecklist] = useState(false);
-  const [bridgeChecks, setBridgeChecks] = useState<Record<string, boolean>>({});
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const [slug, setSlug] = useState('');
-
-  // Local state for tracking variables to present inline GTM / Pixel configs
   const [gtmId, setGtmId] = useState('');
   const [pixelId, setPixelId] = useState('');
   const [capiToken, setCapiToken] = useState('');
+  const [capiMasked, setCapiMasked] = useState(false);
+  const [savingTracking, setSavingTracking] = useState(false);
+  const [presellHtml, setPresellHtml] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const wasGenerating = useRef(generating);
 
-  // Fetch current pre-sell or tracking data if campaign exists
   useEffect(() => {
     if (!campaignId) return;
-
-    // Simulated fetch of current generated pre-sell status
-    const fetchPresellStatus = async () => {
+    let cancelled = false;
+    (async () => {
       try {
         const res = await fetch(`/api/campaigns/${campaignId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.presells && data.presells.length > 0) {
-            const latest = data.presells[0];
-            setPublishedUrl(latest.publishedUrl || `/p/${latest.slug}`);
-            setSlug(latest.slug);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to fetch pre-sell status:', err);
-      }
-    };
-
-    fetchPresellStatus();
-  }, [campaignId]);
-
-  const handleGeneratePage = async () => {
-    if (!campaignId) {
-      toast.error('Grave a campanha como rascunho antes de gerar a página');
-      return;
-    }
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/presells', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          campaignId,
-          productName,
-          pageType,
-          popupGate,
-          videoUrl: pageType === 'vsl' ? videoUrl : undefined,
-          gtmContainerId: gtmId || undefined,
-          metaPixelId: pixelId || undefined,
-          metaCapiToken: capiToken || undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Erro na geração da página de alta conversão');
-      }
-
-      const data = await res.json();
-      toast.success('Página de Alta Conversão Gerada com Sucesso!');
-      setPublishedUrl(data.presell.publishedUrl || `/p/${data.presell.slug}`);
-      setSlug(data.presell.slug);
-    } catch (err: any) {
-      toast.error(err.message || 'Erro de IA na geração da página');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const runChecklistVerify = async () => {
-    if (!campaignId) return;
-    setVerifyingChecklist(true);
-    try {
-      const res = await fetch('/api/checklists/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId, step: 4 })
-      });
-      if (res.ok) {
+        if (!res.ok) return;
         const data = await res.json();
-        setBridgeChecks(data.checks || {});
-        toast.success('Verificação de conformidade concluída!');
-      } else {
-        toast.error('Erro ao processar validação do checklist');
+        if (cancelled) return;
+        if (typeof data?.presellHtml === 'string') setPresellHtml(data.presellHtml);
+        const latest = data?.presells?.[0];
+        if (!latest) return;
+        setSlug(latest.slug ?? '');
+        setPublishedUrl(latest.publishedUrl || (latest.slug ? `/p/${latest.slug}` : null));
+      } catch {
+        /* silencioso: o passo continua utilizável sem o status da presell */
       }
+    })();
+    return () => { cancelled = true; };
+  }, [campaignId, refreshTick]);
+
+  // Quando a geração termina, o HTML no banco mudou: recarrega para o preview refletir.
+  useEffect(() => {
+    if (wasGenerating.current && !generating) setRefreshTick((t) => t + 1);
+    wasGenerating.current = generating;
+  }, [generating]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/integrations');
+        if (!res.ok) return;
+        const rows = await res.json();
+        if (cancelled || !Array.isArray(rows)) return;
+        const find = (field: string) =>
+          rows.find((r: any) => r?.serviceName === 'tracking' && r?.fieldName === field);
+        const gtm = find(TRACKING_FIELDS.gtm);
+        const pixel = find(TRACKING_FIELDS.pixel);
+        const capi = find(TRACKING_FIELDS.capi);
+        if (gtm?.fieldValue) setGtmId(gtm.fieldValue);
+        if (pixel?.fieldValue) setPixelId(pixel.fieldValue);
+        // fieldValue de token vem mascarado da API — não sobrescrevemos com bolinhas.
+        if (capi?.fieldValue) setCapiMasked(true);
+      } catch {
+        /* silencioso */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (presellUrl) setPublishedUrl(presellUrl);
+  }, [presellUrl]);
+
+  const saveTracking = async () => {
+    const pending: Array<[string, string]> = [];
+    if (gtmId.trim()) pending.push([TRACKING_FIELDS.gtm, gtmId.trim()]);
+    if (pixelId.trim()) pending.push([TRACKING_FIELDS.pixel, pixelId.trim()]);
+    if (capiToken.trim()) pending.push([TRACKING_FIELDS.capi, capiToken.trim()]);
+    if (!pending.length) { toast.error('Preencha ao menos um campo de tracking.'); return; }
+    setSavingTracking(true);
+    try {
+      for (const [fieldName, fieldValue] of pending) {
+        const res = await fetch('/api/integrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serviceName: 'tracking', fieldName, fieldValue }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data?.error ?? `Erro ao salvar ${fieldName}`);
+          return;
+        }
+      }
+      if (capiToken.trim()) { setCapiToken(''); setCapiMasked(true); }
+      toast.success('Tracking salvo — será injetado na próxima geração da página.');
     } catch {
-      toast.error('Erro ao verificar checklist');
+      toast.error('Erro de rede ao salvar tracking.');
     } finally {
-      setVerifyingChecklist(false);
+      setSavingTracking(false);
     }
   };
 
-  // Determine dynamic templates list based on product vertical type
-  const getPageTypeLabel = (type: string) => {
-    switch (type) {
-      case 'advertorial': return 'Advertorial (Artigo de Review)';
-      case 'pogo': return 'Pogo (Curta, direto ao ponto)';
-      case 'vsl': return 'VSL (Video Sales Letter)';
-      case 'authority': return 'Authority (Autoridade Editorial - Ingredientes/Pacotes)';
-      case 'interstitial': return 'Interstitial (Teaser Screenshot - Display/Native)';
-      case 'tsl': return 'TSL (Texto Longo de Vendas)';
-      case 'cookie_popup': return 'Cookie/Popup (Foca em marcação de cookies)';
-      case 'review': return 'Review (Análise de especialista detalhada)';
-      default: return type;
-    }
+  const getPageTypeLabel = (t: string) => {
+    const labels: Record<string, string> = {
+      advertorial: 'Advertorial (Artigo de Review)',
+      pogo: 'Pogo (Comparativo)',
+      vsl: 'VSL (Video Sales Letter)',
+      interstitial: 'Interstitial (Aviso rápido)',
+      authority: 'Authority (Página de autoridade)',
+      tsl: 'TSL (Text Sales Letter)',
+      cookie_popup: 'Cookie Popup (Gate de consentimento)',
+      review: 'Review (Análise do produto)',
+    };
+    return labels[t] ?? t;
   };
 
-  const getDynamicTemplates = () => {
-    if (productType === 'PROPRIETARY_LOW_TICKET') {
-      return [
-        { type: 'advertorial', desc: 'Página de Vendas Direta (Estrutura clássica de Infoproduto)' },
-        { type: 'vsl', desc: 'Página de Vendas de Vídeo (VSL Low-Ticket)' },
-        { type: 'tsl', desc: 'Página de Vendas Longa Editorial (Alta persuasão de texto)' },
-        { type: 'cookie_popup', desc: 'Squeeze Page Interativa com Formulário de Compra' }
-      ];
-    }
-    if (productType === 'MENTORSHIP') {
-      return [
-        { type: 'review', desc: 'Landing Page de Captura de Lead (Inscrição para Mentoria)' },
-        { type: 'authority', desc: 'Página de Autoridade e Agenda (Foco em call de fechamento)' },
-        { type: 'pogo', desc: 'Página Squeeze Curta (Foco em WhatsApp direto / Isque Digital)' }
-      ];
-    }
-    return [
-      { type: 'advertorial', desc: 'Advertorial (Artigo de Review de Afiliado)' },
-      { type: 'pogo', desc: 'Pogo (Página curta direta ao HopLink)' },
-      { type: 'vsl', desc: 'VSL (Vídeo de Venda Editorial)' },
-      { type: 'authority', desc: 'Authority (Ingredientes, Formulação e Selos)' },
-      { type: 'interstitial', desc: 'Interstitial (Screenshot + Popup de Segmentação)' },
-      { type: 'tsl', desc: 'TSL (Texto de Vendas para Display)' },
-      { type: 'cookie_popup', desc: 'Cookie/Popup (Teaser de Cookie)' },
-      { type: 'review', desc: 'Review Completo e Detalhado de Usuário' }
-    ];
+  const getDynamicTemplates = (): PresellPageType[] => {
+    if (productType === 'PROPRIETARY_LOW_TICKET') return ['tsl', 'vsl', 'advertorial', 'review'];
+    if (productType === 'MENTORSHIP') return ['authority', 'vsl', 'tsl', 'advertorial'];
+    return ['advertorial', 'pogo', 'vsl', 'interstitial', 'review', 'cookie_popup'];
   };
 
-  const templates = getDynamicTemplates();
+  const criticalItems = BRIDGE_CHECKLIST.filter(i => i.critical);
+  const criticalDone = criticalItems.filter(i => bridgeChecks[i.key]).length;
+  const totalDone = BRIDGE_CHECKLIST.filter(i => bridgeChecks[i.key]).length;
+  const pct = BRIDGE_CHECKLIST.length ? Math.round((totalDone / BRIDGE_CHECKLIST.length) * 100) : 0;
+  const canGoNext = criticalItems.every(i => bridgeChecks[i.key]);
+  const activeCopy = useMemo(() => htmlToPlainCopy(presellHtml), [presellHtml]);
+
+  // Aprovação do painel de IA: grava no presellHtml, que é o que o preview e a
+  // página publicada leem. Lança em caso de falha para o painel não dar o
+  // aprovado como aplicado.
+  const handleApproveProposal = async (rewritten: string, issues: CopyRewrite[]) => {
+    if (!presellHtml.trim()) {
+      throw new Error('Não há HTML gerado para receber as correções. Gere a página antes de aprovar.');
+    }
+    const { html: nextHtml, applied, missed } = applyRewritesToHtml(presellHtml, issues);
+    if (applied === 0) {
+      throw new Error(
+        'Nenhum trecho aprovado foi localizado no HTML da página. Regere a página e rode a revisão de novo.',
+      );
+    }
+    if (!campaignId) {
+      throw new Error('Salve a campanha antes de aprovar: sem id não há onde gravar as correções.');
+    }
+
+    const res = await fetch(`/api/campaigns/${campaignId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ presellHtml: nextHtml }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data?.error || `Falha ao gravar a página (HTTP ${res.status}).`);
+    }
+
+    setPresellHtml(nextHtml);
+    if (missed.length > 0) {
+      toast.warning(
+        `${applied} correção(ões) gravadas. ${missed.length} trecho(s) atravessam tags e ficaram de fora — ajuste à mão.`,
+      );
+    }
+  };
+  const proposalContext = [
+    productName && `Produto: ${productName}`,
+    vertical && `Vertical: ${vertical}`,
+    channel && `Canal: ${channel}`,
+    `Tipo de página: ${getPageTypeLabel(pageType)}`,
+  ].filter(Boolean).join(' · ');
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <Eye className="h-5 w-5 text-emerald-400 animate-pulse" />
-          {productType === 'AFFILIATE' ? 'Pré-sell / Bridge Page' : 'Landing Page de Venda'}
-        </h2>
-        <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          Modo Inteligente
-        </Badge>
-      </div>
-
-      {/* Checklist Ring Section */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-[#090d16] border border-[#1e293b] rounded-xl p-4">
-        <div className="relative w-12 h-12 shrink-0">
-          <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-            <circle cx="24" cy="24" r="20" fill="none" stroke="#1e293b" strokeWidth="3.5" />
-            <circle
-              cx="24"
-              cy="24"
-              r="20"
-              fill="none"
-              stroke={Object.keys(bridgeChecks).length > 0 ? '#10b981' : '#f59e0b'}
-              strokeWidth="3.5"
-              strokeDasharray={`${(Object.values(bridgeChecks).filter(Boolean).length / Math.max(1, BRIDGE_CHECKLIST.length)) * 125.6} 125.6`}
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
-            {Object.values(bridgeChecks).filter(Boolean).length}/{BRIDGE_CHECKLIST.length}
-          </span>
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-slate-200">Validador de Compliance Sentinel</p>
-          <p className="text-xs text-slate-400">
-            {BRIDGE_CHECKLIST.filter(i => i.critical && !bridgeChecks[i.key]).length} requisitos pendentes de auditoria.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={runChecklistVerify}
-          disabled={verifyingChecklist || !campaignId}
-          className="border-[#1e293b] hover:bg-[#111827] text-slate-300 gap-1.5 shrink-0"
-        >
-          {verifyingChecklist ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
-          ) : (
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-          )}
-          Validar Layout
-        </Button>
-      </div>
-
-      {/* Editor & Configuration Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
+    <div className="space-y-4">
+      <Card className="bg-[#1e293b] border-[#334155]">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-400" />
+              Pré-sell / Landing Page
+            </CardTitle>
+            <p className="text-sm text-slate-400 mt-1">
+              {productName || 'Produto'} · {vertical || 'sem vertical'} · {channel || 'sem canal'}
+            </p>
+          </div>
+          <div className="relative h-16 w-16 shrink-0">
+            <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#334155" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="15.9155" fill="none"
+                stroke={pct === 100 ? '#10b981' : '#f59e0b'}
+                strokeWidth="3"
+                strokeDasharray={`${pct} ${100 - pct}`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white">
+              {pct}%
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                <Tag className="h-4 w-4 text-emerald-400" /> Template de Geração
-              </Label>
-              <AgentHelp fieldKey="pageType" fieldValue={pageType} context={{ channel, vertical }} />
-            </div>
-            <Select value={pageType} onValueChange={(v) => setPageType(v)}>
-              <SelectTrigger className="bg-[#0b0f19] border-[#1e293b] text-slate-100 hover:border-emerald-500/50 transition-colors">
-                <SelectValue placeholder="Selecione o layout de página" />
+            <Label className="text-slate-300">Template da página</Label>
+            <Select value={pageType} onValueChange={(v) => setPageType(v as PresellPageType)}>
+              <SelectTrigger className="bg-[#0f172a] border-[#334155] text-white">
+                <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#0b0f19] border-[#1e293b]">
-                {templates.map(tpl => (
-                  <SelectItem key={tpl.type} value={tpl.type} className="text-slate-300 hover:bg-[#1e293b] hover:text-white">
-                    {tpl.desc}
-                  </SelectItem>
+              <SelectContent className="bg-[#1e293b] border-[#334155] text-white">
+                {getDynamicTemplates().map((t) => (
+                  <SelectItem key={t} value={t}>{getPageTypeLabel(t)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex items-center space-x-2 bg-[#090d16]/50 border border-[#1e293b] p-3 rounded-lg">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-[#0f172a]">
             <Checkbox
-              id="step5-popup-gate"
               checked={popupGate}
-              onCheckedChange={(v: boolean) => setPopupGate(v)}
-              className="border-[#1e293b] text-emerald-500 data-[state=checked]:bg-emerald-500"
+              onCheckedChange={(v: any) => setPopupGate(!!v)}
+              className="mt-0.5 border-slate-600 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
             />
-            <div className="grid gap-1.5 leading-none">
-              <label htmlFor="step5-popup-gate" className="text-sm font-medium text-slate-200 cursor-pointer">
-                Habilitar Pop-up de Retenção (Intenção de Saída)
-              </label>
-              <p className="text-xs text-slate-400">
-                Abre caixa de aviso ao tentar fechar a aba, reduzindo taxas de rejeição.
+            <div>
+              <span className="text-sm text-white">Popup gate antes do clique</span>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Cuidado: gate agressivo é motivo comum de reprovação no Google Ads.
               </p>
             </div>
           </div>
 
           {pageType === 'vsl' && (
-            <div className="space-y-2 transition-all">
-              <Label className="text-slate-300 font-semibold">URL de Incorporação do Vídeo</Label>
+            <div className="space-y-2">
+              <Label className="text-slate-300">URL do vídeo (VSL)</Label>
               <Input
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="Ex: https://www.youtube.com/embed/dQw4w9WgXcQ"
-                className="bg-[#0b0f19] border-[#1e293b] text-slate-100 placeholder:text-slate-500 focus-visible:border-emerald-500 focus-visible:ring-emerald-500"
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="bg-[#0f172a] border-[#334155] text-white"
               />
             </div>
           )}
-        </div>
 
-        {/* Tracking Tags Configuration */}
-        <div className="space-y-4 bg-[#090d16] border border-[#1e293b] p-5 rounded-xl">
-          <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-1.5 border-b border-[#1e293b] pb-2">
-            <Sparkles className="h-4 w-4 text-emerald-400" /> Rastreamento Invisível Automatizado
-          </h3>
-          <p className="text-xs text-slate-400">
-            Estes IDs serão embutidos e compilados de forma invisível nos cabeçalhos HTML para garantir atribuições seguras e consistentes.
-          </p>
-
-          <div className="space-y-2">
-            <Label className="text-slate-300 text-xs font-semibold">Google Tag Manager Container ID</Label>
-            <Input
-              value={gtmId}
-              onChange={(e) => setGtmId(e.target.value)}
-              placeholder="Ex: GTM-XXXXXX"
-              className="bg-[#0b0f19] border-[#1e293b] text-slate-100 placeholder:text-slate-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs font-semibold">Meta Pixel ID</Label>
-              <Input
-                value={pixelId}
-                onChange={(e) => setPixelId(e.target.value)}
-                placeholder="Ex: 1234567890123"
-                className="bg-[#0b0f19] border-[#1e293b] text-slate-100 placeholder:text-slate-500"
-              />
+          <div className="space-y-3 p-3 rounded-lg bg-[#0f172a] border border-[#334155]">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-slate-300">Tracking injetado na página</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={saveTracking}
+                disabled={savingTracking}
+                className="h-7 text-[11px] border-[#334155] text-slate-300 gap-1.5"
+              >
+                {savingTracking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Salvar tracking
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label className="text-slate-300 text-xs font-semibold">Meta CAPI Token</Label>
-              <Input
-                value={capiToken}
-                onChange={(e) => setCapiToken(e.target.value)}
-                type="password"
-                placeholder="Token de Conversões CAPI"
-                className="bg-[#0b0f19] border-[#1e293b] text-slate-100 placeholder:text-slate-500"
-              />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-400">GTM Container ID</Label>
+                <Input value={gtmId} onChange={(e) => setGtmId(e.target.value)} placeholder="GTM-XXXXXXX" className="bg-[#1e293b] border-[#334155] text-white" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-400">Meta Pixel ID</Label>
+                <Input value={pixelId} onChange={(e) => setPixelId(e.target.value)} placeholder="1234567890" className="bg-[#1e293b] border-[#334155] text-white" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-slate-400">Meta CAPI Token</Label>
+                <Input
+                  type="password"
+                  value={capiToken}
+                  onChange={(e) => setCapiToken(e.target.value)}
+                  placeholder={capiMasked ? '•••••••• (já salvo)' : 'EAAG...'}
+                  className="bg-[#1e293b] border-[#334155] text-white"
+                />
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* AI Page Generation Panel */}
-      <Card className="bg-[#090d16] border-[#1e293b] mt-4">
-        <CardContent className="p-5 flex flex-col items-center justify-center text-center space-y-4">
-          <div className="bg-emerald-500/10 p-3 rounded-full border border-emerald-500/20">
-            <Wand2 className="h-6 w-6 text-emerald-400" />
-          </div>
-          <div className="max-w-md space-y-1">
-            <h4 className="text-sm font-semibold text-slate-100">Geração de Redação & Estrutura via IA</h4>
-            <p className="text-xs text-slate-400">
-              Inicia o redator autônomo. Ele examinará o dossiê, objeções do Autocomplete e gerará um layout 100% livre de claims de risco.
+            <p className="text-[11px] text-slate-500">
+              Salvo em Integrações (serviço <code>tracking</code>) e lido pelo gerador da presell na próxima geração.
             </p>
           </div>
 
-          <Button
-            onClick={handleGeneratePage}
-            disabled={generating || !campaignId}
-            className="bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold px-6 gap-2 w-full sm:w-auto"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Compilando Código & Tags...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" /> Gerar Página de Alta Conversão
-              </>
-            )}
-          </Button>
-
-          {publishedUrl && (
-            <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#0d1425] border border-[#1e293b] p-3 rounded-lg w-full max-w-lg justify-between transition-all">
-              <div className="text-left">
-                <p className="text-xs text-slate-400">Página Publicada e Ativa:</p>
-                <p className="text-xs font-mono text-emerald-400 truncate max-w-[280px]">
-                  {publishedUrl}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-[#1e293b] hover:bg-[#1e293b] text-slate-300 gap-1"
-                onClick={() => window.open(publishedUrl, '_blank')}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => onGenerate()}
+              disabled={generating}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {publishedUrl ? 'Regerar página' : 'Gerar página'}
+            </Button>
+            {publishedUrl && (
+              <a
+                href={publishedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5"
               >
-                Visualizar <ExternalLink className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
+                <ExternalLink className="h-3.5 w-3.5" />
+                {slug ? `/p/${slug}` : 'Abrir página'}
+              </a>
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      {/* Navigation Buttons */}
-      <div className="flex items-center justify-between border-t border-slate-800 pt-4">
-        <Button onClick={onPrev} variant="outline" className="border-[#1e293b] text-slate-300 gap-1.5">
+      <Card className="bg-[#1e293b] border-[#334155]">
+        <CardHeader>
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <MonitorPlay className="h-4 w-4 text-emerald-400" />
+            Preview da página
+            {presellHtml ? (
+              <Badge className="bg-emerald-500/15 text-emerald-400 text-[10px] hover:bg-emerald-500/25">
+                HTML gerado
+              </Badge>
+            ) : publishedUrl ? (
+              <Badge className="bg-sky-500/15 text-sky-400 text-[10px] hover:bg-sky-500/25">
+                URL publicada
+              </Badge>
+            ) : null}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PreviewFrame
+            html={presellHtml || null}
+            url={presellHtml ? null : publishedUrl}
+            title={`Preview — ${productName || 'presell'}`}
+            emptyLabel="Gere a página para ver o preview aqui."
+          />
+        </CardContent>
+      </Card>
+
+      <AiProposalPanel
+        campaignId={campaignId}
+        activeCopy={activeCopy}
+        context={proposalContext}
+        onApprove={handleApproveProposal}
+      />
+
+      <Card className="bg-[#1e293b] border-[#334155]">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            Checklist da página
+            <Badge className="bg-slate-500/20 text-slate-300 text-[10px] hover:bg-slate-500/30">
+              {criticalDone}/{criticalItems.length} críticos
+            </Badge>
+          </CardTitle>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onVerifyChecklist()}
+            disabled={verifyingChecklist}
+            className="h-8 text-xs border-[#334155] text-slate-300 gap-1.5"
+          >
+            {verifyingChecklist ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+            Verificar de verdade
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {BRIDGE_CHECKLIST.map((item) => (
+            <ChecklistItemRow
+              key={item.key}
+              item={item}
+              checked={!!bridgeChecks[item.key]}
+              onToggle={(v) => onToggleCheck(item.key, v)}
+              meta={checklistMeta[item.key]}
+              step={4}
+              onFix={onFixChecklistItem}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <Button variant="outline" onClick={onPrev} className="border-[#334155] text-slate-300 gap-2">
           <ArrowLeft className="h-4 w-4" /> Voltar
         </Button>
-        <Button
-          onClick={onNext}
-          className="bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-bold gap-1.5"
-        >
+        <Button onClick={onNext} disabled={!canGoNext} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
           Avançar <ArrowRight className="h-4 w-4" />
         </Button>
       </div>
