@@ -101,6 +101,30 @@ describe('describeScoutFailure', () => {
     expect(describeScoutFailure(401, 'OPENROUTER_API_KEY inválida').kind).toBe('missing_keys');
   });
 
+  it('lê a causa de details, que é onde o trend-scout coloca', () => {
+    // A rota devolve { error: 'Erro ao gerar produto Trend-Scout', details: '<causa>' }.
+    const f = describeScoutFailure(503, 'Erro ao gerar produto Trend-Scout', 'Credenciais ausentes: FIRECRAWL_API_KEY');
+    expect(f.kind).toBe('missing_keys');
+  });
+
+  it('credencial ausente vinda como 503 nao vira "tente de novo mais tarde"', () => {
+    // O trend-scout mapeia credencial ausente para 503; retry nunca resolve .env.
+    const f = describeScoutFailure(503, 'Erro ao gerar produto Trend-Scout', 'Credenciais ausentes: OPENROUTER_API_KEY');
+    expect(f.kind).not.toBe('unavailable');
+    expect(f.detail).toContain('.env');
+  });
+
+  it('502 de Firecrawl/OpenRouter continua sendo indisponibilidade', () => {
+    const f = describeScoutFailure(502, 'Erro ao gerar produto Trend-Scout', 'Firecrawl falhou com HTTP 503');
+    expect(f.kind).toBe('unavailable');
+  });
+
+  it('sem details, cai para a mensagem de error', () => {
+    const f = describeScoutFailure(500, 'Erro ao processar pesquisa de mercado', undefined);
+    expect(f.kind).toBe('generic');
+    expect(f.detail).toBe('Erro ao processar pesquisa de mercado');
+  });
+
   it('genérico preserva a mensagem real do servidor', () => {
     const f = describeScoutFailure(500, 'Erro ao gerar produto Trend-Scout');
     expect(f.kind).toBe('generic');

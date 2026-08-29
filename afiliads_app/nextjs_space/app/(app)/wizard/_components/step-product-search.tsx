@@ -189,9 +189,18 @@ export interface ScoutFailure {
 /**
  * Converte a falha real do backend em algo acionável. Chave ausente e serviço fora
  * do ar têm respostas diferentes: uma o usuário resolve, a outra ele espera.
+ *
+ * A causa pode chegar em `details` (trend-scout) ou em `error` (market-scout), e o
+ * trend-scout devolve 503 para credencial ausente — então a mensagem decide antes
+ * do status, senão mandaríamos "tente de novo" para um problema de .env.
  */
-export function describeScoutFailure(status: number, serverMessage?: string | null): ScoutFailure {
-  const message = (serverMessage ?? '').toUpperCase();
+export function describeScoutFailure(
+  status: number,
+  serverMessage?: string | null,
+  serverDetails?: string | null,
+): ScoutFailure {
+  const cause = [serverDetails, serverMessage].find((v) => typeof v === 'string' && v.trim()) ?? '';
+  const message = cause.toUpperCase();
   const mentionsKey = message.includes('API_KEY') || message.includes('CHAVE') || message.includes('CREDENC');
 
   if (status === 401 && !mentionsKey) {
@@ -218,7 +227,7 @@ export function describeScoutFailure(status: number, serverMessage?: string | nu
   return {
     kind: 'generic',
     title: `Falha na pesquisa (HTTP ${status})`,
-    detail: serverMessage?.trim() || 'O servidor não detalhou o motivo. Verifique os logs da rota.',
+    detail: cause.trim() || 'O servidor não detalhou o motivo. Verifique os logs da rota.',
   };
 }
 

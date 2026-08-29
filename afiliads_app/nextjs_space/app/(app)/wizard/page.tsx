@@ -680,7 +680,7 @@ export default function WizardPage() {
         return;
       }
       if (!response.ok) {
-        const failure = describeScoutFailure(response.status, data?.error);
+        const failure = describeScoutFailure(response.status, data?.error, data?.details);
         setScoutFailure(failure);
         toast.error(`${failure.title}: ${failure.detail}`);
         return;
@@ -797,7 +797,7 @@ export default function WizardPage() {
         toast.success('Pesquisa do Ad Scout consolidada com sucesso!');
       } else {
         const errorData = await response.json().catch(() => ({}));
-        const failure = describeScoutFailure(response.status, errorData?.error);
+        const failure = describeScoutFailure(response.status, errorData?.error, errorData?.details);
         setScoutFailure(failure);
         toast.error(`${failure.title}: ${failure.detail}`);
       }
