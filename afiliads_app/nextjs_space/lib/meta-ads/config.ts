@@ -3,8 +3,14 @@
 // Lê a mesma fonte que /api/tracking já usa (Integration serviceName='meta'),
 // aceitando os dois nomes de campo que existem no banco hoje, e cai para env
 // quando o usuário ainda não conectou a conta pela UI.
+//
+// access_token casa com /(key|secret|token|password)/i, então é gravado
+// criptografado por /api/integrations. Ler fieldValue cru mandaria a string
+// "enc:v1:..." para a Marketing API. readIntegrationFieldValue é o mesmo
+// caminho que getGoogleAdsConfig usa.
 
 import { prisma } from '@/lib/prisma';
+import { readIntegrationFieldValue } from '@/lib/integration-secrets';
 
 export interface MetaAdsCredentials {
   accessToken: string;
@@ -32,9 +38,24 @@ export function normalizeAdAccountId(raw: string): string {
 }
 
 export async function getMetaAdsCredentials(userId: string): Promise<MetaCredentialCheck> {
-  const rows = await prisma.integration.findMany({ where: { userId, serviceName: 'meta' } });
+  const rows = await prisma.integration.findMany({
+    where: { userId, serviceName: { in: ['meta', 'tracking'] } },
+  });
   const pick = (key: keyof MetaAdsCredentials, envs: string[]): string | null => {
-    const hit = rows.find(r => FIELD_ALIASES[key].includes(r.fieldName))?.fieldValue?.trim();
+    // 'meta' é a fonte canônica; 'tracking' só entra como fallback para não
+    // obrigar o operador a digitar o mesmo pixel duas vezes.
+    const row = rows.find(r => r.serviceName === 'meta' && FIELD_ALIASES[key].includes(r.fieldName))
+      ?? rows.find(r => r.serviceName === 'tracking' && FIELD_ALIASES[key].includes(r.fieldName));
+    let hit: string | undefined;
+    if (row?.fieldValue) {
+      try {
+        hit = readIntegrationFieldValue(row.fieldName, row.fieldValue).trim();
+      } catch {
+        // Segredo ilegível (chave trocada, rollout 'enforced' com plaintext
+        // legado) conta como ausente: melhor cair para MOCK do que mandar lixo.
+        hit = undefined;
+      }
+    }
     if (hit) return hit;
     for (const e of envs) { const v = process.env[e]?.trim(); if (v) return v; }
     return null;

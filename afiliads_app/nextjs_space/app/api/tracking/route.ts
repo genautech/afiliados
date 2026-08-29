@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readIntegrationFieldValue } from '@/lib/integration-secrets';
 import crypto from 'crypto';
 
 interface TrackingEventPayload {
@@ -67,9 +68,16 @@ export async function POST(request: NextRequest) {
 
     if (userId && (!pixelId || !accessToken)) {
       try {
+        // access_token é gravado criptografado por /api/integrations; ler o
+        // fieldValue cru mandaria "enc:v1:..." para a CAPI do Meta.
         const rows = await prisma.integration.findMany({ where: { userId, serviceName: 'meta' } });
-        const dbPixel = rows.find(r => r.fieldName === 'pixel_id' || r.fieldName === 'meta_pixel_id')?.fieldValue;
-        const dbToken = rows.find(r => r.fieldName === 'access_token' || r.fieldName === 'meta_access_token')?.fieldValue;
+        const read = (r?: { fieldName: string; fieldValue: string | null }) => {
+          if (!r?.fieldValue) return undefined;
+          try { return readIntegrationFieldValue(r.fieldName, r.fieldValue).trim() || undefined; }
+          catch { return undefined; }
+        };
+        const dbPixel = read(rows.find(r => r.fieldName === 'pixel_id' || r.fieldName === 'meta_pixel_id'));
+        const dbToken = read(rows.find(r => r.fieldName === 'access_token' || r.fieldName === 'meta_access_token'));
         if (dbPixel) pixelId = dbPixel;
         if (dbToken) accessToken = dbToken;
       } catch (err) {

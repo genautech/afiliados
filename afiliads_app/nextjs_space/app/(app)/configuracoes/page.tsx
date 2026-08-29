@@ -64,6 +64,18 @@ const SERVICES = [
     ],
   },
   {
+    name: 'Meta Ads (Marketing API)',
+    key: 'meta',
+    link: 'https://business.facebook.com/',
+    note: 'Preencher aqui habilita o canal Meta no Painel de Lançamento. Sem estas credenciais o painel roda em MOCK. Mesmo completas, a criação real só sai com META_ADS_MUTATIONS_ENABLED=true e a conta no META_ADS_MUTATION_ALLOWLIST — a mesma trava default-deny do Google Ads. O Pixel cai para o valor do bloco de rastreamento quando vazio.',
+    fields: [
+      { name: 'ad_account_id', label: 'Ad Account ID (com ou sem o prefixo act_)', placeholder: 'Ex.: act_1234567890' },
+      { name: 'access_token', label: 'Access Token (System User, Marketing API)', placeholder: 'Token', sensitive: true },
+      { name: 'page_id', label: 'Page ID (página que publica o anúncio)', placeholder: 'Ex.: 1234567890' },
+      { name: 'pixel_id', label: 'Pixel ID (opcional — herda do bloco de rastreamento)', placeholder: 'Ex.: 1234567890123456' },
+    ],
+  },
+  {
     name: 'Tags de Rastreamento (GA4 + Meta Pixel + GTM)',
     key: 'tracking',
     link: 'https://analytics.google.com/',
@@ -185,6 +197,11 @@ export default function ConfiguracoesPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {(service as any).note && (
+              <p className="text-xs text-slate-400 leading-relaxed border-l-2 border-[#334155] pl-3">
+                {(service as any).note}
+              </p>
+            )}
             {service.fields.map((field: any) => {
               const key = `${service.key}_${field.name}`;
               return (
