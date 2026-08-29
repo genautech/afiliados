@@ -36,6 +36,17 @@ This board tracks high-level tasks and coordination points between various agent
     - `app/api/search/market-scout/route.ts` (Atualizado para responder com erros HTTP transparentes e mapeamento correto de status).
 - **Validação:** Sincronização do banco local via `prisma db push` concluída; 787 de 787 testes Vitest passando; compilação de tipos (`tsc`) e build de produção Next.js aprovados e sem erros. Subido para o repositório remoto no branch `feature/kimi-code-integration`.
 
+### [TASK-18] Área Independente "Injetar Conhecimento" (YouTube, Código-Fonte, Concorrente) (2026-08-29)
+
+- **Status:** Planejada / To-Do
+- **Assigned:** Hermes (Arquitetura) + Codex (Backend/Scrapers) + Claude (UI/Wizard)
+- **Goal:** Criar uma área independente que permita injetar conhecimento bruto (transcrição do YouTube, código-fonte local, URL de landing page de concorrente). O pipeline lê esses dados, sincroniza com o Obsidian, orquestra com as habilidades e devolve propostas automáticas de melhoria na etapa de Landing Page (Passo 5 do Wizard).
+- **Entregas Planejadas:**
+    - Modelo Prisma `InjectedKnowledge` (armazenamento de fontes e status de análise).
+    - Scraper de YouTube Transcript e coletor de landers via Firecrawl (Markdown limpo).
+    - Pipeline de background integrado às diretrizes de conformidade/copy do Obsidian (`~/EMAI Starter Vault`).
+    - UI de upload e input no Passo 5 (Landing Page Builder).
+
 ### [TASK-10] Rotas e gates de mutação (2026-08-25)
 
 - **Status:** Concluída
