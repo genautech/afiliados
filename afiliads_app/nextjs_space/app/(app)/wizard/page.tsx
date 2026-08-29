@@ -2,6 +2,7 @@
 import { StepProductType, ProductType } from './_components/step-product-type';
 import { StepProductSearch } from './_components/step-product-search';
 import { EbookDraftPanel } from './_components/ebook-draft-panel';
+import { AICostDashboard } from './_components/ai-cost-dashboard';
 import { StepCalculator } from './_components/step-calculator';
 import { StepCreativeGen } from './_components/step-creative-gen';
 import { StepLandingPage } from './_components/step-landing-page';
@@ -1485,6 +1486,8 @@ export default function WizardPage() {
               <p className="text-xs text-slate-500">Formato: [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_vN</p>
 
               <EbookDraftPanel campaignId={campaignId} productName={name} />
+
+              <AICostDashboard campaignId={campaignId} />
             </div>
           )}
 

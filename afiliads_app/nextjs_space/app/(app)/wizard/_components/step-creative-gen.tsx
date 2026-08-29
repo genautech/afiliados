@@ -12,9 +12,84 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import {
   Wand2, Sparkles, ShieldAlert, Facebook, Search, CheckCircle2,
   AlertTriangle, RotateCcw, ThumbsUp, MessageSquare, Share2,
-  ExternalLink, ShieldCheck, ArrowRight, ArrowLeft, AlertCircle, Wrench, Loader2
+  ExternalLink, ShieldCheck, ArrowRight, ArrowLeft, AlertCircle, Wrench, Loader2,
+  Image as ImageIcon, BookImage, Megaphone
 } from 'lucide-react';
 import { validateCompliance, autoCorrectClaims, type ComplianceResult, type ComplianceIssue } from '@/lib/validators/complianceValidator';
+
+/** Os dois `type` aceitos por POST /api/creatives/generate-image. */
+export type VisualKind = 'ebook-cover' | 'facebook-ad';
+
+export interface GeneratedVisual {
+  url: string;
+  kind: VisualKind;
+  model: string | null;
+  prompt: string | null;
+  mock: boolean;
+}
+
+/** O prompt é montado aqui: a rota só recebe texto pronto, não conhece o wizard. */
+export function buildVisualPrompt(
+  kind: VisualKind,
+  productName: string,
+  vertical: string,
+  angle: string,
+): string {
+  const produto = productName.trim() || 'produto digital';
+  const nicho = vertical.trim() || 'geral';
+  return kind === 'ebook-cover'
+    ? `Capa 3D de e-book premium para "${produto}", nicho ${nicho}. Livro em perspectiva com profundidade e sombra suave, tipografia legível no topo, fundo escuro com luz direcional. Sem texto ilegível, sem watermark.`
+    : `Banner de anúncio para feed, proporção 1.91:1, produto "${produto}", nicho ${nicho}, ângulo "${angle}". Composição limpa com foco central, alto contraste, espaço negativo à esquerda para sobrepor copy. Sem texto embutido, sem watermark.`;
+}
+
+const VISUAL_STAGES = [
+  'Montando o prompt a partir do ângulo e da vertical...',
+  'Enfileirando no ComfyUI / Higgsfield...',
+  'Difundindo os passos de render...',
+  'Fazendo upscale e recorte final...',
+];
+
+/** Aceita URL http(s) ou caminho servido pelo app; nunca data: nem file:. */
+function isRenderableSrc(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  if (value.startsWith('/')) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A rota de imagem ainda está em construção no backend, então aceitamos as formas
+ * plausíveis (`imageUrl`, `url`, `path`, `images[0]`) em vez de travar numa só.
+ */
+export function normalizeGeneratedImage(raw: unknown, kind: VisualKind): GeneratedVisual | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const root = raw as Record<string, unknown>;
+  const nested = (Array.isArray(root.images) ? root.images[0] : root.image) as
+    | Record<string, unknown>
+    | string
+    | undefined;
+  const nestedObj = (nested && typeof nested === 'object' ? nested : {}) as Record<string, unknown>;
+
+  const candidates = [
+    root.imageUrl, root.url, root.path, root.image_url,
+    typeof nested === 'string' ? nested : undefined,
+    nestedObj.url, nestedObj.imageUrl, nestedObj.path,
+  ];
+  const url = candidates.find(isRenderableSrc);
+  if (!url) return null;
+
+  const model = [root.model, root.engine, nestedObj.model].find(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  );
+  const prompt = [root.prompt, nestedObj.prompt].find(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  );
+  return { url, kind, model: model ?? null, prompt: prompt ?? null, mock: root.mock === true };
+}
 
 interface StepCreativeGenProps {
   campaignId: string | null;
@@ -36,6 +111,9 @@ export function StepCreativeGen({
   const [selectedTone, setSelectedTone] = useState<'critical' | 'scientific' | 'alert' | 'challenge'>('alert');
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<'facebook' | 'google'>('facebook');
+  const [visuals, setVisuals] = useState<Partial<Record<VisualKind, GeneratedVisual>>>({});
+  const [visualLoading, setVisualLoading] = useState<VisualKind | null>(null);
+  const [visualStage, setVisualStage] = useState(0);
 
   // Ad Copy State - Facebook
   const [fbPrimaryText, setFbPrimaryText] = useState('');
@@ -223,6 +301,49 @@ export function StepCreativeGen({
     });
 
     return <>{highlightedElements}</>;
+  };
+
+  useEffect(() => {
+    if (!visualLoading) { setVisualStage(0); return; }
+    const timer = setInterval(() => setVisualStage((i) => (i + 1) % VISUAL_STAGES.length), 1600);
+    return () => clearInterval(timer);
+  }, [visualLoading]);
+
+  const generateVisual = async (kind: VisualKind) => {
+    if (!campaignId) { toast.error('Salve a campanha antes de gerar a arte.'); return; }
+    setVisualLoading(kind);
+    try {
+      const res = await fetch('/api/creatives/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId,
+          type: kind,
+          prompt: buildVisualPrompt(kind, productName, vertical, selectedAngle),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.status === 404 && !data?.error) {
+        toast.error('A rota POST /api/creatives/generate-image ainda não existe no app.');
+        return;
+      }
+      if (!res.ok) {
+        toast.error(data?.error || `Geração de imagem falhou (HTTP ${res.status}).`);
+        return;
+      }
+      const visual = normalizeGeneratedImage(data, kind);
+      if (!visual) {
+        toast.error('A geração respondeu 200 sem caminho de imagem utilizável.');
+        return;
+      }
+      setVisuals((prev) => ({ ...prev, [kind]: visual }));
+      const what = kind === 'facebook-ad' ? 'Banner gerado e aplicado no mockup.' : 'Capa 3D gerada.';
+      toast.success(visual.mock ? `${what} (placeholder — provedor de imagem não configurado)` : what);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro de rede ao gerar a imagem.');
+    } finally {
+      setVisualLoading(null);
+    }
   };
 
   return (
@@ -504,6 +625,86 @@ export function StepCreativeGen({
 
         {/* Right Pane: Live Previews */}
         <div className="lg:col-span-6 space-y-4">
+          {/* Geração visual por IA */}
+          <div className="rounded-lg border border-slate-800 bg-transparent p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono flex items-center gap-1.5">
+                <ImageIcon className="h-3 w-3" /> Geração visual por IA (ComfyUI / Higgsfield)
+              </p>
+              {(visuals['facebook-ad']?.mock || visuals['ebook-cover']?.mock) && (
+                <Badge className="bg-amber-500/15 text-amber-400 text-[9px] hover:bg-amber-500/25 font-mono">
+                  MOCK
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void generateVisual('ebook-cover')}
+                disabled={visualLoading !== null || !campaignId}
+                className="gap-2 border-slate-800 bg-transparent text-slate-200 hover:bg-[#0f172a] hover:text-white justify-start"
+              >
+                {visualLoading === 'ebook-cover' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <BookImage className="h-3.5 w-3.5 text-purple-400" />
+                )}
+                Gerar Capa 3D do E-book com IA
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void generateVisual('facebook-ad')}
+                disabled={visualLoading !== null || !campaignId}
+                className="gap-2 border-slate-800 bg-transparent text-slate-200 hover:bg-[#0f172a] hover:text-white justify-start"
+              >
+                {visualLoading === 'facebook-ad' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Megaphone className="h-3.5 w-3.5 text-emerald-400" />
+                )}
+                Gerar Banner de Alta Conversão
+              </Button>
+            </div>
+
+            {visualLoading && (
+              <div className="space-y-1.5">
+                <p className="font-mono text-[11px] text-purple-300 flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                  {VISUAL_STAGES[visualStage]}
+                </p>
+                <div className="flex gap-1">
+                  {VISUAL_STAGES.map((stage, i) => (
+                    <span
+                      key={stage}
+                      className={`h-0.5 flex-1 rounded-full transition-colors ${
+                        i <= visualStage ? 'bg-purple-400' : 'bg-slate-800'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {visuals['ebook-cover'] && (
+              <div className="flex items-center gap-3 rounded border border-slate-800 bg-[#0f172a] p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={visuals['ebook-cover'].url}
+                  alt="Capa 3D gerada por IA"
+                  className="h-16 w-12 rounded object-cover border border-slate-700"
+                />
+                <div className="min-w-0">
+                  <p className="text-[11px] text-slate-300">Capa 3D pronta</p>
+                  <p className="font-mono text-[10px] text-slate-600 truncate">{visuals['ebook-cover'].url}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+
           <div className="flex items-center gap-1 bg-[#111827]/40 rounded-lg p-1 border border-slate-800">
             <Button
               size="sm"
@@ -550,9 +751,18 @@ export function StepCreativeGen({
               </div>
 
               {/* Ad Image / Creative Banner mockup */}
-              <div className="aspect-[1.91/1] bg-gradient-to-br from-slate-950 to-slate-800 flex flex-col items-center justify-center border-y border-slate-800/60 p-4 relative group">
-                <div className="absolute inset-0 opacity-20 bg-cover bg-center" style={{ backgroundImage: `url('https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=400&q=80')` }} />
-                <div className="z-10 text-center space-y-2">
+              <div className="aspect-[1.91/1] bg-gradient-to-br from-slate-950 to-slate-800 flex flex-col items-center justify-center border-y border-slate-800/60 p-4 relative group overflow-hidden">
+                {visuals['facebook-ad'] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={visuals['facebook-ad'].url}
+                    alt="Banner gerado por IA para o anúncio"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 opacity-20 bg-cover bg-center" style={{ backgroundImage: `url('https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=400&q=80')` }} />
+                )}
+                <div className={`z-10 text-center space-y-2 ${visuals['facebook-ad'] ? 'hidden' : ''}`}>
                   <div className="mx-auto w-10 h-10 bg-emerald-500/10 rounded-full flex items-center justify-center border border-emerald-500/30 text-emerald-400">
                     <ShieldCheck className="h-5 w-5" />
                   </div>
@@ -591,6 +801,15 @@ export function StepCreativeGen({
             <div className="border border-slate-800 bg-slate-900 p-5 rounded-xl shadow-2xl max-w-lg mx-auto space-y-3">
               {/* Header Badge */}
               <div className="flex items-center gap-2">
+                {(visuals['facebook-ad'] || visuals['ebook-cover']) && (
+                  // Favicon do anúncio: no Search a arte entra como miniatura da marca.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={(visuals['ebook-cover'] ?? visuals['facebook-ad'])!.url}
+                    alt="Miniatura gerada por IA"
+                    className="h-5 w-5 rounded-full object-cover border border-slate-700 shrink-0"
+                  />
+                )}
                 <Badge className="bg-[#1e293b] text-slate-300 border border-slate-700/60 font-mono text-[9px] uppercase">anúncio</Badge>
                 <span className="text-[11px] text-slate-500 flex items-center gap-1">
                   https://www.site-oficial.com/{productName ? productName.toLowerCase().replace(/\s+/g, '-') : 'original'} <ExternalLink className="h-2.5 w-2.5" />

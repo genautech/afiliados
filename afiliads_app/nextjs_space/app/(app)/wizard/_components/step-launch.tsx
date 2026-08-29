@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   Rocket, Loader2, ShieldCheck, Save, ArrowLeft, ArrowRight, Zap, Play, CheckCircle2, AlertTriangle, Terminal, Eye, HelpCircle,
-  Package, Download, CreditCard, FileArchive
+  Package, Download, CreditCard, FileArchive, Radio, ChevronDown, ChevronRight, Beaker
 } from 'lucide-react';
 import { AgentHelp, ChecklistItemRow } from './agent-help';
 import { GOLIVE_CHECKLIST } from '@/lib/wizard-data';
@@ -81,6 +81,58 @@ function isHttpUrl(value?: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+/** Mesmos fieldName do passo 4, para não criar segunda fonte de verdade do pixel. */
+const TRACKING_FIELDS = { pixel: 'meta_pixel_id', capi: 'meta_access_token' } as const;
+
+export type PixelEventStatus = 'ok' | 'dedup' | 'fail';
+
+export interface PixelEvent {
+  id: string;
+  at: string;
+  channel: 'CAPI' | 'Browser Pixel';
+  name: string;
+  transactionId: string;
+  status: PixelEventStatus;
+  detail: string;
+}
+
+function clockNow(): string {
+  return new Date().toLocaleTimeString('pt-BR', { hour12: false });
+}
+
+/**
+ * Um Purchase sai por dois caminhos com o mesmo event_id: o CAPI carrega o
+ * resultado real do webhook e o pixel de browser é desduplicado pela Meta.
+ */
+export function buildPurchaseEvents(
+  transactionId: string,
+  httpStatus: number,
+  errorMessage?: string | null,
+): PixelEvent[] {
+  const at = clockNow();
+  const ok = httpStatus >= 200 && httpStatus < 300;
+  return [
+    {
+      id: `${transactionId}-capi`,
+      at,
+      channel: 'CAPI',
+      name: 'Purchase',
+      transactionId,
+      status: ok ? 'ok' : 'fail',
+      detail: ok ? `Sucesso (${httpStatus} OK)` : `Falha (${httpStatus}${errorMessage ? ` — ${errorMessage}` : ''})`,
+    },
+    {
+      id: `${transactionId}-pixel`,
+      at,
+      channel: 'Browser Pixel',
+      name: 'Purchase',
+      transactionId,
+      status: ok ? 'dedup' : 'fail',
+      detail: ok ? 'Desduplicado' : 'Não disparado (CAPI falhou)',
+    },
+  ];
 }
 
 export interface StepLaunchProps {
@@ -173,6 +225,13 @@ export function StepLaunch({
   const [deploying, setDeploying] = useState(false);
   const [deployStage, setDeployStage] = useState(0);
   const [deployResult, setDeployResult] = useState<DeployArtifacts | null>(null);
+  const [trackingOpen, setTrackingOpen] = useState(false);
+  const [pixelId, setPixelId] = useState('');
+  const [capiToken, setCapiToken] = useState('');
+  const [capiMasked, setCapiMasked] = useState(false);
+  const [savingTracking, setSavingTracking] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [pixelEvents, setPixelEvents] = useState<PixelEvent[]>([]);
   const [launchLogs, setLaunchLogs] = useState<string[]>([]);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState(false);
@@ -290,6 +349,87 @@ export function StepLaunch({
     const timer = setInterval(() => setDeployStage((i) => (i + 1) % DEPLOY_STAGES.length), 1500);
     return () => clearInterval(timer);
   }, [deploying]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/integrations');
+        if (!res.ok) return;
+        const rows = await res.json();
+        if (cancelled || !Array.isArray(rows)) return;
+        const find = (field: string) =>
+          rows.find((r: any) => r?.serviceName === 'tracking' && r?.fieldName === field);
+        const pixel = find(TRACKING_FIELDS.pixel);
+        const capi = find(TRACKING_FIELDS.capi);
+        if (pixel?.fieldValue) setPixelId(pixel.fieldValue);
+        // fieldValue de token vem mascarado da API: não sobrescrevemos com bolinhas.
+        if (capi?.fieldValue) setCapiMasked(true);
+      } catch {
+        /* silencioso */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const saveTracking = async () => {
+    const pending: Array<[string, string]> = [];
+    if (pixelId.trim()) pending.push([TRACKING_FIELDS.pixel, pixelId.trim()]);
+    if (capiToken.trim()) pending.push([TRACKING_FIELDS.capi, capiToken.trim()]);
+    if (!pending.length) { toast.error('Preencha o Pixel ID ou o access token antes de salvar.'); return; }
+    setSavingTracking(true);
+    try {
+      for (const [fieldName, fieldValue] of pending) {
+        const res = await fetch('/api/integrations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serviceName: 'tracking', fieldName, fieldValue }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data?.error ?? `Erro ao salvar ${fieldName}`);
+          return;
+        }
+      }
+      if (capiToken.trim()) { setCapiToken(''); setCapiMasked(true); }
+      toast.success('Tracking salvo — mesmo registro usado pelo passo 4.');
+    } catch {
+      toast.error('Erro de rede ao salvar o tracking.');
+    } finally {
+      setSavingTracking(false);
+    }
+  };
+
+  const simulatePurchase = async () => {
+    if (!campaignId) { toast.error('Salve a campanha antes de simular a venda.'); return; }
+    const transactionId = `trx_${Math.random().toString(36).slice(2, 9)}`;
+    setSimulating(true);
+    try {
+      const res = await fetch('/api/webhooks/kiwify-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: transactionId,
+          order_status: 'paid',
+          product_name: name || campaignNameGen || 'Produto low ticket',
+          amount: Number.isFinite(commVal) && commVal > 0 ? commVal : 47,
+          tracking_parameters: { utm_campaign: campaignNameGen || undefined },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      setPixelEvents((prev) => [...buildPurchaseEvents(transactionId, res.status, data?.error), ...prev].slice(0, 40));
+      if (!res.ok) {
+        toast.error(data?.error || `Webhook de teste falhou (HTTP ${res.status}).`);
+        return;
+      }
+      toast.success(`Venda simulada ${transactionId} processada — campanha marcada como ATIVA.`);
+    } catch (e: any) {
+      setPixelEvents((prev) => [...buildPurchaseEvents(transactionId, 0, e?.message), ...prev].slice(0, 40));
+      toast.error(e?.message || 'Erro de rede ao simular a venda.');
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const handleDeployProduct = async () => {
     if (!campaignId) { toast.error('Salve a campanha antes de lançar o produto.'); return; }
@@ -650,6 +790,129 @@ export function StepLaunch({
           </div>
         )}
       </div>
+
+      {/* TRACKING NATIVO (CAPI & PIXEL) */}
+      <Card className="bg-transparent border-[#334155]">
+        <CardContent className="p-0">
+          <button
+            type="button"
+            onClick={() => setTrackingOpen((open) => !open)}
+            aria-expanded={trackingOpen}
+            className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-[#0f172a]/60 transition-colors"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-white">
+              {trackingOpen ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-500" />}
+              <Radio className="h-4 w-4 text-sky-400" />
+              Configuração de Tracking Nativo (CAPI &amp; Pixel)
+            </span>
+            <span className="flex items-center gap-2">
+              {pixelId.trim() && (
+                <Badge className="bg-emerald-500/15 text-emerald-400 text-[10px] hover:bg-emerald-500/25">pixel</Badge>
+              )}
+              {capiMasked && (
+                <Badge className="bg-emerald-500/15 text-emerald-400 text-[10px] hover:bg-emerald-500/25">capi</Badge>
+              )}
+              {pixelEvents.length > 0 && (
+                <Badge className="bg-slate-500/20 text-slate-300 text-[10px] hover:bg-slate-500/30 font-mono">
+                  {pixelEvents.length} eventos
+                </Badge>
+              )}
+            </span>
+          </button>
+
+          {trackingOpen && (
+            <div className="space-y-4 border-t border-[#334155] p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] uppercase tracking-wide text-slate-400 font-mono">
+                    FACEBOOK_PIXEL_ID
+                  </Label>
+                  <Input
+                    value={pixelId}
+                    onChange={(e: any) => setPixelId(e?.target?.value ?? '')}
+                    placeholder="Ex: 1234567890"
+                    className="bg-[#0f172a] border-[#334155] font-mono text-xs text-white placeholder:text-slate-600"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] uppercase tracking-wide text-slate-400 font-mono">
+                    FACEBOOK_ACCESS_TOKEN
+                  </Label>
+                  <Input
+                    type="password"
+                    value={capiToken}
+                    onChange={(e: any) => setCapiToken(e?.target?.value ?? '')}
+                    placeholder={capiMasked ? '•••••••• (já salvo — preencha só para trocar)' : 'EAAG...'}
+                    className="bg-[#0f172a] border-[#334155] font-mono text-xs text-white placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={saveTracking}
+                  disabled={savingTracking}
+                  className="gap-2 bg-sky-600 hover:bg-sky-700 text-white"
+                >
+                  {savingTracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Salvar tracking
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={simulatePurchase}
+                  disabled={simulating || !campaignId}
+                  className="gap-2 border-[#334155] bg-transparent text-slate-200 hover:bg-[#0f172a] hover:text-white"
+                >
+                  {simulating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Beaker className="h-3.5 w-3.5" />}
+                  Simular compra (webhook Kiwify)
+                </Button>
+                <span className="text-[10px] text-amber-400/80">
+                  a simulação grava venda de teste e marca a campanha como ATIVA
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
+                  <Terminal className="h-3 w-3" /> Console de Eventos Pixel (CAPI)
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-[#334155] bg-[#020617] p-3 font-mono text-[11px] leading-relaxed">
+                  {pixelEvents.length === 0 ? (
+                    <p className="text-slate-600">
+                      Sem eventos ainda. Dispare uma venda simulada para ver o par CAPI + Pixel.
+                    </p>
+                  ) : (
+                    pixelEvents.map((event) => (
+                      <p key={event.id} className="whitespace-pre-wrap break-all">
+                        <span className="text-slate-600">[{event.at}]</span>{' '}
+                        <span className="text-slate-400">Evento:</span>{' '}
+                        <span className="text-sky-400">{event.name} ({event.channel})</span>{' '}
+                        <span className="text-slate-600">- ID</span>{' '}
+                        <span className="text-slate-300">{event.transactionId}</span>{' '}
+                        <span className="text-slate-600">- STATUS:</span>{' '}
+                        <span
+                          className={
+                            event.status === 'ok'
+                              ? 'text-emerald-400'
+                              : event.status === 'dedup'
+                                ? 'text-amber-400'
+                                : 'text-rose-400'
+                          }
+                        >
+                          {event.detail}
+                        </span>
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* EMPACOTAMENTO DO PRODUTO (e-book + landing) */}
       <Card className="bg-[#0b0f19] border-amber-500/20">
