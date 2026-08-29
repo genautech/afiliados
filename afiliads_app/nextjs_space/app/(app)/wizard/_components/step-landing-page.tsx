@@ -16,6 +16,7 @@ import type { PresellPageType } from '@/lib/presell-types';
 import type { ProductType } from './step-product-type';
 import { PreviewFrame } from './preview-frame';
 import { AiProposalPanel } from './ai-proposal-panel';
+import { KnowledgeInjectionPanel } from './knowledge-injection-panel';
 
 interface StepLandingPageProps {
   campaignId: string | null;
@@ -473,6 +474,11 @@ export function StepLandingPage({
           </div>
         </CardContent>
       </Card>
+
+      <KnowledgeInjectionPanel
+        campaignId={campaignId}
+        onProposalApplied={() => setRefreshTick((t) => t + 1)}
+      />
 
       <Card className="bg-[#1e293b] border-[#334155]">
         <CardHeader>

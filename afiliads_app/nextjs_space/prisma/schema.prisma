@@ -49,6 +49,7 @@ model User {
   visualSystems        VisualSystem[]
   launchPlans          LaunchPlan[]
   channelLaunches      ChannelLaunch[]
+  injectedKnowledge    InjectedKnowledge[]
 }
 
 model Account {
@@ -183,6 +184,7 @@ model Campaign {
   channelLaunches           ChannelLaunch[]
   globalKnowledgeInsights   GlobalKnowledgeInsight[]
   aiCostLogs                AICostLog[]
+  injectedKnowledge         InjectedKnowledge[]
 
   @@index([userId, status])
   @@index([userId, platform])
@@ -1056,4 +1058,51 @@ model ChannelLaunch {
   @@unique([campaignId, channel, idempotencyKey])
   @@index([campaignId])
   @@index([userId])
+}
+
+enum KnowledgeSourceType {
+  YOUTUBE_URL
+  CONCORRENTE_URL
+  SOURCE_CODE
+}
+
+enum KnowledgeStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model InjectedKnowledge {
+  id              String              @id @default(cuid())
+  userId          String
+  campaignId      String?
+  sourceType      KnowledgeSourceType
+  sourceUrl       String?             @db.Text
+  rawContent      String?             @db.Text
+  status          KnowledgeStatus     @default(PENDING)
+  errorMessage    String?             @db.Text
+  refinedMetadata Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign        Campaign?           @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  proposals       PresellProposal[]
+
+  @@index([userId])
+  @@index([campaignId])
+}
+
+model PresellProposal {
+  id                  String            @id @default(cuid())
+  injectedKnowledgeId String
+  presellId           String
+  proposedContent     Json
+  proposedCustomCode  String?           @db.Text
+  explanation         String            @db.Text
+  applied             Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+
+  knowledge           InjectedKnowledge @relation(fields: [injectedKnowledgeId], references: [id], onDelete: Cascade)
 }

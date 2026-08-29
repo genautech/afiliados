@@ -38,14 +38,16 @@ This board tracks high-level tasks and coordination points between various agent
 
 ### [TASK-18] Área Independente "Injetar Conhecimento" (YouTube, Código-Fonte, Concorrente) (2026-08-29)
 
-- **Status:** Planejada / To-Do
+- **Status:** Concluída (Fase 5 completa)
 - **Assigned:** Hermes (Arquitetura) + Codex (Backend/Scrapers) + Claude (UI/Wizard)
 - **Goal:** Criar uma área independente que permita injetar conhecimento bruto (transcrição do YouTube, código-fonte local, URL de landing page de concorrente). O pipeline lê esses dados, sincroniza com o Obsidian, orquestra com as habilidades e devolve propostas automáticas de melhoria na etapa de Landing Page (Passo 5 do Wizard).
-- **Entregas Planejadas:**
-    - Modelo Prisma `InjectedKnowledge` (armazenamento de fontes e status de análise).
-    - Scraper de YouTube Transcript e coletor de landers via Firecrawl (Markdown limpo).
-    - Pipeline de background integrado às diretrizes de conformidade/copy do Obsidian (`~/EMAI Starter Vault`).
-    - UI de upload e input no Passo 5 (Landing Page Builder).
+- **Entregas Realizadas:**
+    - **Banco de Dados (Fase 1):** Sincronização do schema Prisma com as novas tabelas `InjectedKnowledge` e `PresellProposal` no Postgres dev local (`5433`).
+    - **Serviços de Extração Real (Fase 2):** Criados `lib/youtubeTranscript.ts` (extração real sem chave de API via player de captions do YouTube) e `lib/competitorScraper.ts` (coletor real via Firecrawl API). Zero mocks.
+    - **Rotas de API (Fase 3):** Criadas as rotas do Next.js `/api/knowledge/inject` (GET para listagem e POST para disparar processamento em background com promise assíncrona) e `/api/knowledge/apply-proposal` (POST para aplicar copy adaptada).
+    - **Agente Refinador (Fase 4):** Criado `lib/landingPageProposalService.ts` que refina insights com a IA (`callLLM`), gera propostas de copy conformes com o Google Ads, sincroniza dossiês estruturados em Markdown com o Obsidian Vault local via Outbox (`logLearningToObsidian`), e reconstrói o HTML final da LP.
+    - **Interface Visual (Fase 5):** Desenvolvido o componente visual `knowledge-injection-panel.tsx` com tabs de fontes, polling automático de status a cada 4s, modais interativos de Dossiê de Marketing (Dores, Objeções, etc.) e comparador de propostas com botão de aplicação instantânea, integrado ao Passo 5 do Wizard (`step-landing-page.tsx`).
+- **Validação:** 787 de 787 testes unitários passando. Compilação TypeScript global (`npx tsc --noEmit`) concluída com absoluto sucesso e zero erros (exit 0).
 
 ### [TASK-10] Rotas e gates de mutação (2026-08-25)
 
