@@ -30,7 +30,7 @@ import {
   PLATFORMS, VERTICALS, CHANNELS, GEOS, CVR_DEFAULTS, ANTISTRIKE_ITEMS,
   BRIDGE_CHECKLIST, GOOGLE_ADS_CHECKLIST, TRACKING_CHECKLIST_MAXWEB,
   TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST, KEYWORDS_BY_VERTICAL,
-  NEGATIVES_BY_VERTICAL, PLATFORMS_EXTENDED, ExtendedPlatform
+  NEGATIVES_BY_VERTICAL, PLATFORMS_EXTENDED, ExtendedPlatform, KEYWORD_TIERS,
 } from '@/lib/wizard-data';
 import { Step7LeadingStream } from '@/components/wizard/Step7LeadingStream';
 import { PresellPageType, PRESELL_PAGE_TYPES } from '@/lib/presell-types';
@@ -1377,7 +1377,7 @@ export default function WizardPage() {
               {/* Suggestions by layer */}
               <div>
                 <h3 className="text-sm font-medium text-white mb-3">Sugestões por Camada</h3>
-                {['A', 'B', 'C', 'D'].map(layer => {
+                {KEYWORD_TIERS.map(layer => {
                   const layerLabels: Record<string, string> = { A: 'Problema', B: 'Solução', C: 'Comparação', D: 'Comercial' };
                   const suggestions = KEYWORDS_BY_VERTICAL[vertical]?.[layer] ?? KEYWORDS_BY_VERTICAL['Weight Loss']?.[layer] ?? [];
                   return (

@@ -12,7 +12,9 @@
     "prisma:sync": "scripts/prisma-push-and-restart.sh",
     "validate:schemas": "python scripts/validate-google-ads-schemas.py",
     "doctrine:build": "node scripts/build-agent-doctrine.mjs",
-    "doctrine:check": "node scripts/build-agent-doctrine.mjs && git diff --exit-code -- lib/generated/agent-doctrine.ts"
+    "doctrine:check": "node scripts/build-agent-doctrine.mjs && git diff --exit-code -- lib/generated/agent-doctrine.ts",
+    "subsidios:build": "tsx scripts/build-subsidios.ts",
+    "subsidios:check": "tsx scripts/build-subsidios.ts && git diff --exit-code -- lib/generated/catalogo.ts lib/generated/catalogo-conhecimento.ts"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/safe-seed.ts"

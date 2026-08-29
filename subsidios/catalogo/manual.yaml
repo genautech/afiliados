@@ -1,0 +1,148 @@
+# Manual do sistema exibido em /conhecimento.
+# Editar aqui; não editar lib/generated/catalogo-conhecimento.ts.
+schema: 1
+secoes:
+  - titulo: O que é o AfiliAds
+    conteudo: >-
+      O AfiliAds é a central de operação de marketing de afiliados: encontrar
+      produtos (ClickBank, BuyGoods, MaxWeb, Hotmart), validar a economia e o
+      compliance de cada oferta, pesquisar keywords, montar campanhas de Google
+      Ads, acompanhar resultados diários e decidir kill/scale — com 9 agentes de
+      IA fazendo o trabalho pesado e registrando cada token gasto.
+
+
+      O princípio da casa: nenhuma campanha nasce sem passar pelos gates — produto com score aprovado, página de afiliado do produtor analisada, keyword validada pela economia (regra do 3×) e presell auditada.
+  - titulo: O fluxo completo (do produto ao lucro)
+    conteudo: >-
+      1. BUSCA DE PRODUTOS — digite um produto (ou escolha do top 10) e o
+      pipeline de 3 agentes roda: Product Hunter pontua a oferta (0–100), SEO
+      Architect gera o mapa de keywords em camadas A–D, Compliance Sentinel
+      define presell, funil, naming e break-even. Score < 50 = descarta.
+
+
+      2. PÁGINA DE AFILIADO — na aba "Pág. Afiliado" do dossiê, informe a URL do produtor (/aff, /affiliates, /jv) e rode o Affiliate Page Analyst. Ele extrai comissão real, CPA bônus, canais PROIBIDOS e restrições. Google Search proibido? A estratégia muda aqui, antes de gastar 1 real.
+
+
+      3. PESQUISA ATP — busque a keyword seed no AnswerThePublic (1 crédito, sempre com sua aprovação). O ATP Keyword Analyst cruza volume/CPC/intenção com a economia da campanha e recomenda a melhor keyword. Importe as aprovadas para a biblioteca.
+
+
+      4. NOVA CAMPANHA (Wizard) — monte a campanha passo a passo com validação do Wizard Validator: naming padrão, break-even calculado, checklist de lançamento.
+
+
+      5. GERADOR RSA — o CRO Copywriter gera títulos (≤30 chars) e descrições prontos para colar no Google Ads.
+
+
+      6. DIÁRIO — registre gasto/cliques/conversões por dia. É o combustível da auditoria.
+
+
+      7. AUDITORIA — o Paid Ads Auditor analisa tudo e devolve a decisão: SCALE, OTIMIZAR, PAUSAR ou KILL, com justificativa. Registre a decisão e o aprendizado.
+  - titulo: As telas, uma a uma
+    conteudo: >-
+      • Dashboard — visão geral: gasto, receita, ROI e campanhas ativas.
+
+      • Nova Campanha (Wizard) — criação guiada em etapas com checklist.
+
+      • Agentes — sala de controle: o que cada agente faz, teste individual com tarefa real e consumo de tokens de cada um.
+
+      • Busca de Produtos — pipeline de análise multi-agente + dossiê completo por produto (keywords, estratégia, compliance, página de afiliado) + chat contextual.
+
+      • Campanhas — lista e detalhe de cada campanha: economia, checklist, decisões, análise de presell e auditoria.
+
+      • Diário — lançamentos diários por campanha (gasto, cliques, hops, conversões).
+
+      • Keywords — biblioteca de keywords por camada com match type e CPC estimado.
+
+      • Pesquisa ATP — AnswerThePublic integrado: saldo de créditos, busca com aprovação, report por buckets e análise econômica.
+
+      • Gerador RSA — copy de anúncios com contagem de caracteres garantida.
+
+      • Planilhas — visão tabular de tudo (ofertas com link de marketplace, campanhas, diário, testes kill/scale, financeiro).
+
+      • Conhecimento — esta base: estratégias, playbooks, glossário, aprendizados e este manual.
+
+      • Configurações — chaves de API (provedores de IA, AnswerThePublic, redes de afiliados).
+  - titulo: Regras de governança (não negociáveis)
+    conteudo: >-
+      • Créditos AnswerThePublic: toda busca paga exige SUA aprovação explícita
+      no dialog (o servidor rejeita chamadas sem confirmação). Releituras de
+      reports são grátis e ilimitadas. Mesma keyword+idioma+região em 24h =
+      reuso grátis.
+
+
+      • Página de afiliado do produtor: analisar SEMPRE antes de validar campanha. Canal proibido pelo produtor (ex.: Google Search no LymphFlow) = mudar canal ou mudar de produto.
+
+
+      • Compliance Google: sem claims de cura/renda garantida, sem brand bidding quando proibido, sem direct linking, sem cloaking (nunca). A conta do Google Ads é o ativo mais difícil de recuperar.
+
+
+      • Economia antes de criativo: CPC máximo = comissão líquida × CVR. Se a keyword não cabe no teto, nenhuma copy salva a campanha.
+
+
+      • Tokens de IA: cada execução de agente é registrada (agente, provedor, modelo, tokens, duração) — acompanhe na página Agentes. O roteador usa modelos leves para tarefas simples e reserva os premium para compliance e auditoria.
+  - titulo: Provedores de IA e roteamento
+    conteudo: >-
+      O app aceita 4 provedores (Anthropic/Claude, OpenAI/GPT, Google/Gemini,
+      Abacus.ai) com chaves em Configurações.
+
+
+      O roteador automático classifica cada agente por peso da tarefa:
+
+      • PREMIUM (Compliance Sentinel, Paid Ads Auditor, Affiliate Page Analyst) — prioriza Claude: análise de regras e restrições exige a leitura mais fiel.
+
+      • STANDARD (Product Hunter, SEO Architect, ATP Analyst, CRO Copywriter) — usa Gemini/GPT primeiro, poupando tokens Claude.
+
+      • LIGHT (Assistente de Análise, Wizard Validator) — modelos rápidos e baratos.
+
+
+      Se um provedor falhar ou estourar o orçamento mensal de tokens, o próximo da cadeia assume automaticamente. Cada execução registra qual modelo respondeu de fato.
+  - titulo: O loop de auto-correção
+    conteudo: >-
+      Cada campanha pode ligar o loop (Wizard ou detalhe da campanha): escolha
+      os agentes (auditor de ads, compliance) e o intervalo (12h/24h/48h/72h).
+
+
+      COMO RODA
+
+      • Scheduler interno verifica a cada 30 min quais campanhas venceram o intervalo.
+
+      • Registrar o Diário dispara o loop na hora (dado novo = reavaliação imediata).
+
+      • Botão "Executar Agora" na campanha e alertas do Dashboard rodam sob demanda.
+
+
+      O QUE O LOOP FAZ (nesta ordem)
+
+      1. Calcula a economia real EM CÓDIGO (zero tokens): gasto, receita, EPC/CPC/CVR reais, burn do budget.
+
+      2. Aplica as REGRAS OFICIAIS:
+         — KILL: gasto ≥ 2× comissão líquida sem conversão, ou CPC acima do máximo por 3+ dias;
+         — PAUSAR: budget de teste 100% consumido;
+         — SCALE: EPC real ≥ 1.3× CPC real com ≥ 2 conversões (só SUGERE — escalar dinheiro exige sua aprovação);
+         — OTIMIZAR: paga a conta mas sem margem, ou compliance com alerta crítico;
+         — SEM_DADOS / CONFIG_INCOMPLETA: não gasta token de IA e aponta o que falta.
+      3. Só então chama os agentes de IA com os números já calculados: o auditor diagnostica e propõe ajustes; o compliance lê a presell REAL (baixa a página).
+
+      4. Persiste tudo: decisão com justificativa no histórico da campanha, status atualizado (KILL/PAUSAR automáticos) e registro do LoopRun com tokens gastos.
+
+
+      AUTO-CORREÇÃO DE AGENTES
+
+      • Saída inválida (ex.: título RSA com 31+ caracteres) é rejeitada e retentada 1× com o erro anexado ao prompt.
+
+      • Provedor com falha/sem crédito cai para o próximo da cadeia automaticamente.
+
+      • Falhas recorrentes aparecem no card "Problemas detectados" da página Agentes com a causa.
+  - titulo: De onde vêm os aprendizados
+    conteudo: >-
+      A aba Aprendizados agrega automaticamente o que a operação já descobriu:
+
+      • Testes Kill/Scale — hipótese, resultado e lição de cada teste registrado.
+
+      • Decisões de campanha — cada SCALE/KILL com a justificativa do momento.
+
+      • Notas do diário — observações registradas nos lançamentos diários.
+
+      • Dossiês de produtos — resumo, dicas e restrições extraídas das páginas de afiliado.
+
+
+      Quanto mais você registra no Diário e nos Testes, mais essa aba vira a memória institucional da operação — o que funcionou, o que não funcionou e por quê.

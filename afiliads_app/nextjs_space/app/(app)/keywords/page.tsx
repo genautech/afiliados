@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, ExternalLink, Plus, Trash2, Copy, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { KEYWORDS_BY_VERTICAL, NEGATIVES_BY_VERTICAL } from '@/lib/wizard-data';
+import { KEYWORDS_BY_VERTICAL, KEYWORD_TIERS, NEGATIVES_BY_VERTICAL } from '@/lib/wizard-data';
 
 const layerLabels: Record<string, string> = { A: 'Problema', B: 'Solução', C: 'Comparação', D: 'Comercial' };
 const layerColors: Record<string, string> = { A: 'bg-blue-500/20 text-blue-400', B: 'bg-green-500/20 text-green-400', C: 'bg-yellow-500/20 text-yellow-400', D: 'bg-purple-500/20 text-purple-400' };
@@ -116,7 +116,7 @@ export default function KeywordsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {['A','B','C','D'].map(layer => (
+            {KEYWORD_TIERS.map(layer => (
               <div key={layer}>
                 <Badge className={`mb-2 ${layerColors[layer]}`}>Camada {layer} — {layerLabels[layer]}</Badge>
                 <div className="flex flex-wrap gap-2">

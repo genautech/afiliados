@@ -1,27 +1,49 @@
-export const PLATFORMS = ['ClickBank', 'BuyGoods', 'MaxWeb', 'Hotmart', 'Eduzz', 'Monetizze'] as const;
-export const PLATFORMS_EXTENDED = [...PLATFORMS, 'Digistore24', 'Outro'] as const;
-export type ExtendedPlatform = (typeof PLATFORMS_EXTENDED)[number];
-export const VERTICALS = ['Weight Loss', 'Nutra', 'Make Money', 'Relationships', 'Health', 'Beauty', 'Cursos BR', 'Outro'] as const;
-export const CHANNELS = ['SEARCH', 'YOUTUBE', 'DEMAND_GEN', 'PMAX'] as const;
-export const GEOS = ['US', 'UK', 'AU', 'CA', 'BR', 'DE', 'FR', 'ES', 'IT', 'MX', 'GLOBAL'] as const;
+import {
+  CATALOGO_OPERACAO,
+  VERTICAIS,
+  verticalPorLabel,
+} from './generated/catalogo';
 
-export const CVR_DEFAULTS: Record<string, number> = {
-  'Weight Loss': 1.5, 'Nutra': 1.2, 'Make Money': 0.8, 'Relationships': 1.0,
-  'Health': 1.3, 'Beauty': 1.4, 'Cursos BR': 2.0, 'Outro': 1.0,
-};
+// Estas listas e números vinham escritos aqui à mão, sem dizer de onde saíam. Hoje vêm de
+// subsidios/catalogo/*.yaml, onde cada valor carrega origem, confiança e data de revisão
+// (ver lib/subsidios/schema.ts). Para mudar um CVR ou uma negativa, edite o YAML e rode
+// `yarn subsidios:build` — editar o módulo gerado não sobrevive ao próximo build.
+// As checklists abaixo continuam aqui: são regras de processo, não subsídio de mercado.
 
-// verificationType: 'auto' = checável por código de verdade (lib/complianceVerifier.ts),
-// nunca depende do cliente informar isChecked. 'self_attested' = ação humana fora do sistema
-// (contrato assinado, terms lidos) que nenhuma API consegue confirmar — continua checkbox
-// manual, mas a UI rotula como autoatestado em vez de fingir que é a mesma coisa que 'auto'.
-//
-// IMPORTANTE (corrigido 2026-07-27): Anti-strike é o Passo 3 do wizard, Pré-sell/Bridge é o
-// Passo 4 — ou seja, o Passo 3 roda ANTES de existir qualquer HTML de presell. Itens 'auto'
-// que dependem de HTML (getPresellHtml() em lib/complianceVerifier.ts) NUNCA podem estar em
-// ANTISTRIKE_ITEMS como críticos, senão travam 100% das campanhas no Passo 3 pra sempre (não
-// existe presell ainda, o item nunca passa, e itens 'auto' não aceitam autoatestação do
-// cliente). Esses itens moraram aqui antes e foram movidos pra BRIDGE_CHECKLIST — ver
-// hermes/knowledge/insights/2026-07-27-wizard-orquestracao-checklists.md.
+export const PLATFORMS = CATALOGO_OPERACAO.plataformas
+  .filter((p) => p.id !== 'Digistore24' && p.id !== 'Outro' && p.id !== 'Kiwify')
+  .map((p) => p.id);
+export const PLATFORMS_EXTENDED = CATALOGO_OPERACAO.plataformas.map((p) => p.id);
+export type ExtendedPlatform = string;
+export const VERTICALS = VERTICAIS.map((v) => v.label);
+export const CHANNELS = CATALOGO_OPERACAO.canais.map((c) => c.id);
+export const GEOS = CATALOGO_OPERACAO.geos.map((g) => g.id);
+
+export const CVR_DEFAULTS: Record<string, number> = Object.fromEntries(
+  VERTICAIS.map((v) => [v.label, v.cvr_default.valor]),
+);
+
+/** CVR com a procedência junto: a UI mostra o número e de onde ele veio. */
+export function cvrDefaultComProcedencia(vertical: string) {
+  return verticalPorLabel(vertical)?.cvr_default ?? null;
+}
+
+/** Camadas de intenção da keyword: A problema, B solução, C comparação, D comercial. */
+export type KeywordTier = 'A' | 'B' | 'C' | 'D';
+export const KEYWORD_TIERS: KeywordTier[] = ['A', 'B', 'C', 'D'];
+
+export const KEYWORDS_BY_VERTICAL: Record<string, Record<KeywordTier, string[]>> =
+  Object.fromEntries(
+    VERTICAIS.filter((v) => v.keywords).map((v) => [
+      v.label,
+      { A: [...v.keywords!.A], B: [...v.keywords!.B], C: [...v.keywords!.C], D: [...v.keywords!.D] },
+    ]),
+  );
+
+export const NEGATIVES_BY_VERTICAL: Record<string, string[]> = Object.fromEntries(
+  VERTICAIS.map((v) => [v.label, [...v.negativas.termos]]),
+);
+
 export const ANTISTRIKE_ITEMS = [
   { key: 'client_contract', label: 'Client Contract assinado no ClickBank', critical: true, verificationType: 'self_attested' as const },
   { key: 'vendor_terms', label: 'Vendor Terms da oferta lidos e entendidos', critical: true, verificationType: 'self_attested' as const },
@@ -105,44 +127,6 @@ const ALL_CHECKLIST_ITEMS = [
 export function getChecklistVerificationType(itemKey: string): 'auto' | 'self_attested' {
   return ALL_CHECKLIST_ITEMS.find((i) => i.key === itemKey)?.verificationType ?? 'self_attested';
 }
-
-export const KEYWORDS_BY_VERTICAL: Record<string, Record<string, string[]>> = {
-  'Weight Loss': {
-    A: ['how to lose weight after 40', 'belly fat problem', 'why cant I lose weight', 'stubborn fat causes'],
-    B: ['best weight loss supplement', 'natural way to lose weight', 'fast metabolism boost', 'weight loss that works'],
-    C: ['weight loss supplement review', 'supplement vs diet comparison', 'top rated weight loss 2026', 'does supplement work'],
-    D: ['buy weight loss supplement', 'official weight loss site', 'order supplement online', 'get weight loss solution'],
-  },
-  'Nutra': {
-    A: ['joint pain relief', 'blood sugar problems', 'energy fatigue causes', 'digestive issues natural'],
-    B: ['best supplement for joints', 'blood sugar support natural', 'energy boost supplement', 'gut health solution'],
-    C: ['supplement review 2026', 'nutra product comparison', 'does supplement really work', 'real user results'],
-    D: ['buy health supplement', 'order nutra online', 'official supplement store', 'get supplement now'],
-  },
-  'Make Money': {
-    A: ['how to make money online', 'side hustle from home', 'passive income ideas', 'quit 9 to 5 job'],
-    B: ['best online income method', 'proven income system', 'work from home opportunity', 'digital income guide'],
-    C: ['income method review', 'online business comparison', 'does method actually work', 'real results proof'],
-    D: ['start earning online', 'get income system', 'join program today', 'access income method'],
-  },
-  'Relationships': {
-    A: ['how to save relationship', 'get ex back tips', 'relationship problems help', 'communication issues couple'],
-    B: ['best relationship guide', 'save marriage program', 'improve communication partner', 'relationship coaching'],
-    C: ['relationship program review', 'does guide actually work', 'real couples results', 'compare relationship advice'],
-    D: ['get relationship guide', 'buy program access', 'start coaching today', 'official program site'],
-  },
-};
-
-export const NEGATIVES_BY_VERTICAL: Record<string, string[]> = {
-  'Weight Loss': ['free', 'grátis', 'surgery', 'reddit', 'wikipedia', 'diy', 'homemade', 'recipe', 'exercise only', 'gym'],
-  'Nutra': ['free', 'grátis', 'prescription', 'doctor', 'hospital', 'side effects lawsuit', 'recall', 'fda warning'],
-  'Make Money': ['free', 'grátis', 'scam', 'golpe', 'pyramid', 'mlm', 'emprego', 'vaga', 'salário', 'job'],
-  'Relationships': ['free', 'grátis', 'therapist', 'counselor', 'divorce lawyer', 'legal'],
-  'Health': ['free', 'grátis', 'prescription', 'doctor', 'hospital', 'emergency'],
-  'Beauty': ['free', 'grátis', 'diy', 'homemade', 'recipe', 'salon near me'],
-  'Cursos BR': ['grátis', 'free', 'pirata', 'torrent', 'download', 'reclame aqui'],
-  'Outro': ['free', 'grátis', 'scam', 'golpe'],
-};
 
 export const BRIDGE_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">

@@ -1,0 +1,268 @@
+# Ajuda contextual de cada campo do wizard (o popover "o que é / por que / como fazer").
+# agente = quem responde quando o usuário pede ajuda ao vivo naquele campo.
+schema: 1
+campos:
+  - campo: name
+    agente: Paid Ads Strategist
+    o_que: Nome de controle interno da campanha no painel AfiliAds.
+    por_que: Ajuda a rastrear e encontrar suas campanhas de forma organizada no seu
+      dashboard.
+    como: >-
+      1. Digite um nome contendo Rede, Vertical, Geo, Canal e Funil (ex:
+      "CB_WL_US_SEARCH_BRIDGE_v1").
+
+      2. Alinhe o nome interno com a UTM de campanha para facilitar a leitura no Analytics.
+
+      3. Salve a campanha e mantenha o mesmo padrão no Google Ads.
+  - campo: platform
+    agente: Affiliate Network Specialist
+    o_que: A rede de afiliados que hospeda a oferta escolhida.
+    por_que: Diferentes plataformas possuem diferentes termos, moedas de pagamento e
+      dinâmicas de rastreamento (postbacks/webhooks).
+    como: |-
+      1. Selecione a plataforma onde a oferta está hospedada.
+      2. Verifique os termos de pagamento e se as comissões são em dólar (USD).
+      3. Confira se a plataforma requer aprovação prévia para promover a oferta.
+  - campo: vertical
+    agente: Niche Intelligence Agent
+    o_que: "O nicho/categoria ao qual o produto pertence (ex: Emagrecimento,
+      Finanças, Cursos)."
+    por_que: Ajuda a carregar as sugestões de palavras-chave, estimativas de taxa de
+      conversão (CVR) e listas padrão de negativas recomendadas.
+    como: >-
+      1. Escolha a vertical correspondente ao nicho do produto.
+
+      2. Note que a vertical define as sugestões de CVR e a lista-mestra de negativas.
+
+      3. Se o produto pertencer a sub-nichos específicos, ajuste as palavras-chave manualmente.
+  - campo: geo
+    agente: Paid Ads Strategist
+    o_que: O país ou região geográfica onde os anúncios serão exibidos.
+    por_que: Os custos de clique (CPC) e conversão variam radicalmente por
+      localização (Tier 1 vs Tier 3). Além disso, ofertas possuem restrições
+      geográficas de entrega.
+    como: >-
+      1. Verifique nos termos da oferta quais países (GEOS) são permitidos.
+
+      2. Escolha o país onde seus anúncios serão veiculados.
+
+      3. Certifique-se de configurar a segmentação de local como "presença apenas" no Google Ads.
+  - campo: channel
+    agente: Traffic Acquisition Strategist
+    o_que: A rede de anúncios específica do Google Ads (Pesquisa, Vídeo/YouTube,
+      Demand Gen, Performance Max).
+    por_que: Cada canal requer criativos e landing pages adaptados. Iniciantes devem
+      focar em Pesquisa (SEARCH) para tráfego com alta intenção.
+    como: >-
+      1. Selecione o canal de tráfego do Google Ads (ex: SEARCH, YOUTUBE).
+
+      2. Use SEARCH para iniciar com tráfego qualificado de intenção.
+
+      3. Use YOUTUBE ou DEMAND GEN para escalar volume com anúncios gráficos e vídeo.
+  - campo: funnel
+    agente: CRO & Conversion Specialist
+    o_que: O tipo de página de destino que o usuário visitará após clicar no anúncio
+      (Bridge Page, Review Page, Link Direto).
+    por_que: O Google Ads reprova links de afiliado direto na maioria das vezes.
+      Bridge pages (artigo review ou pré-sell) são o padrão recomendado para
+      evitar suspensões.
+    como: >-
+      1. Defina o tipo de destino: BRIDGE, DIRECT, REVIEW ou SMARTLINK.
+
+      2. Use BRIDGE (página ponte) para produtos físicos e verticais sensíveis para evitar reprovações.
+
+      3. O link direto (DIRECT) é aceito em poucas ofertas e pode resultar em suspensão.
+  - campo: pageType
+    agente: Compliance Sentinel
+    o_que: "A estrutura da presell gerada: advertorial, pogo, vsl, interstitial,
+      authority, tsl, cookie_popup, review."
+    por_que: Cada canal aceita estruturas diferentes — interstitial só é seguro em
+      YouTube/Demand Gen, nunca em Search, onde reprova revisão por falta de
+      conteúdo editorial. Authority costuma converter melhor em
+      nutra/saúde/beleza por reforçar credibilidade. Cookie/Popup e TSL são
+      eficazes para fundo de funil.
+    como: >-
+      1. Para Search, prefira Cookie/Popup, TSL ou Review para produtos com
+      marca já estabelecida. Para produtos novos, use advertorial ou authority.
+
+      2. VSL exige um vídeo real do vendor. TSL exige texto longo persuasivo. Review exige conteúdo de análise detalhada.
+
+      3. Interstitial só em canais fora de Search/PMax — o Compliance Sentinel bloqueia a geração se o canal não permitir. Cookie/Popup é recomendado para iniciantes no fundo de funil, pois maximiza o rastreamento do clique.
+  - campo: popupGate
+    agente: CRO & Conversion Specialist
+    o_que: Pop-up de retenção "pressione e segure" opcional antes de revelar o
+      conteúdo da presell.
+    por_que: Adiciona um passo de interação real (mesma experiência pra todo
+      visitante, não é cloaking) que pode aumentar percepção de valor antes do
+      CTA — mas também pode reduzir conversão se usado sem necessidade.
+    como: >-
+      1. Ative só se fizer sentido pro ângulo/oferta (ex.: conteúdo
+      "exclusivo").
+
+      2. Teste com e sem pra ver o efeito real na sua vertical.
+
+      3. Nunca combine com dark patterns — é só um delay de interação, não uma barreira enganosa.
+  - campo: videoUrl
+    agente: Presell Builder
+    o_que: Link do vídeo (YouTube, Vimeo ou .mp4 direto) usado como VSL na presell.
+    por_que: pageType "vsl" exige um vídeo real — sem isso a geração falha.
+    como: |-
+      1. Cole a URL pública do vídeo (YouTube/Vimeo/.mp4).
+      2. Use um vídeo do próprio vendor ou um review em vídeo genuíno.
+      3. Confirme que o vídeo carrega antes de publicar a campanha.
+  - campo: commission
+    agente: Affiliate Finance Broker
+    o_que: O valor estimado pago pela rede de afiliados por cada conversão
+      (venda/lead).
+    por_que: Esse valor é a base para o cálculo da comissão líquida, EPC de
+      break-even e definição do seu lance máximo de CPC.
+    como: |-
+      1. Insira o valor médio pago pela plataforma por conversão.
+      2. Consulte a aba Marketplace da rede para obter o valor médio histórico.
+      3. Utilize essa métrica para guiar seus cálculos de break-even.
+  - campo: refundPct
+    agente: Risk Assessment Agent
+    o_que: A taxa média de reembolsos (refund) ou cancelamentos históricos da oferta.
+    por_que: O ClickBank e redes semelhantes possuem taxas de reembolso de 5% a 15%
+      em produtos físicos. Ignorar isso distorce a margem de lucro real.
+    como: >-
+      1. Estime a taxa de reembolso com base no produto (geralmente 5% a 15%).
+
+      2. Para produtos físicos nos EUA, considere usar 10% como padrão conservador.
+
+      3. Esse valor deduzirá a comissão bruta para calcular seu lucro líquido real.
+  - campo: aov
+    agente: Affiliate Finance Broker
+    o_que: Valor Médio do Pedido (Average Order Value) que o cliente gasta,
+      incluindo upsells.
+    por_que: Ofertas com forte funil de upsell geram comissões adicionais elevadas
+      por clique.
+    como: |-
+      1. Insira o valor médio do carrinho de compras da oferta.
+      2. Considere os upsells recorrentes oferecidos pelo produtor no funil.
+      3. Um AOV alto indica maior tolerância a CPCs mais caros durante a escala.
+  - campo: offerUrl
+    agente: Tracking & Analytics Engineer
+    o_que: O seu link de afiliado oficial (HopLink ou Smartlink) gerado na plataforma.
+    por_que: Esse link direciona o comprador para a página oficial do produto,
+      garantindo que a sua comissão seja rastreada.
+    como: >-
+      1. Acesse a rede de afiliados (ex: ClickBank), clique em "Promover"
+      (Promote) e insira seu nickname para gerar o HopLink.
+
+      2. Copie o link e certifique-se de adicionar os parâmetros de tracking necessários (como subid/clickid).
+
+      3. Use este link no botão de chamada para ação (CTA) da sua pré-sell/bridge page.
+    ajuda_api_key: Acesse o Marketplace do ClickBank, clique em "Promote" no produto
+      escolhido e copie o link. Para MaxWeb, acesse a oferta aprovada e copie o
+      link.
+  - campo: cvrExpected
+    agente: CRO & Conversion Specialist
+    o_que: A taxa de conversão estimada da pré-sell para a venda (conversão por
+      cliques).
+    por_que: Utilizada para calcular o EPC de break-even. Superestimar a CVR fará
+      você pagar CPCs mais caros do que deveria.
+    como: >-
+      1. Insira a taxa de conversão (cliques para vendas) esperada.
+
+      2. Use de 1% a 2% como padrão conservador para tráfego frio em Search/YouTube.
+
+      3. Não infle a CVR ou seus CPCs de break-even ficarão irrealisticamente altos.
+  - campo: presellUrl
+    agente: Compliance Sentinel
+    o_que: A URL pública onde sua pré-sell ou bridge page está hospedada.
+    por_que: Usado para auditoria e teste de carregamento rápido. O Google Ads exige
+      que o domínio do anúncio corresponda ao destino.
+    como: >-
+      1. Digite a URL final onde sua pré-sell ou bridge page foi publicada.
+
+      2. O domínio deve ser idêntico ao que será usado na URL final dos anúncios do Google.
+
+      3. Certifique-se de que a página carregue em menos de 3 segundos no mobile.
+  - campo: flowpageUrl
+    agente: CRO & Conversion Specialist
+    o_que: Link alternativo da sua FlowPage de tráfego rápido.
+    por_que: Útil para testes imediatos sem domínio próprio.
+    como: |-
+      1. Crie ou configure sua página rápida no Flowpage.com.
+      2. Insira os links de afiliado nos botões e publique a página.
+      3. Cole o link final gerado neste campo para referência rápida.
+  - campo: hostingerDomain
+    agente: Hosting & Domain Specialist
+    o_que: O domínio do site hospedado na Hostinger.
+    por_que: Domínio próprio dá autoridade e qualidade ao anúncio do Google Ads.
+    como: |-
+      1. Acesse seu painel da Hostinger para gerenciar domínios.
+      2. Certifique-se de que o certificado SSL esteja ativo e configurado.
+      3. Cole o domínio principal que você usará para criar as páginas ponte.
+  - campo: presellHtml
+    agente: Compliance & SEO Auditor
+    o_que: O código-fonte HTML completo da sua pré-sell.
+    por_que: O analisador de compliance do app lê esse HTML em milissegundos para
+      identificar alegações proibidas antes de você subir no Google.
+    como: >-
+      1. Desenvolva o HTML da sua pré-sell ou use o gerador de template.
+
+      2. Cole o código HTML completo neste campo.
+
+      3. Use o botão "Analisar com IA" para auditar possíveis alegações agressivas e claims de compliance.
+  - campo: postbackUrl
+    agente: Tracking & Analytics Engineer
+    o_que: O endpoint URL que notificará a rede MaxWeb ou outra de cada conversão.
+    por_que: O rastreamento via postback envia conversões diretas de volta do
+      servidor da rede, essencial para que o Google Ads otimize os lances
+      inteligentes.
+    como: |-
+      1. Copie a URL de postback do seu rastreador de conversões.
+      2. Configure a URL no painel da rede de afiliados (ex: MaxWeb).
+      3. Teste o disparo gerando uma conversão manual de simulação.
+    ajuda_api_key: Acesse seu painel MaxWeb -> Pixels & Postbacks. Copie o postback
+      para sua oferta e insira aqui. Para ClickBank, configure no menu Vendor
+      Settings -> My Site.
+  - campo: clickidToken
+    agente: Tracking & Analytics Engineer
+    o_que: O nome do parâmetro que armazena o identificador exclusivo do clique no
+      link.
+    por_que: Permite bater a conversão de volta com o clique exato no Google Ads.
+    como: >-
+      1. Escolha o token que a rede utiliza para registrar a identificação do
+      clique.
+
+      2. Use "clickid" no MaxWeb e "subid" no ClickBank.
+
+      3. Garanta que o token esteja mapeado no link final do redirecionamento.
+  - campo: budgetTest
+    agente: Paid Ads Finance Broker
+    o_que: O orçamento total alocado para testar e validar esta oferta.
+    por_que: Campanhas de afiliados devem ter limite de perda controlado.
+      Recomendamos $50 a $80 para validação inicial de 48-72h.
+    como: >-
+      1. Insira o orçamento de teste total alocado para esta oferta.
+
+      2. Recomendamos usar o equivalente a pelo menos 1x a 2x o valor da comissão da oferta.
+
+      3. Distribua o orçamento diário igualmente durante o período de testes de 72 horas.
+  - campo: testDuration
+    agente: Paid Ads Finance Broker
+    o_que: "O tempo limite de duração do teste da campanha (ex: 48h, 72h)."
+    por_que: Fase de validação inicial. Campanhas sem conversão nesse período devem
+      ser desativadas.
+    como: >-
+      1. Escolha o período que a campanha ficará ativa em fase de validação.
+
+      2. Use 72 horas (3 dias) como padrão ideal para coletar cliques suficientes.
+
+      3. Pause a campanha imediatamente se atingir o orçamento sem conversões.
+  - campo: budgetScale
+    agente: Paid Ads Finance Broker
+    o_que: O orçamento diário real a aplicar no Google Ads quando a campanha for
+      confirmada para SCALE (depois de validada no teste).
+    por_que: Separa a etapa de risco controlado (teste) da etapa de investimento
+      sério — evita escalar orçamento por engano e dá ao agente um número pra
+      planejar CPC de scale e cobertura de keywords.
+    como: >-
+      1. Só defina depois (ou junto) de ver os resultados do teste.
+
+      2. Regra prática: 3x a 5x o budget diário de teste, se o EPC/CPC estiver saudável.
+
+      3. Ao clicar "Scale" na página da campanha, esse valor é aplicado automaticamente como orçamento diário real no Google Ads.

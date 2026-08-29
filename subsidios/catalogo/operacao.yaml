@@ -1,0 +1,97 @@
+# Catálogo de operação — plataformas, canais e geos que a campanha pode usar.
+#
+# Diferente de verticais.yaml, aqui não há número estimado: são fatos de configuração.
+# O que cada entrada carrega é a consequência operacional — se a integração é nativa
+# (o app lê a venda sozinho) ou manual (alguém precisa lançar), e quando o canal serve.
+
+schema: 1
+atualizado_em: '2026-08-29'
+
+plataformas:
+  - id: 'ClickBank'
+    tipo: marketplace
+    integracao: nativa
+    nota: >-
+      API de marketplace e hop stats já integradas em lib/clickbank.ts.
+  - id: 'BuyGoods'
+    tipo: rede-cpa
+    integracao: manual
+    nota: >-
+      Comissão via CPA fixo. Conversão só chega no Google Ads por postback.
+  - id: 'MaxWeb'
+    tipo: rede-cpa
+    integracao: nativa
+    nota: >-
+      lib/maxwebService.ts. Exige postback S2S configurado — sem ele não há otimização automática.
+  - id: 'Hotmart'
+    tipo: marketplace
+    integracao: manual
+    nota: >-
+      Mercado BR. Verifique regras de brand bidding na página do produtor.
+  - id: 'Eduzz'
+    tipo: marketplace
+    integracao: manual
+    nota: >-
+      Mercado BR.
+  - id: 'Monetizze'
+    tipo: marketplace
+    integracao: manual
+    nota: >-
+      Mercado BR.
+  - id: 'Kiwify'
+    tipo: marketplace
+    integracao: nativa
+    nota: >-
+      lib/kiwifyService.ts.
+  - id: 'Digistore24'
+    tipo: marketplace
+    integracao: manual
+    nota: >-
+      Mercado EU/DE forte.
+  - id: 'Outro'
+    tipo: outro
+    integracao: manual
+    nota: >-
+      Escape hatch: dados entram à mão e não recebem verificação automática.
+
+canais:
+  - id: SEARCH
+    label: 'Google Search'
+    quando_usar: >-
+      Intenção declarada. Primeira escolha quando a vertical permite e o CPC cabe no break-even.
+  - id: YOUTUBE
+    label: 'YouTube'
+    quando_usar: >-
+      Vertical em que Search é caro ou proibido pelo produtor. Exige criativo em vídeo.
+  - id: DEMAND_GEN
+    label: 'Demand Gen'
+    quando_usar: >-
+      Geração de demanda (Discover, Gmail, YouTube). Topo de funil com criativo visual.
+  - id: PMAX
+    label: 'Performance Max'
+    quando_usar: >-
+      Só com conversão confiável já rastreada. Sem histórico, queima orçamento.
+
+geos:
+  - id: US
+    label: 'Estados Unidos'
+  - id: UK
+    label: 'Reino Unido'
+  - id: AU
+    label: 'Austrália'
+  - id: CA
+    label: 'Canadá'
+  - id: BR
+    label: 'Brasil'
+  - id: DE
+    label: 'Alemanha'
+  - id: FR
+    label: 'França'
+  - id: ES
+    label: 'Espanha'
+  - id: IT
+    label: 'Itália'
+  - id: MX
+    label: 'México'
+  - id: GLOBAL
+    label: 'Global'
