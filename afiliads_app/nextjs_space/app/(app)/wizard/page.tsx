@@ -4,6 +4,7 @@ import { StepProductSearch } from './_components/step-product-search';
 import { StepCalculator } from './_components/step-calculator';
 import { StepCreativeGen } from './_components/step-creative-gen';
 import { StepLandingPage } from './_components/step-landing-page';
+import { StepLaunch } from './_components/step-launch';
 import { ProductStudio } from './_components/product-studio';
 import { AgentHelp, ChecklistItemRow, applyEnumIfValid, AutofillContext } from './_components/agent-help';
 
@@ -1592,170 +1593,74 @@ export default function WizardPage() {
             </div>
           )}
 
-          {/* STEP 9 - Go-live */}
+          {/* STEP 9 - Go-live & Lançamento Multicanal */}
           {step === 9 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Rocket className="h-5 w-5 text-green-400" /> Go-live</h2>
-                <Button size="sm" variant="outline" onClick={() => void runChecklistVerify()} disabled={verifyingChecklist || !campaignId} className="border-[#334155] text-slate-300 gap-1.5">
-                  {verifyingChecklist ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />} Verificar tudo automaticamente
-                </Button>
-              </div>
-
-              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-blue-300">Etapa 1 — Teste</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Budget Total de Teste (USD)</Label><AgentHelp fieldKey="budgetTest" fieldValue={budgetTest} context={{ commission: commVal }} onApply={setBudgetTest} /></div><Input type="number" value={budgetTest} onChange={(e:any) => setBudgetTest(e?.target?.value ?? '50')} className={inputCls} /></div>
-                  <div><div className="flex items-center gap-1"><Label className="text-slate-300">Duração do Teste</Label><AgentHelp fieldKey="testDuration" fieldValue={testDuration} onApply={applyEnumIfValid(['48h', '72h', '5', '7'], setTestDuration, 'Duração do Teste')} /></div>
-                    <Select value={testDuration} onValueChange={setTestDuration}><SelectTrigger className={inputCls}><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-[#1e293b] border-[#334155]"><SelectItem value="48h" className="text-white">48h</SelectItem><SelectItem value="72h" className="text-white">72h</SelectItem><SelectItem value="5" className="text-white">5 dias</SelectItem><SelectItem value="7" className="text-white">7 dias</SelectItem></SelectContent>
-                    </Select></div>
-                  <div><Label className="text-slate-300">Budget Diário (teste)</Label><p className="text-lg font-mono text-green-400 mt-1">${budgetDaily?.toFixed?.(2)}/dia</p></div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-purple-300">Etapa 2 — Investimento sério (só depois de validar no teste)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-1"><Label className="text-slate-300">Budget Diário de Scale (USD)</Label><AgentHelp fieldKey="budgetScale" fieldValue={budgetScale} context={{ budgetTest: parseFloat(budgetTest) || 50, commission: commVal }} onApply={setBudgetScale} /></div>
-                    <Input type="number" value={budgetScale} onChange={(e:any) => setBudgetScale(e?.target?.value ?? '0')} placeholder="Ex.: 150" className={inputCls} />
-                  </div>
-                  <div className="text-xs text-slate-400 self-end pb-2">
-                    Só é aplicado quando você confirmar a decisão <strong className="text-purple-300">Scale</strong> na página da campanha
-                    (troca o orçamento diário real no Google Ads automaticamente, ${budgetScale && parseFloat(budgetScale) > 0 ? parseFloat(budgetScale).toFixed(2) : '—'}/dia).
-                    Deixe 0 se ainda não sabe — dá pra definir depois, antes de escalar.
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {GOLIVE_CHECKLIST.map(item => (
-                  <ChecklistItemRow
-                    key={item.key}
-                    item={item}
-                    checked={goLiveChecks[item.key] ?? false}
-                    onToggle={(v) => setGoLiveChecks(prev => ({ ...prev, [item.key]: v }))}
-                    meta={checklistMeta[item.key]}
-                    step={9}
-                    onFix={fixChecklistItem}
-                  />
-                ))}
-              </div>
-
-              {/* Loop Setup Card */}
-              <div className="bg-[#0f172a] rounded-lg p-4 border border-[#334155]/40 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-semibold flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-yellow-400" /> Loop de Automação dos Agentes
-                  </h3>
-                  <Badge className="bg-yellow-500/20 text-yellow-400 text-[10px]">RECOMENDADO</Badge>
-                </div>
-                
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Para que a campanha seja monitorada de forma contínua após a publicação, configure o loop automático dos agentes. O loop só iniciará o processamento efetivo quando o status da campanha estiver em <strong>"Em Teste"</strong> ou <strong>"Ativo"</strong>.
-                </p>
-
-                <div className="flex items-center gap-2 pb-2 border-b border-[#334155]/30">
-                  <Checkbox
-                    id="wizard-loop-enabled"
-                    checked={loopEnabled}
-                    onCheckedChange={(v: any) => setLoopEnabled(!!v)}
-                  />
-                  <Label htmlFor="wizard-loop-enabled" className="text-sm text-slate-300 cursor-pointer select-none">
-                    Ativar automação do loop para esta campanha
-                  </Label>
-                </div>
-
-                {loopEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-slate-400">Intermitência de Loop Recomendada</Label>
-                      <Select value={loopInterval} onValueChange={setLoopInterval}>
-                        <SelectTrigger className={inputCls}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#1e293b] border-[#334155]">
-                          <SelectItem value="12h" className="text-white">A cada 12h</SelectItem>
-                          <SelectItem value="24h" className="text-white">A cada 24h (Sugerido)</SelectItem>
-                          <SelectItem value="48h" className="text-white">A cada 48h (Alta economia de tokens)</SelectItem>
-                          <SelectItem value="72h" className="text-white">A cada 72h</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Evite loops muito curtos para não ter picos de consumo de tokens da API de IA.
-                      </p>
-                    </div>
-
-                    <div>
-                      <Label className="text-xs text-slate-400">Agentes no Loop de Operações</Label>
-                      <div className="space-y-2 mt-1 bg-[#1e293b]/40 p-2 rounded border border-[#334155]/30">
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="agent-ads" checked={loopAgents.includes('ads')} onCheckedChange={(v: any) => {
-                            if (v) setLoopAgents(prev => prev.includes('ads') ? prev : prev + ',ads');
-                            else setLoopAgents(prev => prev.split(',').filter(a => a !== 'ads').join(','));
-                          }} />
-                          <Label htmlFor="agent-ads" className="text-xs text-slate-300">Paid Ads Agent (Monitor de CPC)</Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="agent-compliance" checked={loopAgents.includes('compliance')} onCheckedChange={(v: any) => {
-                            if (v) setLoopAgents(prev => prev.includes('compliance') ? prev : prev + ',compliance');
-                            else setLoopAgents(prev => prev.split(',').filter(a => a !== 'compliance').join(','));
-                          }} />
-                          <Label htmlFor="agent-compliance" className="text-xs text-slate-300">Compliance Sentinel (Monitor de Pre-sell)</Label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Resumo */}
-              <Card className="bg-[#0f172a] border-[#334155] mt-4">
-                <CardContent className="p-4 space-y-2">
-                  <h3 className="text-white font-semibold">Resumo da Campanha</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-                    <div><span className="text-slate-400">Nome:</span> <span className="text-white">{name || campaignNameGen}</span></div>
-                    <div><span className="text-slate-400">Plataforma:</span> <span className="text-white">{platform}</span></div>
-                    <div><span className="text-slate-400">Vertical:</span> <span className="text-white">{vertical}</span></div>
-                    <div><span className="text-slate-400">Geo:</span> <span className="text-white">{geo}</span></div>
-                    <div><span className="text-slate-400">Canal:</span> <span className="text-white">{channel}</span></div>
-                    <div><span className="text-slate-400">Comissão:</span> <span className="text-green-400">${commVal}</span></div>
-                    <div><span className="text-slate-400">CPC Máx:</span> <span className="text-yellow-400">${cpcMax?.toFixed?.(4)}</span></div>
-                    <div><span className="text-slate-400">Keywords:</span> <span className="text-white">{selectedKeywords.filter(k=>k.selected).length}</span></div>
-                    <div><span className="text-slate-400">ID:</span> <span className="text-slate-500 font-mono">{campaignNameGen}</span></div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <StepLaunch
+              campaignId={campaignId}
+              campaignNameGen={campaignNameGen}
+              name={name}
+              platform={platform}
+              vertical={vertical}
+              geo={geo}
+              channel={channel}
+              funnel={funnel}
+              commVal={commVal}
+              cpcMax={cpcMax}
+              selectedKeywords={selectedKeywords}
+              sourceProductResearchId={sourceProductResearchId}
+              
+              budgetTest={budgetTest}
+              setBudgetTest={setBudgetTest}
+              testDuration={testDuration}
+              setTestDuration={setTestDuration}
+              budgetDaily={budgetDaily}
+              budgetScale={budgetScale}
+              setBudgetScale={setBudgetScale}
+              
+              goLiveChecks={goLiveChecks}
+              setGoLiveChecks={setGoLiveChecks}
+              checklistMeta={checklistMeta}
+              setChecklistMeta={setChecklistMeta}
+              
+              loopEnabled={loopEnabled}
+              setLoopEnabled={setLoopEnabled}
+              loopInterval={loopInterval}
+              setLoopInterval={setLoopInterval}
+              loopAgents={loopAgents}
+              setLoopAgents={setLoopAgents}
+              
+              verifyingChecklist={verifyingChecklist}
+              runChecklistVerify={runChecklistVerify}
+              fixChecklistItem={fixChecklistItem}
+              
+              onPrev={prev}
+              saveCampaign={saveCampaign}
+              canAdvance={canAdvance}
+            />
           )}
         </CardContent>
       </Card>
 
-      {/* Navigation */}
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={prev} disabled={step === 1} className="border-[#334155] text-slate-300 gap-2">
-            <ArrowLeft className="h-4 w-4" /> Anterior
-          </Button>
-          <Button variant="outline" onClick={async () => {
-            await saveCampaign();
-            toast.success('Rascunho da campanha salvo com sucesso!');
-          }} disabled={saving} className="border-[#334155] text-slate-300 gap-2">
-            <Save className="h-4 w-4" /> Salvar Rascunho
-          </Button>
-        </div>
-        {step < 9 ? (
+      {/* Navigation - Apenas para passos anteriores a 9 */}
+      {step < 9 && (
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={prev} disabled={step === 1} className="border-[#334155] text-slate-300 gap-2">
+              <ArrowLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <Button variant="outline" onClick={async () => {
+              await saveCampaign();
+              toast.success('Rascunho da campanha salvo com sucesso!');
+            }} disabled={saving} className="border-[#334155] text-slate-300 gap-2">
+              <Save className="h-4 w-4" /> Salvar Rascunho
+            </Button>
+          </div>
           <Button onClick={next} disabled={saving || advancing} className="bg-green-600 hover:bg-green-700 text-white gap-2">
             {(saving || advancing) && <Loader2 className="h-4 w-4 animate-spin" />}
             {advancing ? 'Validando...' : 'Próximo'} <ArrowRight className="h-4 w-4" />
           </Button>
-        ) : (
-          <Button onClick={launch} disabled={saving || advancing || !canAdvance()} className="bg-green-600 hover:bg-green-700 text-white gap-2">
-            {(saving || advancing) && <Loader2 className="h-4 w-4 animate-spin" />}
-            <Rocket className="h-4 w-4" /> {advancing ? 'Validando...' : 'Lançar Campanha'}
-          </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
     </AutofillContext.Provider>
   );

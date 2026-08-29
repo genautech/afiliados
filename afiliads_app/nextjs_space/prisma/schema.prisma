@@ -48,6 +48,7 @@ model User {
   copyQaReports        CopyQaReport[]
   visualSystems        VisualSystem[]
   launchPlans          LaunchPlan[]
+  channelLaunches      ChannelLaunch[]
 }
 
 model Account {
@@ -117,6 +118,11 @@ model Campaign {
   googleCampaignName    String?
   googleCampaignId      String?
   googleAdGroupId       String?
+  // IDs remotos do Meta Ads. Presença = fronteira externa já cruzada; a
+  // idempotência do Painel de Lançamento se apoia nisso, igual ao Google.
+  metaCampaignId        String?
+  metaAdSetId           String?
+  metaAdId              String?
   campaignType          String?
   bidStrategy           String?
   utmCampaign           String?
@@ -168,6 +174,7 @@ model Campaign {
   copyQaReports             CopyQaReport[]
   visualSystems             VisualSystem[]
   launchPlans               LaunchPlan[]
+  channelLaunches           ChannelLaunch[]
 
   @@index([userId, status])
   @@index([userId, platform])
@@ -943,4 +950,66 @@ model LaunchPlan {
 
   @@index([userId, campaignId])
   @@index([productResearchId])
+}
+
+// ---------------------------------------------------------------------------
+// Painel de lançamento multicanal.
+//
+// Antes, o progresso do lançamento cabia num único Campaign.launchCheckpoint:
+// uma string que forçava a ordem Google -> Meta e não sabia dizer qual canal
+// falhou. ChannelLaunch dá um registro por (campanha, canal), o que permite
+// paridade (canais avaliados juntos, executados de forma independente),
+// retomada de um canal só, e auditoria de qual ID externo saiu de onde.
+//
+// A unique (campaignId, channel, idempotencyKey) é o lock de verdade: dois
+// POST simultâneos com a mesma chave colidem no banco, e o segundo lê o
+// registro do primeiro em vez de criar campanha duplicada no anunciante.
+// ---------------------------------------------------------------------------
+
+enum LaunchChannel {
+  GOOGLE_ADS
+  META_ADS
+}
+
+enum ChannelLaunchStatus {
+  PENDING // reservado, ainda não executou
+  RUNNING // mutação em andamento
+  SUCCESS
+  FAILED
+  COMPENSATED // subiu, mas o lote falhou e este canal foi pausado
+}
+
+// LIVE = mutação real no anunciante. MOCK = simulação declarada.
+// O modo fica gravado para que "mock" nunca possa ser confundido com sucesso:
+// campanha só vai para ATIVA quando todos os canais estiverem SUCCESS + LIVE.
+enum LaunchMode {
+  LIVE
+  MOCK
+}
+
+model ChannelLaunch {
+  id                String              @id @default(cuid())
+  campaignId        String
+  userId            String
+  channel           LaunchChannel
+  status            ChannelLaunchStatus @default(PENDING)
+  mode              LaunchMode          @default(MOCK)
+  idempotencyKey    String
+  attempt           Int                 @default(0)
+  // Mapa de IDs remotos criados por este canal (campaign/adset/ad...). É Json e
+  // não colunas fixas porque a compensação precisa devolver exatamente o que o
+  // adapter criou, e cada canal tem sua própria árvore de recursos.
+  externalIds       Json?
+  error             String?             @db.Text
+  logs              Json?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  campaign          Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, channel, idempotencyKey])
+  @@index([campaignId])
+  @@index([userId])
 }

@@ -31,6 +31,8 @@ export interface CreateCampaignInput {
   headlines: string[];
   descriptions: string[];
   cpcBidMicros?: number;
+  /** Operador pediu simulação: nunca toca a API real, mesmo com conta LIVE. */
+  forceMock?: boolean;
 }
 
 export interface CreateCampaignResult {
@@ -350,7 +352,7 @@ export async function createGoogleCampaign(userId: string, input: CreateCampaign
   const logs: string[] = [];
 
   // --- MOCK MODE ---
-  if (isMockMode(config)) {
+  if (isMockMode(config) || input.forceMock) {
     console.log(`[Google Ads Mock] Criando campanha "${input.name}"`, input);
     logs.push(`[Simulação] Budget diário criado: $${input.budgetDaily.toFixed(2)}`);
     logs.push(`[Simulação] Campanha "${input.name}" criada como PAUSED (Search)`);

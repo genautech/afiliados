@@ -9,6 +9,7 @@ import { generateRsaCopy } from '@/lib/rsa';
 import { checkGoogleAdsReadiness } from '@/lib/google-ads/readiness';
 import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
 import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
+import { assertClaimsAllowed } from '@/lib/launch/orchestrator';
 import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
 
 export async function POST(request: NextRequest) {
@@ -43,6 +44,15 @@ export async function POST(request: NextRequest) {
         googleAdGroupId: campaign.googleAdGroupId ?? null,
         launchState: deriveCampaignLaunchState(campaign),
       });
+    }
+
+    // Gate de claims (EBOOK-OS). Esta rota é um caminho de mutação real paralelo ao
+    // Painel de Lançamento; se ela não checasse o ledger, bastaria criar por aqui para
+    // publicar uma claim proibida. Não há bypass.
+    try {
+      await assertClaimsAllowed(userId, campaignId);
+    } catch (gateErr: any) {
+      return NextResponse.json({ error: gateErr?.message ?? 'Ledger de claims reprovado' }, { status: 422 });
     }
 
     const adsConfig = await getGoogleAdsConfig(userId);

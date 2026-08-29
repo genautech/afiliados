@@ -17,6 +17,7 @@ vi.mock('@/lib/prisma', () => ({
     campaignChecklist: { findMany: vi.fn() },
     productResearch: { findUnique: vi.fn() },
     campaignDecision: { create: vi.fn() },
+    claimLedgerEntry: { aggregate: vi.fn(), findMany: vi.fn() },
   },
 }));
 
@@ -38,6 +39,10 @@ describe('POST /api/google-ads/create', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getServerSession as any).mockResolvedValue({ user: { id: 'u1' } });
+    // Ledger vazio por padrão: o gate de claims deixa passar e cada teste que
+    // quiser exercitar o bloqueio sobrescreve estes dois mocks.
+    (prisma.claimLedgerEntry.aggregate as any).mockResolvedValue({ _max: { version: null } });
+    (prisma.claimLedgerEntry.findMany as any).mockResolvedValue([]);
   });
 
   function createRequest(body: any) {
@@ -130,6 +135,23 @@ describe('POST /api/google-ads/create', () => {
 
     expect(res.status).toBe(200);
     expect(json).toEqual({ success: true, alreadyExists: true, googleCampaignId: 'g-existing', googleAdGroupId: 'ga-existing', launchState: 'CONFIGURING' });
+    expect(getGoogleAdsConfig).not.toHaveBeenCalled();
+    expect(createGoogleCampaign).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia a criação quando o ledger de claims tem claim proibida em copy paga', async () => {
+    (prisma.campaign.findFirst as any).mockResolvedValue({ id: 'c1', userId: 'u1', updatedAt: new Date(1234), keywords: [] });
+    (prisma.claimLedgerEntry.aggregate as any).mockResolvedValue({ _max: { version: 2 } });
+    (prisma.claimLedgerEntry.findMany as any).mockResolvedValue([
+      { id: 'x', claim: 'Cura garantida', status: 'PROIBIDO', source: null, allowedChannels: ['google-ads'] },
+    ]);
+
+    const req = createRequest({ campaignId: 'c1', authorization: { confirmed: true, operation: 'CREATE_CAMPAIGN', resourceId: 'c1', revision: '1234', idempotencyKey: 'create_key_123' } });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(json.error).toContain('Ledger de claims reprovado');
     expect(getGoogleAdsConfig).not.toHaveBeenCalled();
     expect(createGoogleCampaign).not.toHaveBeenCalled();
   });
