@@ -108,6 +108,23 @@ Encerrar quando **três fontes consecutivas** não adicionarem claim relevante
 novo. Volume de links não é evidência. Não transcreva uma hora de vídeo
 para uma headline.
 
+## Diretrizes Técnicas e de Segurança (Auditoria TASK-18)
+
+As novas integrações de injeção de conhecimento seguem defesas estritas implementadas na TASK-18 contra concorrência, injeções maliciosas (XSS) e vazamento de recursos:
+
+1. **Defesa Anti-XSS (Indirect Prompt Injection):**
+   * Remova completamente a geração de scripts personalizados (`proposedCustomCode`) pelo LLM. Código customizado deve ser preservado do operador local, impedindo que dados maliciosos injetados nas fontes de conhecimento (ex: legendas de vídeo, LPs de concorrentes) executem XSS armazenado no renderizador de presells.
+2. **Validação Estrita de Dados (Zod strict + LLM validation):**
+   * Sempre valide payloads de insights e propostas da IA usando schemas Zod estritos (`.strict()`).
+   * Integre a validação ao mecanismo do `callLLM` passando `json: true` e `validate: schema.safeParse`. Se o JSON for malformado, o runner deve reapresentar o erro de validação ao modelo antes de falhar, de modo que a própria IA reescreva o JSON, eliminando casts inseguros (`as unknown as`) e parsing frágil de strings.
+3. **Bloqueio de Clique Duplo (Exclusão Mútua):**
+   * Na rota de criação de injeção (`/api/knowledge/inject`), use um rate-limit no POST (retornando 409 em tentativas repetidas da mesma fonte em < 10 minutos) combinado com um lock de Compare-and-Swap (CAS) no banco (usando `updateMany` onde `status: 'PENDING'`) para reivindicar o processamento, prevenindo race conditions e múltiplos workers na mesma fonte.
+4. **Heurística Anti-Turnstile no Scraper:**
+   * Sempre filtre o Markdown retornado de scrapers de concorrentes (como Firecrawl) contra assinaturas de captcha e desafios (ex: `cf-challenge`, `cloudflare turnstile`, `checking your browser`). Se detectado, falhe imediatamente de forma explícita (*fail-fast*) sem gastar tempo de processamento de LLM com páginas de segurança do Cloudflare.
+5. **Mitigação de Lock em Serverless / Polling Eficiente:**
+   * No polling de frontend para status, use select explícito (ocultando `rawContent` pesado) combinando AbortController para evitar empilhamento de requisições pendentes na rede.
+   * Implemente um Reaper de background que falhe automaticamente conexões travadas em `PROCESSING` há mais de 10 minutos para proteger conexões servidoras no ambiente local e serverless.
+
 ## Recusas
 
 - Inventar citação, número ou depoimento a partir da memória do modelo.
