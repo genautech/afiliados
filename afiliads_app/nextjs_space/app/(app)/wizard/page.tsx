@@ -1,6 +1,7 @@
 'use client';
 import { StepProductType, ProductType } from './_components/step-product-type';
 import { StepProductSearch } from './_components/step-product-search';
+import { EbookDraftPanel } from './_components/ebook-draft-panel';
 import { StepCalculator } from './_components/step-calculator';
 import { StepCreativeGen } from './_components/step-creative-gen';
 import { StepLandingPage } from './_components/step-landing-page';
@@ -48,7 +49,7 @@ const STEPS = [
   { num: 3, title: 'Anti-strike', icon: ShieldCheck },
   { num: 4, title: 'Pré-sell', icon: Eye },
   { num: 5, title: 'Keywords', icon: Search },
-  { num: 6, title: 'Naming', icon: Tag },
+  { num: 6, title: 'Naming & E-book', icon: Tag },
   { num: 7, title: 'Google Ads', icon: Settings },
   { num: 8, title: 'Tracking', icon: Radio },
   { num: 9, title: 'Go-live', icon: Rocket },
@@ -1482,6 +1483,8 @@ export default function WizardPage() {
                 </div>
               </div>
               <p className="text-xs text-slate-500">Formato: [REDE]_[VERTICAL]_[GEO]_[CANAL]_[FUNIL]_vN</p>
+
+              <EbookDraftPanel campaignId={campaignId} productName={name} />
             </div>
           )}
 

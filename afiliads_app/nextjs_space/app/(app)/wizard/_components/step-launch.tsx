@@ -10,12 +10,45 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  Rocket, Loader2, ShieldCheck, Save, ArrowLeft, ArrowRight, Zap, Play, CheckCircle2, AlertTriangle, Terminal, Eye, HelpCircle
+  Rocket, Loader2, ShieldCheck, Save, ArrowLeft, ArrowRight, Zap, Play, CheckCircle2, AlertTriangle, Terminal, Eye, HelpCircle,
+  Package, Download, CreditCard, FileArchive
 } from 'lucide-react';
 import { AgentHelp, ChecklistItemRow } from './agent-help';
 import { GOLIVE_CHECKLIST } from '@/lib/wizard-data';
 import { useRouter } from 'next/navigation';
 import { LaunchChannelsPanel } from './launch-channels';
+
+/** Espelha o deploy_summary escrito por scripts/deploy_product.py no manifest.json. */
+interface DeploySummary {
+  status?: string;
+  deployed_at?: string;
+  landing_page_zip?: string;
+  ebook_pdf?: string;
+  ebook_html?: string;
+  payment_integration?: {
+    platform?: string;
+    checkout_url?: string;
+    webhook_url?: string;
+  };
+}
+
+const DEPLOY_STAGES = [
+  'Formatando o e-book em HTML responsivo...',
+  'Renderizando o PDF final...',
+  'Empacotando a landing page em .zip...',
+  'Conectando o checkout e o webhook...',
+];
+
+/** Só vira link o que for http(s); o resto é caminho local do worker. */
+function isHttpUrl(value?: string | null): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 export interface StepLaunchProps {
   campaignId: string | null;
@@ -104,6 +137,9 @@ export function StepLaunch({
 }: StepLaunchProps) {
   const router = useRouter();
   const [launching, setLaunching] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+  const [deployStage, setDeployStage] = useState(0);
+  const [deployResult, setDeployResult] = useState<DeploySummary | null>(null);
   const [launchLogs, setLaunchLogs] = useState<string[]>([]);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launchSuccess, setLaunchSuccess] = useState(false);
@@ -215,6 +251,40 @@ export function StepLaunch({
   };
 
   const inputCls = "bg-[#0f172a] border-[#334155] text-white focus:ring-green-500 focus:border-green-500 placeholder-slate-500";
+
+  useEffect(() => {
+    if (!deploying) { setDeployStage(0); return; }
+    const timer = setInterval(() => setDeployStage((i) => (i + 1) % DEPLOY_STAGES.length), 1500);
+    return () => clearInterval(timer);
+  }, [deploying]);
+
+  const handleDeployProduct = async () => {
+    if (!campaignId) { toast.error('Salve a campanha antes de lançar o produto.'); return; }
+    setDeploying(true);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/deploy`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (res.status === 404 && !data?.error) {
+        toast.error('A rota POST /api/campaigns/:id/deploy ainda não existe no app.');
+        return;
+      }
+      if (!res.ok) {
+        toast.error(data?.error || `Empacotamento falhou (HTTP ${res.status}).`);
+        return;
+      }
+      const summary = (data?.deploy ?? data) as DeploySummary;
+      if (!summary || typeof summary !== 'object') {
+        toast.error('O deploy respondeu 200 sem o resumo dos artefatos.');
+        return;
+      }
+      setDeployResult(summary);
+      toast.success('Produto empacotado: PDF, zip da landing e checkout prontos.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro de rede ao chamar o deploy.');
+    } finally {
+      setDeploying(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -543,6 +613,132 @@ export function StepLaunch({
           </div>
         )}
       </div>
+
+      {/* EMPACOTAMENTO DO PRODUTO (e-book + landing) */}
+      <Card className="bg-[#0b0f19] border-amber-500/20">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Package className="h-4 w-4 text-amber-400" /> Empacotamento do produto
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Gera o PDF do e-book, o .zip estático da landing e o checkout. Roda sobre a versão
+                aprovada no passo 6 — não sobre o rascunho.
+              </p>
+            </div>
+            <Button
+              onClick={handleDeployProduct}
+              disabled={deploying || !campaignId}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-bold px-6 py-5 rounded-lg text-sm shadow-lg shadow-amber-900/20 disabled:opacity-40"
+            >
+              {deploying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Empacotando...
+                </>
+              ) : (
+                <>
+                  <Rocket className="h-4 w-4" /> Lançar Produto
+                </>
+              )}
+            </Button>
+          </div>
+
+          {deploying && (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
+              <p className="text-xs text-amber-200 font-mono flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                {DEPLOY_STAGES[deployStage]}
+              </p>
+              <div className="mt-2 flex gap-1">
+                {DEPLOY_STAGES.map((stage, i) => (
+                  <span
+                    key={stage}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      i <= deployStage ? 'bg-amber-400' : 'bg-slate-700'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {deployResult && !deploying && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-emerald-500/15 text-emerald-400 text-[10px] hover:bg-emerald-500/25">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  {deployResult.status || 'empacotado'}
+                </Badge>
+                {deployResult.deployed_at && (
+                  <span className="text-[11px] text-slate-500">em {deployResult.deployed_at}</span>
+                )}
+              </div>
+
+              {deployResult.payment_integration?.checkout_url && (
+                <div className="rounded-lg border border-[#334155] bg-[#0f172a] p-3 space-y-1.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
+                    <CreditCard className="h-3 w-3" />
+                    Checkout {deployResult.payment_integration.platform || 'Kiwify'} (simulado)
+                  </p>
+                  {isHttpUrl(deployResult.payment_integration.checkout_url) ? (
+                    <a
+                      href={deployResult.payment_integration.checkout_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-mono text-emerald-400 hover:text-emerald-300 break-all underline underline-offset-2"
+                    >
+                      {deployResult.payment_integration.checkout_url}
+                    </a>
+                  ) : (
+                    <code className="text-sm font-mono text-slate-300 break-all">
+                      {deployResult.payment_integration.checkout_url}
+                    </code>
+                  )}
+                  {deployResult.payment_integration.webhook_url && (
+                    <p className="text-[11px] text-slate-500 break-all">
+                      webhook: <code className="font-mono">{deployResult.payment_integration.webhook_url}</code>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  { label: 'E-book (PDF)', value: deployResult.ebook_pdf, icon: Download },
+                  { label: 'E-book (HTML)', value: deployResult.ebook_html, icon: Eye },
+                  { label: 'Landing (.zip)', value: deployResult.landing_page_zip, icon: FileArchive },
+                ] as const).map(({ label, value, icon: Icon }) =>
+                  value ? (
+                    <div key={label} className="rounded-lg border border-[#334155] bg-[#0f172a] p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
+                        <Icon className="h-3 w-3" /> {label}
+                      </p>
+                      {isHttpUrl(value) ? (
+                        <a
+                          href={value}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] font-mono text-sky-400 hover:text-sky-300 break-all underline underline-offset-2"
+                        >
+                          baixar
+                        </a>
+                      ) : (
+                        <code className="text-[11px] font-mono text-slate-400 break-all block mt-1">{value}</code>
+                      )}
+                    </div>
+                  ) : null,
+                )}
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                Caminho local significa artefato no disco do worker: para virar download no browser é
+                preciso uma rota que sirva o arquivo.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* RESUMO DA CAMPANHA */}
       <Card className="bg-[#0f172a] border-[#334155]">

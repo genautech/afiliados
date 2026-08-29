@@ -70,3 +70,7 @@ afiliads_app/nextjs_space/tsconfig.tsbuildinfo
 
 # Legendas brutas do yt-dlp (transcript-pt.txt e o artefato citavel)
 research/**/*.json3
+
+# Dados de campanhas e rascunhos dinâmicos (gerados pelos agentes em runtime)
+campaigns_data/
+product_src/

@@ -19,7 +19,7 @@ export function projectRoot(): string {
     : path.resolve(process.cwd(), '..', '..');
 }
 
-function safeSlug(value: string): string {
+export function campaignSlug(value: string): string {
   const slug = value
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -31,7 +31,7 @@ function safeSlug(value: string): string {
 }
 
 export function campaignWorkspace(campaignName: string): string {
-  return path.join(projectRoot(), 'campaigns_data', 'low_ticket', safeSlug(campaignName));
+  return path.join(projectRoot(), 'campaigns_data', 'low_ticket', campaignSlug(campaignName));
 }
 
 export function researchDir(campaignName: string): string {
@@ -126,4 +126,43 @@ export async function updateManifest(
   updated.updated_at = new Date().toISOString();
   await writeTextAtomic(filePath, JSON.stringify(updated, null, 2));
   return updated;
+}
+
+const campaignLocks = new Map<string, Promise<unknown>>();
+
+/** Serializa operações físicas da mesma campanha dentro de um processo Node. */
+export async function withCampaignLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = campaignLocks.get(key) ?? Promise.resolve();
+  const current = previous.then(task, task);
+  campaignLocks.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (campaignLocks.get(key) === current) campaignLocks.delete(key);
+  }
+}
+
+/** Lock exclusivo no disco para também cobrir múltiplos workers Node. */
+export async function withCampaignFileLock<T>(campaignName: string, task: () => Promise<T>): Promise<T> {
+  const lockPath = path.join(campaignWorkspace(campaignName), '.deploy.lock');
+  await fs.mkdir(path.dirname(lockPath), { recursive: true });
+  const deadline = Date.now() + PROCESS_TIMEOUT_MS + 10_000;
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+
+  while (!handle) {
+    try {
+      handle = await fs.open(lockPath, 'wx');
+      await handle.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  try {
+    return await task();
+  } finally {
+    await handle.close().catch(() => undefined);
+    await fs.unlink(lockPath).catch(() => undefined);
+  }
 }
