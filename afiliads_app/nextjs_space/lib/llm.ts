@@ -11,7 +11,7 @@ import {
   type AgentRunClient,
   type LlmBudgetReservation,
 } from './llm-budget';
-import { validateJson } from './json-validation';
+import { validateJson, parseAgentJson } from './json-validation';
 import { recordAICostLog } from './costEstimator';
 
 const llmBudgetClient = prisma as unknown as AgentRunClient;
@@ -1001,7 +1001,7 @@ export async function callAgent(
 
       const successResult: AgentCallResult = {
         text: res?.text ?? '',
-        data: opts.json && res?.text ? JSON.parse(res.text) : res?.text,
+        data: opts.json && res?.text ? parseAgentJson(res.text) : res?.text,
         usage: res?.usage ?? emptyUsage,
         durationMs,
         provider: step.provider,

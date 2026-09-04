@@ -159,11 +159,13 @@ Sua auditoria deve partir dessa decisão — concorde ou aponte por que divergir
     const seq = await runAgentSequence(userId, userPrompt, [
       {
         agent: 'ads-auditor',
+        json: true,
         systemPrompt,
         buildUserPrompt: ({ baseContext }) => baseContext,
       },
       ...(presellText.length > 200 ? [{
         agent: 'compliance-sentinel',
+        json: true,
         systemPrompt: 'Você é o Compliance Sentinel do AfiliAds, chamado logo após o Ads Auditor auditar uma campanha pré-lançamento. Sua função: ler o TEXTO REAL da presell e confirmar ou refutar os riscos que o Ads Auditor só inferiu sem acesso à página (disclaimers, claims proibidos, links obrigatórios). Responda APENAS JSON válido.',
         buildUserPrompt: ({ previous }: { previous: any[] }) => {
           const adsResult = previous[0]?.data;

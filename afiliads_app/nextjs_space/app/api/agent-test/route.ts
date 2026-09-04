@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
 import { getAgent } from '@/lib/agents';
+import { parseAgentJson } from '@/lib/json-validation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +29,10 @@ export async function POST(request: NextRequest) {
       success: true,
       agent: agentDef.id,
       task: agentDef.testTask.describe,
-      response: result.data ? JSON.stringify(result.data, null, 2) : result.text,
+      response: (() => {
+        const parsed = parseAgentJson(result.text ?? '');
+        return parsed ? JSON.stringify(parsed, null, 2) : result.text;
+      })(),
       usage: result.usage,
       durationMs: result.durationMs,
       provider: result.provider,

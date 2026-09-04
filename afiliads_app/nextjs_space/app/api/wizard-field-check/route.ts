@@ -213,7 +213,7 @@ JSON puro.`;
 
     try {
       const res = await callAgent(userId, {
-        agent: 'wizard-validator', systemPrompt, userPrompt,
+        agent: 'wizard-validator', systemPrompt, userPrompt, json: true,
         campaignId: typeof campaignId === 'string' && campaignId.length > 0 ? campaignId : undefined,
         campaignTarget: typeof campaignId === 'string' && campaignId.length > 0
           ? { kind: 'campaign', campaignId }

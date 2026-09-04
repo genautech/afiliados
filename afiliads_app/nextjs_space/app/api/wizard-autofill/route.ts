@@ -155,6 +155,7 @@ ${buildSchemaHint()}`;
     try {
       agentResult = await callAgent(userId, {
         agent: 'campaign-strategist',
+        json: true,
         campaignId,
         campaignTarget: campaignId ? { kind: 'campaign', campaignId } : { kind: 'non-campaign' },
         systemPrompt: SYSTEM_PROMPT,

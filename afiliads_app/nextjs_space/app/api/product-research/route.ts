@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
         const hunterCtx = existing?.summary ? `Dados já conhecidos: ${JSON.stringify({ vertical: existing.vertical, gravity: existing.gravity, avgPayout: existing.avgPayout, summary: existing.summary })}` : '';
         const hunterRes = await callAgent(uid, {
           agent: 'product-hunter',
+          json: true,
           campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicHunterPrompt,
           userPrompt: `Produto: ${productName} (rede: ${netTitle}). ${hunterCtx}\nJSON puro.`,
@@ -132,6 +133,7 @@ export async function POST(request: NextRequest) {
         send({ status: 'step', agent: 'seo', state: 'running' });
         const seoRes = await callAgent(uid, {
           agent: 'seo-architect',
+          json: true,
           campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicSeoPrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Resumo: ${hunter?.summary} | Tags: ${(hunter?.tags ?? []).join(', ')}\nJSON puro.`,
@@ -170,6 +172,7 @@ export async function POST(request: NextRequest) {
         const checklistLearning = await getChecklistLearningReferencia(uid, hunter?.vertical, undefined, netTitle).catch(() => '');
         const compRes = await callAgent(uid, {
           agent: 'compliance-sentinel',
+          json: true,
           campaignTarget: { kind: 'non-campaign' },
           systemPrompt: dynamicCompliancePrompt,
           userPrompt: `Produto: ${productName} | Vertical: ${hunter?.vertical} | Payout médio: $${hunter?.avg_payout_usd} | Melhor keyword: ${seo?.melhor_keyword?.kw} | Keywords A: ${(seo?.camada_A ?? []).map((k: any) => k?.kw).join(', ')}

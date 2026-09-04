@@ -1375,6 +1375,7 @@ export async function generatePresell(userId: string, args: {
   for (let attempt = 1; attempt <= 2; attempt++) {
     const res = await callAgent(userId, {
       agent: 'presell-builder',
+      json: true,
       campaignId: args.campaignId,
       campaignTarget: args.campaignId
         ? { kind: 'campaign', campaignId: args.campaignId }

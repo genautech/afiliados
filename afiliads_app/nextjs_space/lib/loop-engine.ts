@@ -46,6 +46,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
       try {
         const res = await callAgent(userId, {
           agent: 'ads-auditor',
+          json: true,
           campaignId: campaign.id,
           campaignTarget: { kind: 'campaign', campaignId: campaign.id },
           systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi \"${rules.decision}\". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
@@ -76,6 +77,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
             .slice(0, 10000);
           const res = await callAgent(userId, {
             agent: 'compliance-sentinel',
+            json: true,
             campaignId: campaign.id,
             campaignTarget: { kind: 'campaign', campaignId: campaign.id },
             systemPrompt: 'Você é o Compliance Sentinel do AfiliAds no loop de auto-correção. Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
@@ -256,6 +258,7 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
           .slice(0, 10000);
         const res = await callAgent(userId, {
           agent: 'compliance-sentinel',
+          json: true,
           campaignId: campaign.id,
           campaignTarget: { kind: 'campaign', campaignId: campaign.id, purpose: 'paused-compliance' },
           systemPrompt: 'Você é o Compliance Sentinel do AfiliAds verificando uma campanha PAUSADA (sem gasto de ads ativo, mas a presell pode continuar publicada e acessível). Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
