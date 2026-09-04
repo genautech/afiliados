@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, ExternalLink, ShieldCheck, ArrowLeft, ArrowRight, Save, MonitorPlay } from 'lucide-react';
+import { Loader2, Sparkles, ExternalLink, ShieldCheck, ArrowLeft, ArrowRight, Save, MonitorPlay, Video, FileText, Cookie, Star, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { ChecklistItemRow } from './agent-help';
 import { BRIDGE_CHECKLIST } from '@/lib/wizard-data';
@@ -48,6 +48,48 @@ const TRACKING_FIELDS = {
   pixel: 'meta_pixel_id',
   capi: 'meta_access_token',
 } as const;
+
+const PRIMARY_PAGE_TYPES: Array<{
+  id: PresellPageType;
+  title: string;
+  subtitle: string;
+  description: string;
+  icon: typeof Video;
+  accent: string;
+}> = [
+  {
+    id: 'vsl',
+    title: 'VSL',
+    subtitle: 'Vídeo como protagonista',
+    description: 'Para ofertas em que a demonstração e a narrativa conduzem o próximo clique.',
+    icon: Video,
+    accent: 'text-rose-300 bg-rose-400/10 border-rose-300/30',
+  },
+  {
+    id: 'tsl',
+    title: 'TSL',
+    subtitle: 'Text Sales Letter',
+    description: 'Uma carta de vendas editorial, longa e escaneável, com um CTA claro.',
+    icon: FileText,
+    accent: 'text-sky-300 bg-sky-400/10 border-sky-300/30',
+  },
+  {
+    id: 'cookie_popup',
+    title: 'Cookie / Popup',
+    subtitle: 'Gate leve de consentimento',
+    description: 'Uma entrada simples para contextualizar o visitante antes do redirecionamento.',
+    icon: Cookie,
+    accent: 'text-amber-200 bg-amber-400/10 border-amber-300/30',
+  },
+  {
+    id: 'review',
+    title: 'Review',
+    subtitle: 'Análise robusta',
+    description: 'Formato editorial para comparar, explicar pontos fortes e registrar limites reais.',
+    icon: Star,
+    accent: 'text-emerald-300 bg-emerald-400/10 border-emerald-300/30',
+  },
+];
 
 /** Extrai a copy legível do HTML da presell para o painel de proposta da IA. */
 function htmlToPlainCopy(html: string): string {
@@ -293,6 +335,15 @@ export function StepLandingPage({
     return ['advertorial', 'pogo', 'vsl', 'interstitial', 'review', 'cookie_popup'];
   };
 
+  const recommendedPageType: PresellPageType =
+    productType === 'MENTORSHIP' ? 'review' : productType === 'PROPRIETARY_LOW_TICKET' ? 'tsl' : 'cookie_popup';
+  const recommendationReason =
+    productType === 'MENTORSHIP'
+      ? 'A análise robusta ajuda a construir confiança antes da conversa de venda.'
+      : productType === 'PROPRIETARY_LOW_TICKET'
+        ? 'A carta de vendas mantém o foco no benefício e no CTA de compra do seu produto.'
+        : 'É um formato rápido de testar quando a oferta já tem intenção de busca e um HopLink pronto.';
+
   const criticalItems = BRIDGE_CHECKLIST.filter(i => i.critical);
   const criticalDone = criticalItems.filter(i => bridgeChecks[i.key]).length;
   const totalDone = BRIDGE_CHECKLIST.filter(i => bridgeChecks[i.key]).length;
@@ -371,18 +422,72 @@ export function StepLandingPage({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-slate-300">Template da página</Label>
-            <Select value={pageType} onValueChange={(v) => setPageType(v as PresellPageType)}>
-              <SelectTrigger className="bg-[#0f172a] border-[#334155] text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1e293b] border-[#334155] text-white">
-                {getDynamicTemplates().map((t) => (
-                  <SelectItem key={t} value={t}>{getPageTypeLabel(t)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <Label className="text-slate-200">Escolha o tipo de página</Label>
+                <p className="mt-1 text-xs text-slate-500">O formato entre o anúncio e a página oficial da oferta.</p>
+              </div>
+              <Badge variant="outline" className="border-emerald-400/25 bg-emerald-400/5 text-emerald-300">
+                {getPageTypeLabel(pageType)}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="radiogroup" aria-label="Tipo de página">
+              {PRIMARY_PAGE_TYPES.map((option) => {
+                const Icon = option.icon;
+                const selected = pageType === option.id;
+                const recommended = recommendedPageType === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setPageType(option.id)}
+                    className={`group relative flex min-h-[168px] flex-col items-start rounded-xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                      selected
+                        ? 'border-emerald-400/70 bg-emerald-400/[0.08] shadow-[0_0_24px_rgba(16,185,129,0.12)]'
+                        : 'border-slate-700/80 bg-slate-950/35 hover:-translate-y-0.5 hover:border-slate-500 hover:bg-slate-900/70'
+                    }`}
+                  >
+                    {recommended && (
+                      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                        <Sparkles className="h-3 w-3" /> Recomendado
+                      </span>
+                    )}
+                    <span className={`mb-5 rounded-lg border p-2.5 ${option.accent}`}>
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <span className="text-sm font-semibold text-white">{option.title}</span>
+                    <span className="mt-1 text-xs font-medium text-slate-300">{option.subtitle}</span>
+                    <span className="mt-2 text-[11px] leading-relaxed text-slate-500">{option.description}</span>
+                    {selected && <Check className="absolute bottom-4 right-4 h-4 w-4 text-emerald-300" aria-label="Selecionado" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-400/15 bg-emerald-400/[0.04] px-3 py-2.5 text-xs text-slate-300">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" aria-hidden="true" />
+              <span><strong className="text-emerald-200">Sugestão do estúdio:</strong> {getPageTypeLabel(recommendedPageType)} — {recommendationReason}</span>
+            </div>
+
+            <details className="rounded-lg border border-slate-800 bg-slate-950/25 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-200">Templates legados e variações</summary>
+              <div className="mt-3 max-w-sm">
+                <Select value={pageType} onValueChange={(v) => setPageType(v as PresellPageType)}>
+                  <SelectTrigger className="bg-[#0f172a] border-[#334155] text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1e293b] border-[#334155] text-white">
+                    {getDynamicTemplates().map((t) => (
+                      <SelectItem key={t} value={t}>{getPageTypeLabel(t)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </details>
           </div>
 
           <div className="flex items-start gap-3 p-3 rounded-lg bg-[#0f172a]">

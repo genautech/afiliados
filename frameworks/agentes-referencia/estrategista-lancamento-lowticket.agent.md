@@ -122,6 +122,7 @@ Não gerar plano alternativo específico, criativos, orçamento ou recomendaçõ
 
 ## Fontes canônicas
 
+- Skill Hermes: `low-ticket-validation-and-scale-playbook` (OBRIGATÓRIO para campanhas/estruturação de funis de baixo ticket)
 - `/Users/genautech/Scripts/campaign-guard/POLICY.md`
 - `/Users/genautech/Scripts/campaign-guard/AGENT_INSTRUCTIONS.md`
 - `frameworks/ebook-os/README.md`

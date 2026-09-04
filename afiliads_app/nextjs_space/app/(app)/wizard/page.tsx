@@ -1501,6 +1501,7 @@ export default function WizardPage() {
               {step4SubTab === 'creative' ? (
                 <StepCreativeGen
                   campaignId={campaignId}
+                  productType={productType}
                   productName={name}
                   vertical={vertical}
                   onPrev={prev}

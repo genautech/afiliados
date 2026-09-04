@@ -7,6 +7,7 @@ import { callAgent } from '@/lib/llm';
 import { prisma } from '@/lib/prisma';
 import { getChecklistLearningReferencia } from '@/lib/complianceVerifier';
 import { fetchPageContent } from '@/lib/salesPageAnalyzer';
+import { ProductType } from '@prisma/client';
 
 function htmlToPromptText(html: string): string {
   return html
@@ -76,6 +77,101 @@ Responda APENAS JSON:
   "campanha": { "naming": "CB_<VERT>_<GEO>_<CANAL>_<FUNIL>_v1 preenchido", "tipo": "Search|PMax|Demand Gen", "lances": "estratégia de lances inicial", "cpc_max_usd": 0.0, "cpc_scale_usd": 0.0 },
   "break_even": { "comissao_liquida_usd": 0.0, "cvr_estimada_pct": 0.0, "epc_breakeven_usd": 0.0 } }`;
 
+const LOW_TICKET_HUNTER_PROMPT = `Você é o Product Hunter, agente especializado em estruturação de infoprodutos próprios Low-Ticket (E-books, mini-cursos, receitas, guias, etc.).
+Analise o nicho ou ideia informado e sugira um infoproduto próprio estruturado de alta conversão.
+Responda APENAS JSON válido:
+{
+  "vertical": "vertical do produto (ex: Saúde, Finanças, Desenvolvimento)",
+  "gravity_estimado": 0,
+  "avg_payout_usd": 15.0,
+  "conversao_esperada_pct": 1.5,
+  "commission_pct": "100% (Produtor)",
+  "rebill": false,
+  "score": 85,
+  "risk_level": "baixo|medio|alto",
+  "summary": "Resumo do produto próprio sugerido: nome comercial e magnético em português, o que resolve, módulos principais, por que vende rápido",
+  "tags": ["tags do nicho", "infoproduto-proprio"],
+  "funil": "Funil sugerido (ex: Venda Direta com Order Bump e Upsell)",
+  "affiliate_page_url_guess": "checkout",
+  "vendor_sales_page_url_guess": "nicho",
+  "pricing": {
+    "suggestedPrice": 47.90,
+    "suggestedAov": 97.00
+  }
+}`;
+
+const LOW_TICKET_SEO_PROMPT = `Você é o SEO & Keyword Architect para infoprodutos próprios e ofertas low-ticket no Brasil.
+Dado o nicho e o produto de baixo ticket sugerido, gere o mapa de keywords focadas em intenção de compra direta e solução em português brasileiro:
+- camada_A: intenção de compra direta e solução (nome sugerido do produto, comprar e-book, curso de X, guia de Y) — 5 itens
+- camada_B: comparação e alternativas comuns (ex: melhor curso de X, livros sobre X, como aprender X) — 5 itens
+- camada_C: busca por solução da dor direta (ex: como emagrecer rapido, acabar com insônia, organizar planilhas) — 6 itens
+- camada_D: informacional amplo do nicho — 4 itens
+Cada item: { "kw": "...", "score": 0-100, "cpc_estimado_usd": 0.0, "intencao": "..." }. Estime o CPC em dólar de forma equivalente (ex: R$ 1,50 = $ 0.30).
+Responda APENAS JSON:
+{ "melhor_keyword": { "kw": "...", "camada": "A|B|C|D", "justificativa": "1 frase" },
+  "camada_A": [...], "camada_B": [...], "camada_C": [...], "camada_D": [...],
+  "negativas": ["12+ termos irrelevantes do nicho"] }`;
+
+const LOW_TICKET_COMPLIANCE_PROMPT = `Você é o Compliance Sentinel, auditor de políticas Google/Facebook Ads para infoprodutos próprios e ofertas low-ticket.
+Analise riscos de claims exageradas na página de vendas (promessas de ganho fácil, cura de doenças, perda de peso milagrosa) e adeque às regras de publicidade.
+Sugira substituições de copy seguras e a estratégia de anúncios recomendada.
+Gere de 3 a 8 pares de substituição de linguagem: claims perigosas para evitar e as reescritas seguras focadas em benefício e condicionalidade.
+Responda APENAS JSON:
+{ "risco_geral": "baixo|medio|alto",
+  "alertas": [{ "nivel": "info|atencao|critico", "texto": "..." }],
+  "regras_reescrita": [{ "evitar": "claim agressiva de resultado", "usar": "reescrita segura equivalente" }],
+  "canais": { "google_search_permitido": true, "brand_bidding_permitido": true, "termos_proibidos": [], "fonte": "Políticas de infoprodutos próprios", "canais_permitidos": ["Google Search", "Facebook/Instagram Ads", "YouTube"], "canais_proibidos": [] },
+  "elementos_presell_referencia": [{ "tipo": "headline", "texto": "Headline segura e magnética recomendada para o produto" }],
+  "presell": { "tipo": "advertorial|quiz|vsl-bridge", "motivo": "Estratégia de aquecimento para compra direta de infoproduto", "elementos": ["Headline magnética", "Problema focado", "Apresentação da solução", "Botão de checkout"] },
+  "tipo_venda": { "funil": "direct|bridge", "motivo": "Compra rápida de baixo ticket" },
+  "campanha": { "naming": "PT_<VERT>_BR_SEARCH_DIRECT_v1", "tipo": "Search|PMax", "lances": "Maximizar Cliques", "cpc_max_usd": 0.3, "cpc_scale_usd": 0.4 },
+  "break_even": { "comissao_liquida_usd": 15.0, "cvr_estimada_pct": 1.5, "epc_breakeven_usd": 0.22 } }`;
+
+const MENTORSHIP_HUNTER_PROMPT = `Você é o Product Hunter, especialista em estruturação de Mentorias, Consultorias e Serviços Premium de Alto Ticket.
+Analise a área de especialidade informada e sugira uma estrutura de mentoria de alta conversão.
+Responda APENAS JSON válido:
+{
+  "vertical": "vertical da mentoria (ex: Negócios, Carreira, Desenvolvimento Pessoal)",
+  "gravity_estimado": null,
+  "avg_payout_usd": 197.0,
+  "conversao_esperada_pct": 3.0,
+  "commission_pct": "100% (Expert)",
+  "rebill": false,
+  "score": 90,
+  "risk_level": "baixo|medio",
+  "summary": "Estrutura da Mentoria Premium sugerida: nome comercial em português, método de entrega, isca digital recomendada e funil de captação",
+  "tags": ["mentoria-premium", "high-ticket", "servicos-expert"],
+  "funil": "Funil sugerido (ex: Squeeze Page para captação de Leads com agendamento direto via WhatsApp)",
+  "affiliate_page_url_guess": "whatsapp",
+  "vendor_sales_page_url_guess": "squeeze"
+}`;
+
+const MENTORSHIP_SEO_PROMPT = `Você é o SEO & Keyword Architect para mentorias e serviços de alto ticket.
+Dado o tema da mentoria, sugira as melhores palavras-chave no Google Ads focadas em atrair leads qualificados interessados em acompanhamento profissional ou consultoria premium:
+- camada_A: intenção direta de contratação (mentoria de X, especialista em Y, consultoria de Z, contratar mentor) — 5 itens
+- camada_B: busca por profissionais, metodologias ou marcas de referência do setor — 5 itens
+- camada_C: solução de dores profundas (ex: como escalar minha empresa, transição de carreira, gestão de tempo) — 6 itens
+- camada_D: informacional amplo — 4 itens
+Cada item: { "kw": "...", "score": 0-100, "cpc_estimado_usd": 0.0, "intencao": "..." }. Use CPCs realistas para alta intenção.
+Responda APENAS JSON:
+{ "melhor_keyword": { "kw": "...", "camada": "A|B|C|D", "justificativa": "1 frase" },
+  "camada_A": [...], "camada_B": [...], "camada_C": [...], "camada_D": [...],
+  "negativas": ["12+ termos irrelevantes (grátis, gratuito, pdf grátis, barato, download, torrent, reclame aqui)"] }`;
+
+const MENTORSHIP_COMPLIANCE_PROMPT = `Você é o Compliance Sentinel, auditor de políticas Google/Facebook Ads para serviços de alto ticket e mentorias.
+Garanta que as páginas de captura de leads e copys evitem promessas irrealistas de resultados rápidos ou garantias financeiras sem base e contenham políticas de privacidade seguras.
+Sugira as melhores copys seguras, estrutura de Squeeze Page e funil WhatsApp.
+Responda APENAS JSON:
+{ "risco_geral": "baixo",
+  "alertas": [{ "nivel": "info", "texto": "A captação de leads para mentoria exige termos de uso claros e respeito à LGPD no formulário." }],
+  "regras_reescrita": [{ "evitar": "claim agressiva de faturamento ou cura rápida", "usar": "reescrita focada no método de acompanhamento e aplicação prática" }],
+  "canais": { "google_search_permitido": true, "brand_bidding_permitido": true, "termos_proibidos": [], "fonte": "Políticas de captação de leads para experts", "canais_permitidos": ["Google Search", "Facebook/Instagram Ads", "YouTube Ads"], "canais_proibidos": [] },
+  "elementos_presell_referencia": [{ "tipo": "headline", "texto": "Headline recomendada para Squeeze Page de captação do especialista" }],
+  "presell": { "tipo": "vsl-bridge|quiz", "motivo": "Captura de leads qualificados interessados em mentoria ou avaliação estratégica gratuita", "elementos": ["Headline magnética", "Promessa de método passo a passo", "Formulário de captura", "Depoimentos/Autoridade do mentor", "Link de agendamento WhatsApp"] },
+  "tipo_venda": { "funil": "bridge", "motivo": "Aquecimento e filtragem de leads antes de direcionar para o fechamento humano no WhatsApp" },
+  "campanha": { "naming": "PT_<VERT>_BR_LEADS_WHATSAPP_v1", "tipo": "Search", "lances": "Maximizar Conversões (Leads)", "cpc_max_usd": 0.5, "cpc_scale_usd": 0.6 },
+  "break_even": { "comissao_liquida_usd": 150.0, "cvr_estimada_pct": 4.0, "epc_breakeven_usd": 6.00 } }`;
+
 export async function POST(request: NextRequest) {
   let userId: string | null = null;
   const mcpToken = request.headers.get('x-afiliads-token');
@@ -94,6 +190,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const productName: string = (body?.productName ?? '').trim();
   const network: string = body?.network ?? 'clickbank';
+  const rawProductType = body?.productType ?? ProductType.AFFILIATE;
+  if (!Object.values(ProductType).includes(rawProductType)) {
+    return new Response(JSON.stringify({ error: 'productType inválido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
+  const productType = rawProductType as ProductType;
   if (!productName) {
     return new Response(JSON.stringify({ error: 'Nome do produto é obrigatório' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
@@ -111,9 +212,12 @@ export async function POST(request: NextRequest) {
         const netTitle = netLower === 'clickbank' ? 'ClickBank' : netLower === 'buygoods' ? 'BuyGoods' : netLower === 'maxweb' ? 'MaxWeb' : network;
         const netPrefix = netLower === 'buygoods' ? 'BG' : netLower === 'maxweb' ? 'MW' : 'CB';
 
-        const dynamicHunterPrompt = HUNTER_PROMPT.replace(/ClickBank/g, netTitle);
-        const dynamicSeoPrompt = SEO_PROMPT.replace(/ClickBank/g, netTitle);
-        const dynamicCompliancePrompt = COMPLIANCE_PROMPT
+        const hunterPrompt = productType === ProductType.PROPRIETARY_LOW_TICKET ? LOW_TICKET_HUNTER_PROMPT : productType === ProductType.MENTORSHIP ? MENTORSHIP_HUNTER_PROMPT : HUNTER_PROMPT;
+        const seoPrompt = productType === ProductType.PROPRIETARY_LOW_TICKET ? LOW_TICKET_SEO_PROMPT : productType === ProductType.MENTORSHIP ? MENTORSHIP_SEO_PROMPT : SEO_PROMPT;
+        const compliancePrompt = productType === ProductType.PROPRIETARY_LOW_TICKET ? LOW_TICKET_COMPLIANCE_PROMPT : productType === ProductType.MENTORSHIP ? MENTORSHIP_COMPLIANCE_PROMPT : COMPLIANCE_PROMPT;
+        const dynamicHunterPrompt = hunterPrompt.replace(/ClickBank/g, netTitle);
+        const dynamicSeoPrompt = seoPrompt.replace(/ClickBank/g, netTitle);
+        const dynamicCompliancePrompt = compliancePrompt
           .replace(/ClickBank/g, netTitle)
           .replace(/CB_</g, `${netPrefix}_<`);
 
@@ -232,6 +336,7 @@ JSON puro.`,
           where: { userId_name: { userId: uid, name: productName } },
           update: {
             network,
+            productType,
             vertical: hunter?.vertical ?? '',
             gravity: existing?.gravity ?? (typeof hunter?.gravity_estimado === 'number' ? hunter.gravity_estimado : null),
             avgPayout: existing?.avgPayout ?? (typeof hunter?.avg_payout_usd === 'number' ? hunter.avg_payout_usd : null),
@@ -244,7 +349,19 @@ JSON puro.`,
             summary: hunter?.summary ?? '',
             tags: hunter?.tags ?? [],
             keywords: seo,
-            strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
+            strategy: {
+              presell: comp?.presell,
+              tipo_venda: comp?.tipo_venda,
+              campanha: comp?.campanha,
+              break_even: comp?.break_even,
+              funil_vendor: hunter?.funil,
+              ...(productType === ProductType.PROPRIETARY_LOW_TICKET ? {
+                pricing: {
+                  suggestedPrice: typeof hunter?.pricing?.suggestedPrice === 'number' ? hunter.pricing.suggestedPrice : (hunter?.avg_payout_usd ?? 47.90),
+                  suggestedAov: typeof hunter?.pricing?.suggestedAov === 'number' ? hunter.pricing.suggestedAov : (hunter?.avg_payout_usd ? hunter.avg_payout_usd * 2 : 97.00)
+                }
+              } : {})
+            },
             compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
             affiliatePageUrl: affiliatePageUrlFinal,
             vendorPageUrl: vendorPageUrlFinal,
@@ -256,6 +373,7 @@ JSON puro.`,
             userId: uid,
             name: productName,
             network,
+            productType,
             vertical: hunter?.vertical ?? '',
             gravity: typeof hunter?.gravity_estimado === 'number' ? hunter.gravity_estimado : null,
             avgPayout: typeof hunter?.avg_payout_usd === 'number' ? hunter.avg_payout_usd : null,
@@ -268,7 +386,19 @@ JSON puro.`,
             summary: hunter?.summary ?? '',
             tags: hunter?.tags ?? [],
             keywords: seo,
-            strategy: { presell: comp?.presell, tipo_venda: comp?.tipo_venda, campanha: comp?.campanha, break_even: comp?.break_even, funil_vendor: hunter?.funil },
+            strategy: {
+              presell: comp?.presell,
+              tipo_venda: comp?.tipo_venda,
+              campanha: comp?.campanha,
+              break_even: comp?.break_even,
+              funil_vendor: hunter?.funil,
+              ...(productType === ProductType.PROPRIETARY_LOW_TICKET ? {
+                pricing: {
+                  suggestedPrice: typeof hunter?.pricing?.suggestedPrice === 'number' ? hunter.pricing.suggestedPrice : (hunter?.avg_payout_usd ?? 47.90),
+                  suggestedAov: typeof hunter?.pricing?.suggestedAov === 'number' ? hunter.pricing.suggestedAov : (hunter?.avg_payout_usd ? hunter.avg_payout_usd * 2 : 97.00)
+                }
+              } : {})
+            },
             compliance: { risco_geral: comp?.risco_geral, alertas: alertasFinal, regras_reescrita: comp?.regras_reescrita ?? [] },
             affiliatePageUrl: affiliatePageUrlFinal,
             vendorPageUrl: vendorPageUrlFinal,

@@ -93,6 +93,7 @@ export function normalizeGeneratedImage(raw: unknown, kind: VisualKind): Generat
 
 interface StepCreativeGenProps {
   campaignId: string | null;
+  productType: 'AFFILIATE' | 'PROPRIETARY_LOW_TICKET' | 'MENTORSHIP';
   productName: string;
   vertical: string;
   onPrev: () => void;
@@ -101,6 +102,7 @@ interface StepCreativeGenProps {
 
 export function StepCreativeGen({
   campaignId,
+  productType,
   productName,
   vertical,
   onPrev,
@@ -213,7 +215,7 @@ export function StepCreativeGen({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           campaignId,
-          productType: 'AFFILIATE',
+          productType,
           productName: productName || 'Produto Exemplo',
           productNiche: vertical || 'Saúde & Bem-estar',
           tone: selectedTone,

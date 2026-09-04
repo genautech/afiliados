@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type { ProductType } from '@prisma/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ interface Product {
   id: string;
   name: string;
   network: string;
+  productType: ProductType;
   vertical: string;
   gravity: number | null;
   avgPayout: number | null;
@@ -90,6 +92,12 @@ function RiskBadge({ level }: { level: string }) {
 const cardCls = 'bg-[#1e293b] border-[#334155]';
 const inputCls = 'bg-[#0f172a] border-[#334155] text-white placeholder:text-slate-500';
 
+const PRODUCT_TYPE_OPTIONS: Array<{ value: ProductType; label: string; description: string }> = [
+  { value: 'AFFILIATE', label: 'Afiliados', description: 'Produtos de terceiros' },
+  { value: 'PROPRIETARY_LOW_TICKET', label: 'Infoproduto próprio', description: 'Low-ticket' },
+  { value: 'MENTORSHIP', label: 'Mentoria', description: 'High-ticket' },
+];
+
 function ValBadge({ label, value }: { label: string; value: boolean | null | undefined }) {
   if (value === true) return <Badge className="bg-green-500/10 text-green-400 border-green-500/30 gap-1"><CheckCircle2 className="h-3 w-3" /> {label}: permitido</Badge>;
   if (value === false) return <Badge className="bg-red-500/10 text-red-400 border-red-500/30 gap-1"><XCircle className="h-3 w-3" /> {label}: PROIBIDO</Badge>;
@@ -103,6 +111,7 @@ export default function BuscaProdutosPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [query, setQuery] = useState('');
   const [network, setNetwork] = useState('clickbank');
+  const [productType, setProductType] = useState<ProductType>('AFFILIATE');
   const [verticalFilter, setVerticalFilter] = useState('todas');
 
   const [analyzing, setAnalyzing] = useState(false);
@@ -169,7 +178,7 @@ export default function BuscaProdutosPage() {
       const res = await fetch('/api/product-research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productName, network }),
+        body: JSON.stringify({ productName, network, productType }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({}));
@@ -398,7 +407,17 @@ export default function BuscaProdutosPage() {
 
       {/* Barra de busca */}
       <Card className={cardCls}>
-        <CardContent className="pt-6 flex flex-col sm:flex-row gap-3">
+        <CardContent className="pt-6 space-y-4">
+          <Tabs value={productType} onValueChange={value => setProductType(value as ProductType)}>
+            <TabsList className="bg-[#0f172a] border border-[#334155] h-auto flex-wrap justify-start">
+              {PRODUCT_TYPE_OPTIONS.map(option => (
+                <TabsTrigger key={option.value} value={option.value} className="text-slate-300 data-[state=active]:bg-green-600 data-[state=active]:text-white">
+                  {option.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <div className="flex flex-col sm:flex-row gap-3">
           <Select value={network} onValueChange={setNetwork}>
             <SelectTrigger className={cn(inputCls, 'sm:w-[160px]')}>
               <SelectValue placeholder="Rede" />
@@ -411,7 +430,7 @@ export default function BuscaProdutosPage() {
           </Select>
           <Input
             className={cn(inputCls, 'flex-1')}
-            placeholder="Nome do produto (ex: Lymph Tonic, FemiCore...)"
+            placeholder={productType === 'AFFILIATE' ? 'Nome do produto (ex: Lymph Tonic, FemiCore...)' : 'Nicho ou ideia (ex: foco, emagrecimento, marketing...)'}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') runAnalysis(query); }}
@@ -424,6 +443,7 @@ export default function BuscaProdutosPage() {
             {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Analisar
           </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -454,10 +474,20 @@ export default function BuscaProdutosPage() {
                 </div>
                 <div className="text-xs text-slate-400">{p.vertical}</div>
                 <div className="text-sm text-slate-300 space-y-1 font-mono">
-                  <div>Gravity: {p.gravity ?? '—'}</div>
-                  <div>$/venda: {p.avgPayout ? `$${p.avgPayout.toFixed(2)}` : '—'}</div>
-                  <div>Conv.: {p.conversionRate || '—'}</div>
-                  <div className="flex items-center gap-1">Rebill: {p.rebill ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-slate-500">Não</span>}</div>
+                  {p.productType === 'AFFILIATE' ? <>
+                    <div>Gravity: {p.gravity ?? '—'}</div>
+                    <div>Comissão: {p.avgPayout ? `$${p.avgPayout.toFixed(2)}` : p.commissionPct || '—'}</div>
+                    <div>Conv.: {p.conversionRate || '—'}</div>
+                    <div className="flex items-center gap-1">Rebill: {p.rebill ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> : <span className="text-slate-500">Não</span>}</div>
+                  </> : p.productType === 'PROPRIETARY_LOW_TICKET' ? <>
+                    <Badge className="w-fit bg-cyan-500/10 text-cyan-300 border-cyan-500/30">Produto próprio</Badge>
+                    <div>Preço sugerido: {typeof p.strategy?.pricing?.suggestedPrice === 'number' ? `R$ ${p.strategy.pricing.suggestedPrice.toFixed(2)}` : '—'}</div>
+                    <div>AOV sugerido: {typeof p.strategy?.pricing?.suggestedAov === 'number' ? `R$ ${p.strategy.pricing.suggestedAov.toFixed(2)}` : '—'}</div>
+                  </> : <>
+                    <Badge className="w-fit bg-purple-500/10 text-purple-300 border-purple-500/30">Serviço premium</Badge>
+                    <div>Funil: {p.strategy?.tipo_venda?.funil || '—'}</div>
+                    <div>Ticket sugerido: {p.avgPayout ? `R$ ${p.avgPayout.toFixed(2)}` : '—'}</div>
+                  </>}
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <RiskBadge level={p.riskLevel} />
