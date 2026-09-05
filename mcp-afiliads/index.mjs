@@ -305,5 +305,443 @@ server.tool(
   }
 );
 
+// ─── Google Ads: Read-only tools (Postgres) ─────────────────────────────────
+
+server.tool(
+  'listar_campanhas',
+  'Lista as campanhas do usuário no AfiliAds com status, orçamento, Google Ads ID, e configuração do loop. Somente leitura (Postgres).',
+  {
+    status: z.string().optional().describe('Filtrar por status (ex.: EM_TESTE, ATIVA, PAUSADO, KILL, RASCUNHO)'),
+    limit: z.number().int().min(1).max(50).default(20),
+  },
+  async ({ status, limit }) => {
+    const uid = await userId();
+    const conds = ['"userId" = $1'];
+    const params = [uid];
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    const r = await pool.query(
+      `SELECT id, name, status, platform, vertical, funnel, geo, channel,
+              "budgetDaily", "budgetTest", "bidStrategy",
+              "googleCampaignId", "googleCampaignName",
+              "loopEnabled", "loopInterval", "lastLoopRunAt",
+              "presellUrl", "offerUrl", "createdAt", "updatedAt"
+       FROM "Campaign" WHERE ${conds.join(' AND ')} ORDER BY "updatedAt" DESC LIMIT $${params.length + 1}`,
+      [...params, limit]);
+    if (!r.rows.length) return text('Nenhuma campanha encontrada.');
+    return text(r.rows);
+  }
+);
+
+server.tool(
+  'keywords_campanha',
+  'Lista as keywords de uma campanha (texto, match type, selecionadas, métricas reais se sincronizadas). Somente leitura (Postgres).',
+  { campanha: z.string().describe('Nome (parcial) da campanha') },
+  async ({ campanha }) => {
+    const uid = await userId();
+    const c = await pool.query(
+      `SELECT id, name FROM "Campaign" WHERE "userId" = $1 AND name ILIKE $2 LIMIT 1`,
+      [uid, `%${campanha}%`]);
+    if (!c.rows[0]) return text(`Campanha "${campanha}" não encontrada.`);
+    const kws = await pool.query(
+      `SELECT keyword, "matchType", "isSelected", clicks, "cpcReal", conversions, "createdAt"
+       FROM "Keyword" WHERE "campaignId" = $1 ORDER BY "isSelected" DESC, keyword ASC`,
+      [c.rows[0].id]);
+    return text({ campanha: c.rows[0].name, keywords: kws.rows });
+  }
+);
+
+server.tool(
+  'google_ads_config_status',
+  'Verifica se as credenciais do Google Ads (customer_id, developer_token, client_id, client_secret, refresh_token) estão configuradas no AfiliAds. Retorna quais campos estão presentes (nunca valores). Somente leitura (Postgres).',
+  {},
+  async () => {
+    const uid = await userId();
+    const r = await pool.query(
+      `SELECT "fieldName" FROM "Integration" WHERE "userId" = $1 AND "serviceName" = 'google_ads'`,
+      [uid]);
+    const present = new Set(r.rows.map(row => row.fieldName));
+    const required = ['customer_id', 'developer_token', 'client_id', 'client_secret', 'refresh_token'];
+    const fields = required.map(f => ({ field: f, configured: present.has(f) }));
+    const allConfigured = fields.every(f => f.configured);
+    return text({
+      configured: allConfigured,
+      fields,
+      loginCustomerId: present.has('login_customer_id'),
+    });
+  }
+);
+
+// ─── Google Ads: Readiness check (Postgres) ──────────────────────────────────
+
+server.tool(
+  'google_ads_readiness',
+  'Verifica se uma campanha está pronta para criar/agendar no Google Ads (checklists, URL, credenciais, keywords, brand bidding). Somente leitura. mode=PREPARE é permissivo com a URL; mode=SCHEDULE bloqueia se a URL mudou após aprovação.',
+  {
+    campanha: z.string().describe('Nome (parcial) da campanha'),
+    mode: z.enum(['PREPARE', 'SCHEDULE']).default('PREPARE'),
+  },
+  async ({ campanha, mode }) => {
+    const uid = await userId();
+    const c = await pool.query(
+      `SELECT id, name, "budgetDaily", "budgetTest", geo, "presellUrl", "offerUrl",
+              "productResearchId", "campaignNameGenerated"
+       FROM "Campaign" WHERE "userId" = $1 AND name ILIKE $2 LIMIT 1`,
+      [uid, `%${campanha}%`]);
+    if (!c.rows[0]) return text(`Campanha "${campanha}" não encontrada.`);
+    const camp = c.rows[0];
+
+    const kws = await pool.query(
+      `SELECT keyword, "matchType", "isSelected" FROM "Keyword" WHERE "campaignId" = $1`,
+      [camp.id]);
+
+    const checklists = await pool.query(
+      `SELECT step, "itemLabel", "isCritical", "isChecked" FROM "CampaignChecklist" WHERE "campaignId" = $1`,
+      [camp.id]);
+
+    const config = await pool.query(
+      `SELECT "fieldName" FROM "Integration" WHERE "userId" = $1 AND "serviceName" = 'google_ads'`,
+      [uid]);
+    const hasConfig = config.rows.some(r => r.fieldName === 'customer_id');
+
+    const errors = [];
+    const warnings = [];
+
+    const criticalUnchecked = checklists.rows.filter(cl => cl.isCritical && !cl.isChecked && cl.step !== 9);
+    if (criticalUnchecked.length > 0) {
+      errors.push(`${criticalUnchecked.length} item(s) crítico(s) do checklist pendente(s): ${criticalUnchecked.map(cl => cl.itemLabel).join(', ')}`);
+    }
+
+    const finalUrl = camp.presellUrl || camp.offerUrl || '';
+    if (!finalUrl) {
+      errors.push('URL final (presell ou oferta) não configurada.');
+    } else {
+      try {
+        const parsed = new URL(finalUrl);
+        if (parsed.protocol !== 'https:') errors.push('URL final deve usar HTTPS.');
+        if (parsed.username || parsed.password) errors.push('URL final não pode conter credenciais.');
+      } catch { errors.push('URL final inválida.'); }
+
+      const urlGapMsg = 'URL pode ter sido modificada após aprovação no checklist (lacuna 10B).';
+      if (mode === 'SCHEDULE') errors.push(urlGapMsg);
+      else warnings.push(urlGapMsg);
+    }
+
+    if (!hasConfig) errors.push('Credenciais do Google Ads não configuradas.');
+
+    const selected = kws.rows.filter(k => k.isSelected);
+    if (selected.length === 0) {
+      errors.push('Nenhuma keyword selecionada.');
+    } else {
+      for (const k of selected) {
+        const mt = (k.matchType || 'phrase').toUpperCase();
+        if (!['EXACT', 'PHRASE', 'BROAD'].includes(mt)) {
+          errors.push(`Match type inválido na keyword "${k.keyword}": ${k.matchType}`);
+        }
+      }
+    }
+
+    return text({
+      ready: errors.length === 0,
+      errors,
+      warnings,
+      campaign: camp.name,
+      mode,
+      selectedKeywords: selected.length,
+      finalUrl: finalUrl || null,
+    });
+  }
+);
+
+// ─── Google Ads: Mutate proxies (HTTP → app API) ─────────────────────────────
+// These tools POST to existing Next.js routes using x-afiliads-token.
+// The app routes enforce all guards: route-mutation-authorization,
+// mutation-guard env/allowlist, readiness, ownership, claims ledger.
+// The MCP server never calls the Google Ads API directly.
+
+/** Resolves campaign ID + updatedAt for building authorization payloads. */
+async function resolveCampaign(uid, campanha) {
+  const r = await pool.query(
+    `SELECT id, name, "updatedAt" FROM "Campaign" WHERE "userId" = $1 AND name ILIKE $2 LIMIT 1`,
+    [uid, `%${campanha}%`]);
+  return r.rows[0] || null;
+}
+
+/** Builds the authorization payload required by route-mutation-authorization.ts. */
+function buildAuthorization(operation, resourceId, revision, idempotencyKey) {
+  return {
+    confirmed: true,
+    operation,
+    resourceId,
+    revision,
+    idempotencyKey,
+  };
+}
+
+/** Posts to an app API route with MCP token auth. */
+async function appPost(path, body) {
+  if (!MCP_TOKEN) throw new Error('AFILIADS_MCP_TOKEN não configurado.');
+  const res = await fetch(`${APP_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+  return data;
+}
+
+server.tool(
+  'google_ads_create_campaign',
+  'Cria uma campanha no Google Ads via API do app (POST /api/google-ads/create). A campanha é sempre criada PAUSED. Exige readiness + mutation guard + authorization. Quando GOOGLE_ADS_MUTATIONS_ENABLED != true, o guard bloqueia (ou roda em mock).',
+  {
+    campanha: z.string().describe('Nome (parcial) da campanha no AfiliAds'),
+    idempotency_key: z.string().min(10).max(100).regex(/^[a-zA-Z0-9_-]+$/).describe('Chave de idempotência única (ex.: create_campX_20260905)'),
+    headlines: z.array(z.string()).optional().describe('Títulos RSA (auto-gerados se omitido)'),
+    descriptions: z.array(z.string()).optional().describe('Descrições RSA (auto-geradas se omitido)'),
+  },
+  async ({ campanha, idempotency_key, headlines, descriptions }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    const uid = await userId();
+    const camp = await resolveCampaign(uid, campanha);
+    if (!camp) return text(`Campanha "${campanha}" não encontrada.`);
+    try {
+      const data = await appPost('/api/google-ads/create', {
+        campaignId: camp.id,
+        authorization: buildAuthorization('CREATE_CAMPAIGN', camp.id, String(new Date(camp.updatedAt).getTime()), idempotency_key),
+        ...(headlines?.length ? { headlines } : {}),
+        ...(descriptions?.length ? { descriptions } : {}),
+      });
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'google_ads_sync',
+  'Sincroniza uma campanha com o Google Ads via API do app (POST /api/google-ads/sync). direction=pull importa dados do Google; direction=push envia alterações (exige authorization). Quando GOOGLE_ADS_MUTATIONS_ENABLED != true, push é bloqueado pelo guard (ou mock).',
+  {
+    campanha: z.string().describe('Nome (parcial) da campanha'),
+    direction: z.enum(['pull', 'push']).default('pull'),
+    status: z.string().optional().describe('Novo status local para push (PAUSADO, EM_TESTE, SCALE, ATIVO, KILL)'),
+    budget_daily: z.number().min(0).optional().describe('Novo orçamento diário para push'),
+    idempotency_key: z.string().min(10).max(100).regex(/^[a-zA-Z0-9_-]+$/).optional().describe('Chave de idempotência (obrigatória para push)'),
+  },
+  async ({ campanha, direction, status, budget_daily, idempotency_key }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    const uid = await userId();
+    const camp = await resolveCampaign(uid, campanha);
+    if (!camp) return text(`Campanha "${campanha}" não encontrada.`);
+
+    const body = { campaignId: camp.id, direction };
+    if (direction === 'push') {
+      if (!idempotency_key) return text('idempotency_key é obrigatória para push.');
+      body.authorization = buildAuthorization('MUTATE_CAMPAIGN', camp.id, String(new Date(camp.updatedAt).getTime()), idempotency_key);
+      body.updates = {};
+      if (status) body.updates.status = status;
+      if (budget_daily !== undefined) body.updates.budgetDaily = budget_daily;
+      if (!Object.keys(body.updates).length) return text('push exige pelo menos status ou budget_daily.');
+    }
+
+    try {
+      const data = await appPost('/api/google-ads/sync', body);
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'google_ads_experiment_setup',
+  'Cria um experimento A/B no Google Ads via API do app (POST /api/google-ads/experiments). Proxy para a orquestração de experimentos existente.',
+  {
+    campanha: z.string().describe('Nome (parcial) da campanha'),
+    idempotency_key: z.string().min(10).max(100).regex(/^[a-zA-Z0-9_-]+$/).describe('Chave de idempotência'),
+    treatment_split: z.number().int().min(10).max(90).default(50).describe('% de tráfego para o tratamento'),
+    variation_type: z.string().default('FINAL_URL').describe('Tipo de variação (FINAL_URL)'),
+    variation_value: z.string().optional().describe('Valor da variação (ex.: nova URL)'),
+  },
+  async ({ campanha, idempotency_key, treatment_split, variation_type, variation_value }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    const uid = await userId();
+    const camp = await resolveCampaign(uid, campanha);
+    if (!camp) return text(`Campanha "${campanha}" não encontrada.`);
+    try {
+      const data = await appPost('/api/google-ads/experiments', {
+        campaignId: camp.id,
+        authorization: buildAuthorization('SETUP_EXPERIMENT', camp.id, String(new Date(camp.updatedAt).getTime()), idempotency_key),
+        treatmentSplit: treatment_split,
+        variationType: variation_type,
+        ...(variation_value ? { variationValue: variation_value } : {}),
+      });
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'google_ads_experiment_action',
+  'Executa ação em um experimento (END, PROMOTE, GRADUATE) via API do app (POST /api/google-ads/experiments/:id/actions).',
+  {
+    experiment_id: z.string().describe('ID do experimento no AfiliAds'),
+    action: z.enum(['END', 'PROMOTE', 'GRADUATE']).describe('Ação a executar'),
+    idempotency_key: z.string().min(10).max(100).regex(/^[a-zA-Z0-9_-]+$/).describe('Chave de idempotência'),
+  },
+  async ({ experiment_id, action, idempotency_key }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const operationMap = { END: 'END_EXPERIMENT', PROMOTE: 'PROMOTE_EXPERIMENT', GRADUATE: 'GRADUATE_EXPERIMENT' };
+      const data = await appPost(`/api/google-ads/experiments/${experiment_id}/actions`, {
+        action,
+        authorization: buildAuthorization(operationMap[action], experiment_id, String(Date.now()), idempotency_key),
+      });
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'google_ads_experiment_schedule',
+  'Agenda um experimento para início via API do app (POST /api/google-ads/experiments/:id/schedule).',
+  {
+    experiment_id: z.string().describe('ID do experimento no AfiliAds'),
+    idempotency_key: z.string().min(10).max(100).regex(/^[a-zA-Z0-9_-]+$/).describe('Chave de idempotência'),
+  },
+  async ({ experiment_id, idempotency_key }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const data = await appPost(`/api/google-ads/experiments/${experiment_id}/schedule`, {
+        authorization: buildAuthorization('SCHEDULE_EXPERIMENT', experiment_id, String(Date.now()), idempotency_key),
+      });
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'google_ads_experiment_sync',
+  'Sincroniza estado remoto de um experimento (métricas, status) via API do app (POST /api/google-ads/experiments/:id/sync). Somente leitura no sentido de Google Ads.',
+  {
+    experiment_id: z.string().describe('ID do experimento no AfiliAds'),
+  },
+  async ({ experiment_id }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const data = await appPost(`/api/google-ads/experiments/${experiment_id}/sync`, {});
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+// ─── Product + Campaign creation (HTTP → app API) ───────────────────────────
+
+server.tool(
+  'criar_produto',
+  'Cria ou atualiza (upsert por nome) um produto pesquisado no AfiliAds via POST /api/products. Para análise multi-agente completa (Hunter/SEO/Compliance), use analisar_produto em vez deste. Requer o app rodando.',
+  {
+    nome: z.string().min(1).describe('Nome do produto (chave de upsert)'),
+    network: z.string().default('clickbank').describe('Rede de afiliados (clickbank, maxweb, kiwify, etc.)'),
+    vertical: z.string().optional().describe('Vertical (ex.: weight_loss, health, finance)'),
+    hoplink: z.string().url().optional().describe('HopLink de afiliado'),
+    affiliate_page_url: z.string().url().optional().describe('URL da página de afiliado do vendor'),
+    status: z.enum(['novo', 'analisado', 'escolhido']).default('novo'),
+    score: z.number().min(0).max(100).optional(),
+    risk_level: z.string().optional().describe('Nível de risco (LOW, MEDIUM, HIGH)'),
+    gravity: z.number().optional(),
+    avg_payout: z.number().optional(),
+    commission_pct: z.number().optional(),
+    chosen_keyword: z.string().optional(),
+    summary: z.string().optional().describe('Resumo do produto'),
+  },
+  async ({ nome, network, vertical, hoplink, affiliate_page_url, status, score, risk_level, gravity, avg_payout, commission_pct, chosen_keyword, summary }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const body = {
+        name: nome,
+        network,
+        ...(vertical ? { vertical } : {}),
+        ...(hoplink ? { hopLink: hoplink } : {}),
+        ...(affiliate_page_url ? { affiliatePageUrl: affiliate_page_url } : {}),
+        status,
+        ...(score !== undefined ? { score } : {}),
+        ...(risk_level ? { riskLevel: risk_level } : {}),
+        ...(gravity !== undefined ? { gravity } : {}),
+        ...(avg_payout !== undefined ? { avgPayout: avg_payout } : {}),
+        ...(commission_pct !== undefined ? { commissionPct: commission_pct } : {}),
+        ...(chosen_keyword ? { chosenKeyword: chosen_keyword } : {}),
+        ...(summary ? { summary } : {}),
+      };
+      const data = await appPost('/api/products', body);
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'criar_campanha',
+  'Cria uma campanha no AfiliAds (banco local, NÃO cria no Google Ads). Use para sincronizar picks do Lowticket/Anunaki. Para criar a campanha no Google Ads depois, use google_ads_create_campaign. Requer o app rodando.',
+  {
+    nome: z.string().min(1).describe('Nome da campanha (ex.: CB_YUSLEEP_US_META_ABO_v1)'),
+    product_research_id: z.string().optional().describe('ID do produto pesquisado (de listar_produtos ou criar_produto)'),
+    platform: z.string().default('ClickBank').describe('Rede (ClickBank, MaxWeb, Kiwify, etc.)'),
+    vertical: z.string().default('Weight Loss'),
+    geo: z.string().default('US'),
+    channel: z.string().default('SEARCH').describe('Canal (SEARCH, DEMAND_GEN, META, NATIVE)'),
+    funnel: z.string().default('BRIDGE').describe('Funil (BRIDGE, DIRECT, VSL)'),
+    budget_test: z.number().min(0).default(50).describe('Orçamento total de teste ($)'),
+    budget_daily: z.number().min(0).default(0).describe('Orçamento diário ($)'),
+    offer_url: z.string().url().optional().describe('URL da oferta/vendor'),
+    presell_url: z.string().url().optional().describe('URL da presell/bridge'),
+    commission: z.number().min(0).default(0),
+    commission_net: z.number().min(0).default(0),
+    epc_breakeven: z.number().min(0).default(0),
+    cpc_max: z.number().min(0).default(0),
+    cpc_scale: z.number().min(0).default(0),
+    loop_enabled: z.boolean().default(false),
+    loop_interval: z.enum(['12h', '24h', '48h', '72h']).default('24h'),
+  },
+  async ({ nome, product_research_id, platform, vertical, geo, channel, funnel, budget_test, budget_daily, offer_url, presell_url, commission, commission_net, epc_breakeven, cpc_max, cpc_scale, loop_enabled, loop_interval }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const body = {
+        name: nome,
+        ...(product_research_id ? { productResearchId: product_research_id } : {}),
+        platform,
+        vertical,
+        geo,
+        channel,
+        funnel,
+        budgetTest: budget_test,
+        budgetDaily: budget_daily,
+        ...(offer_url ? { offerUrl: offer_url } : {}),
+        ...(presell_url ? { presellUrl: presell_url } : {}),
+        commission,
+        commissionNet: commission_net,
+        epcBreakeven: epc_breakeven,
+        cpcMax: cpc_max,
+        cpcScale: cpc_scale,
+        loopEnabled: loop_enabled,
+        loopInterval: loop_interval,
+      };
+      const data = await appPost('/api/campaigns', body);
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

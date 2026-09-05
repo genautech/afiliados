@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { callAgent } from './llm';
 import { computeEconomics, evaluateRules, type RulesResult, type CampaignEconomics } from './campaign-rules';
+import { assertMutationAllowed, type MutationCapability } from './google-ads/mutation-guard';
 
 const INTERVAL_MS: Record<string, number> = {
   '12h': 12 * 3600_000,
@@ -151,52 +152,14 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
   if (finalDecision === 'KILL') {
     await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'KILL', lastLoopRunAt: new Date() } });
     try {
-      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
-      const gadsConfig = await getGoogleAdsConfig(userId);
-      if (gadsConfig) {
-        let gadsId = campaign.googleCampaignId;
-        if (!gadsId || isNaN(Number(gadsId))) {
-          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) {
-            gadsId = gadsData.googleCampaignId;
-            await prisma.campaign.update({
-              where: { id: campaign.id },
-              data: { googleCampaignId: gadsId },
-            }).catch(() => {});
-          }
-        }
-        if (gadsId && !isNaN(Number(gadsId))) {
-          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
-          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: KILL)');
-        }
-      }
+      await autoPauseOnGoogleAds(userId, campaign, 'KILL', allTriggers);
     } catch (err: any) {
       console.error('Google Ads Auto-Pause (KILL) error:', err?.message);
     }
   } else if (finalDecision === 'PAUSAR') {
-    // 'PAUSADO' (não 'PAUSADA') é a forma usada em todo o resto do app — ver
-    // app/api/google-ads/sync/route.ts e os badges de status nas telas de campanha.
     await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSADO', lastLoopRunAt: new Date() } });
     try {
-      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
-      const gadsConfig = await getGoogleAdsConfig(userId);
-      if (gadsConfig) {
-        let gadsId = campaign.googleCampaignId;
-        if (!gadsId || isNaN(Number(gadsId))) {
-          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) {
-            gadsId = gadsData.googleCampaignId;
-            await prisma.campaign.update({
-              where: { id: campaign.id },
-              data: { googleCampaignId: gadsId },
-            }).catch(() => {});
-          }
-        }
-        if (gadsId && !isNaN(Number(gadsId))) {
-          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
-          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: PAUSAR)');
-        }
-      }
+      await autoPauseOnGoogleAds(userId, campaign, 'PAUSAR', allTriggers);
     } catch (err: any) {
       console.error('Google Ads Auto-Pause (PAUSAR) error:', err?.message);
     }
@@ -230,6 +193,57 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
     error,
     loopRunId: loopRun.id,
   };
+}
+
+/**
+ * Pauses a campaign on Google Ads using the same guard+capability pattern as
+ * `app/api/google-ads/sync/route.ts` (push direction). Mirrors the sync route:
+ * 1. Get ads config
+ * 2. Resolve Google campaign ID (local → remote fallback)
+ * 3. Issue MutationCapability via assertMutationAllowed
+ * 4. Pass capability into mutateGoogleCampaign
+ *
+ * In mock mode the guard auto-allows; in real mode the env gate + allowlist
+ * must be satisfied — no bypass.
+ */
+async function autoPauseOnGoogleAds(
+  userId: string,
+  campaign: { id: string; googleCampaignId?: string | null; googleCampaignName?: string | null; name: string },
+  decision: 'KILL' | 'PAUSAR',
+  triggers: string[]
+): Promise<void> {
+  const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign, isMockMode } = await import('./google-ads');
+  const gadsConfig = await getGoogleAdsConfig(userId);
+  if (!gadsConfig) return;
+
+  let gadsId = campaign.googleCampaignId;
+  if (!gadsId || isNaN(Number(gadsId))) {
+    const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
+    if (gadsData?.googleCampaignId) {
+      gadsId = gadsData.googleCampaignId;
+      await prisma.campaign.update({
+        where: { id: campaign.id },
+        data: { googleCampaignId: gadsId },
+      }).catch(() => {});
+    }
+  }
+
+  if (!gadsId || isNaN(Number(gadsId))) return;
+
+  const guardResult = assertMutationAllowed({
+    operation: 'mutateGoogleCampaign.status',
+    customerId: gadsConfig.customerId,
+    isMock: isMockMode(gadsConfig),
+    confirmed: true,
+  });
+
+  if (!guardResult.allowed) {
+    triggers.push(`Google Ads Auto-Pause bloqueado pelo guard: ${guardResult.reason} (decisão: ${decision})`);
+    return;
+  }
+
+  await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' }, { status: guardResult.capability });
+  triggers.push(`Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: ${decision})`);
 }
 
 // Campanha PAUSADA não gera gasto de ads pra auditar nem deve ter status flipado

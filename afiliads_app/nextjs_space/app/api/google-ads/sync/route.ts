@@ -1,21 +1,19 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
 import { getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
 import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
 import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
+import { resolveUserId } from '@/lib/mcp-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const userId = await resolveUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = (session.user as any)?.id;
     const body = await request.json();
     const { campaignId, direction = 'pull', updates } = body ?? {};
 

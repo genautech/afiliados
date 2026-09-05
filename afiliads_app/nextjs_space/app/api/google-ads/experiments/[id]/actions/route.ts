@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { runExperimentAction } from '@/lib/google-ads-experiments/orchestration';
 import { redactSensitive } from '@/lib/google-ads/errors';
+import { resolveUserId } from '@/lib/mcp-auth';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any).id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const payload = await request.json().catch(() => null);
     if (!payload) return NextResponse.json({ error: 'Payload JSON inválido' }, { status: 400 });
     const result = await runExperimentAction({ id: params.id, userId, payload });

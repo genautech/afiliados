@@ -160,6 +160,41 @@ Não inventar variantes por sufixo, como `kimi-k3-256k`, nem derivar IDs por con
 **Mecanismos de Fallback e Resiliência:**
 O sistema é projetado para tentar provedores e modelos em cadeia, seguindo a ordem de preferência definida por tier. Em caso de falha de um provedor (ex: quota esgotada, chave inválida), o próximo provedor na cadeia é automaticamente tentado, garantindo resiliência e minimizando interrupções. As chaves de API (`KIMI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) devem vir de variáveis de ambiente, secret manager ou armazenamento criptografado em repouso; nunca persistir texto puro, registrar o valor em logs ou usar a credencial como `keySource`. A lógica de roteamento é configurável via `AGENT_ROUTING_PREFERENCES` e `AGENT_TIERS` em `lib/llm.ts`.
 
+## Google Ads MCP: Caminhos canônicos
+
+Existem dois caminhos distintos para interagir com o Google Ads neste projeto. Nunca misturar:
+
+### 1. Extensão Google Ads MCP (exploração / admin / OAuth humano)
+- **Uso:** explorar contas, auditoria manual, diagnosticar configuração, pesquisar métricas históricas.
+- **Auth:** OAuth2 interativo do usuário (token humano, não programático).
+- **Escopo:** somente leitura e diagnóstico. Mutações feitas por aqui NÃO passam pelos guards do app (mutation-guard, readiness, ownership, claims ledger) — por isso, usar apenas para leitura/diagnóstico.
+- **Quando usar:** investigação ad-hoc, verificar se uma campanha existe no Google Ads, conferir métricas diretamente.
+
+### 2. mcp-afiliads → app API (caminho canônico com campaign-rules, loop, readiness, mutation-guard)
+- **Uso:** todas as operações programáticas — criar campanha, sincronizar, readiness, experimentos, loop.
+- **Auth:** `AFILIADS_MCP_TOKEN` como header `x-afiliads-token` → app resolve userId via `AFILIADS_MCP_USER_EMAIL` (ou `AFILIADS_USER_EMAIL` — o MCP server usa o segundo nome; ambos são aceitos pelo app).
+- **Escopo:** leitura (Postgres direto) + mutação (sempre via HTTP POST às rotas do app).
+- **Guards:** toda mutação passa pela cadeia completa: `resolveUserId` → `authorizeMutation` (confirmed:true, operation, resourceId, revision, idempotencyKey) → `assertMutationAllowed` (env gate `GOOGLE_ADS_MUTATIONS_ENABLED`, allowlist `GOOGLE_ADS_MUTATION_ALLOWLIST`) → `assertMutationCapability` (WeakSet branded). Quando `GOOGLE_ADS_MUTATIONS_ENABLED != true`, mutações são bloqueadas (ou operam em mock) — sem bypass.
+- **Meta (Facebook/Instagram):** nenhum tool MCP de mutação. Meta é somente read/diagnóstico.
+
+### Tools MCP registrados (`mcp-afiliads/index.mjs`)
+| Tool | Tipo | Fonte |
+|------|------|-------|
+| `listar_campanhas` | read | Postgres |
+| `keywords_campanha` | read | Postgres |
+| `google_ads_config_status` | read | Postgres |
+| `google_ads_readiness` | read | Postgres |
+| `criar_produto` | upsert proxy | POST /api/products |
+| `criar_campanha` | create proxy | POST /api/campaigns |
+| `google_ads_create_campaign` | mutate proxy | POST /api/google-ads/create |
+| `google_ads_sync` | mutate proxy | POST /api/google-ads/sync |
+| `google_ads_experiment_setup` | mutate proxy | POST /api/google-ads/experiments |
+| `google_ads_experiment_action` | mutate proxy | POST /api/google-ads/experiments/:id/actions |
+| `google_ads_experiment_schedule` | mutate proxy | POST /api/google-ads/experiments/:id/schedule |
+| `google_ads_experiment_sync` | read proxy | POST /api/google-ads/experiments/:id/sync |
+
+Para sincronizar picks do Lowticket/Anunaki: `analisar_produto` (análise completa) ou `criar_produto` (upsert rápido) → `criar_campanha` → (wizard) → `google_ads_create_campaign`. Ver `hermes/knowledge/insights/2026-09-05-sync-pick-afiliads-mcp-path.md`.
+
 ## Coordenação entre sessões simultâneas (leia antes de começar)
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.
 Revisão do codebase concluída: Presell da FemiCore publicada em `orangepeelmorning.com`, suporte a FTP/Static via `publishToFtp()`, Wizard 9 passos 100% operacional com `ChecklistLearning` e "Corrigir com agente", motor `deriveCampaignStrategy` ativo e auditoria de escrita de métricas no Postgres finalizada.

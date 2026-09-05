@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { setupExperiment, toExperimentDetailDTO } from '@/lib/google-ads-experiments/orchestration';
+import { resolveUserId } from '@/lib/mcp-auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any).id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const campaignId = request.nextUrl.searchParams.get('campaignId');
     if (!campaignId) return NextResponse.json({ error: 'campaignId obrigatório' }, { status: 400 });
 
@@ -44,9 +42,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any).id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const body = await request.json().catch(() => null);
     if (!body) return NextResponse.json({ error: 'Payload JSON inválido' }, { status: 400 });

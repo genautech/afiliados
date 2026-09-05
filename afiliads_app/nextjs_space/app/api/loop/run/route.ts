@@ -9,7 +9,7 @@ import { runCampaignLoop, runDueLoops } from '@/lib/loop-engine';
 async function resolveUserId(request: NextRequest): Promise<string | null> {
   const mcpToken = request.headers.get('x-afiliads-token');
   if (mcpToken && process.env.AFILIADS_MCP_TOKEN && mcpToken === process.env.AFILIADS_MCP_TOKEN) {
-    const email = process.env.AFILIADS_MCP_USER_EMAIL;
+    const email = process.env.AFILIADS_MCP_USER_EMAIL || process.env.AFILIADS_USER_EMAIL;
     const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
     return user?.id ?? null;
   }
