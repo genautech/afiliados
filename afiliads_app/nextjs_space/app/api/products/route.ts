@@ -1,14 +1,12 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveUserId } from '@/lib/mcp-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const products = await prisma.productResearch.findMany({
       where: { userId },
       orderBy: [{ score: 'desc' }, { updatedAt: 'desc' }],
@@ -22,9 +20,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const body = await request.json();
     const name = String(body?.name ?? '').trim();
     if (!name) return NextResponse.json({ error: 'name é obrigatório' }, { status: 422 });
@@ -46,9 +43,8 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const body = await request.json();
     const { id, ...data } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
@@ -69,9 +65,8 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });

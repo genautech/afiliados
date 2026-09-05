@@ -1,14 +1,12 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveUserId } from '@/lib/mcp-auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as any)?.id;
+    const userId = await resolveUserId(request);
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const platform = searchParams.get('platform');
@@ -34,9 +32,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    const userId = (session.user as { id?: string }).id;
+    const userId = await resolveUserId(request);
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     const body = await request.json();
     const productResearchId = typeof body?.productResearchId === 'string'

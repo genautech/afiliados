@@ -184,12 +184,16 @@ Existem dois caminhos distintos para interagir com o Google Ads neste projeto. N
 | `keywords_campanha` | read | Postgres |
 | `google_ads_config_status` | read | Postgres |
 | `google_ads_readiness` | read | Postgres |
+| `criar_produto` | upsert proxy | POST /api/products |
+| `criar_campanha` | create proxy | POST /api/campaigns |
 | `google_ads_create_campaign` | mutate proxy | POST /api/google-ads/create |
 | `google_ads_sync` | mutate proxy | POST /api/google-ads/sync |
 | `google_ads_experiment_setup` | mutate proxy | POST /api/google-ads/experiments |
 | `google_ads_experiment_action` | mutate proxy | POST /api/google-ads/experiments/:id/actions |
 | `google_ads_experiment_schedule` | mutate proxy | POST /api/google-ads/experiments/:id/schedule |
 | `google_ads_experiment_sync` | read proxy | POST /api/google-ads/experiments/:id/sync |
+
+Para sincronizar picks do Lowticket/Anunaki: `analisar_produto` (análise completa) ou `criar_produto` (upsert rápido) → `criar_campanha` → (wizard) → `google_ads_create_campaign`. Ver `hermes/knowledge/insights/2026-09-05-sync-pick-afiliads-mcp-path.md`.
 
 ## Coordenação entre sessões simultâneas (leia antes de começar)
 Iniciada nova sessão dedicada com o Anti-Gravity para desenvolvimentos paralelos enquanto os agentes em cloud continuam atuando no projeto Afiliados.

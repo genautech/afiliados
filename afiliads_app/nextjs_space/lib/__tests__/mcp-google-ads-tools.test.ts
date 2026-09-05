@@ -323,3 +323,157 @@ describe('MCP user email env var fallback', () => {
     expect(resolveEmail()).toBeUndefined();
   });
 });
+
+describe('criar_produto MCP proxy pattern', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const APP_URL = 'http://localhost:3001';
+  const MCP_TOKEN = 'test-token-abc';
+
+  async function appPost(path: string, body: Record<string, unknown>) {
+    if (!MCP_TOKEN) throw new Error('AFILIADS_MCP_TOKEN não configurado.');
+    const res = await fetchMock(`${APP_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await (res as any).json();
+    if (!(res as any).ok) throw new Error(data?.error || `Erro ${(res as any).status}`);
+    return data;
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'prod-1', name: 'YuSleep', status: 'novo' }),
+    });
+  });
+
+  it('sends product upsert to /api/products with correct body', async () => {
+    await appPost('/api/products', {
+      name: 'YuSleep',
+      network: 'clickbank',
+      vertical: 'sleep',
+      status: 'escolhido',
+      score: 72,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost:3001/api/products');
+    expect(opts.headers['x-afiliads-token']).toBe(MCP_TOKEN);
+    const body = JSON.parse(opts.body);
+    expect(body.name).toBe('YuSleep');
+    expect(body.network).toBe('clickbank');
+    expect(body.status).toBe('escolhido');
+    expect(body.score).toBe(72);
+  });
+
+  it('does not send undefined optional fields', async () => {
+    const body: Record<string, unknown> = { name: 'TestProd', network: 'clickbank', status: 'novo' };
+    await appPost('/api/products', body);
+
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent.hopLink).toBeUndefined();
+    expect(sent.affiliatePageUrl).toBeUndefined();
+    expect(sent.score).toBeUndefined();
+  });
+});
+
+describe('criar_campanha MCP proxy pattern', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const APP_URL = 'http://localhost:3001';
+  const MCP_TOKEN = 'test-token-abc';
+
+  async function appPost(path: string, body: Record<string, unknown>) {
+    if (!MCP_TOKEN) throw new Error('AFILIADS_MCP_TOKEN não configurado.');
+    const res = await fetchMock(`${APP_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
+      body: JSON.stringify(body),
+    });
+    const data = await (res as any).json();
+    if (!(res as any).ok) throw new Error(data?.error || `Erro ${(res as any).status}`);
+    return data;
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'camp-new',
+        name: 'CB_YUSLEEP_US_SEARCH_BRIDGE_v1',
+        status: 'EM_TESTE',
+        wizardStep: 1,
+      }),
+    });
+  });
+
+  it('sends campaign creation to /api/campaigns with ORQ naming', async () => {
+    await appPost('/api/campaigns', {
+      name: 'CB_YUSLEEP_US_SEARCH_BRIDGE_v1',
+      productResearchId: 'prod-1',
+      platform: 'ClickBank',
+      vertical: 'sleep',
+      geo: 'US',
+      channel: 'SEARCH',
+      funnel: 'BRIDGE',
+      budgetTest: 50,
+      budgetDaily: 15,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost:3001/api/campaigns');
+    const body = JSON.parse(opts.body);
+    expect(body.name).toBe('CB_YUSLEEP_US_SEARCH_BRIDGE_v1');
+    expect(body.productResearchId).toBe('prod-1');
+    expect(body.platform).toBe('ClickBank');
+    expect(body.channel).toBe('SEARCH');
+    expect(body.budgetTest).toBe(50);
+  });
+
+  it('works without productResearchId (standalone campaign)', async () => {
+    await appPost('/api/campaigns', {
+      name: 'Test Campaign',
+      platform: 'ClickBank',
+      vertical: 'health',
+      geo: 'US',
+      channel: 'SEARCH',
+      funnel: 'BRIDGE',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.productResearchId).toBeUndefined();
+    expect(body.name).toBe('Test Campaign');
+  });
+
+  it('propagates app error on 404 (product not found)', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Produto não encontrado' }),
+    });
+
+    await expect(appPost('/api/campaigns', {
+      name: 'Test',
+      productResearchId: 'nonexistent',
+    })).rejects.toThrow('Produto não encontrado');
+  });
+
+  it('includes loop config when provided', async () => {
+    await appPost('/api/campaigns', {
+      name: 'CB_TEST_v1',
+      platform: 'ClickBank',
+      vertical: 'health',
+      geo: 'US',
+      channel: 'SEARCH',
+      funnel: 'BRIDGE',
+      loopEnabled: true,
+      loopInterval: '12h',
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.loopEnabled).toBe(true);
+    expect(body.loopInterval).toBe('12h');
+  });
+});

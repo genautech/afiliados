@@ -643,5 +643,105 @@ server.tool(
   }
 );
 
+// ─── Product + Campaign creation (HTTP → app API) ───────────────────────────
+
+server.tool(
+  'criar_produto',
+  'Cria ou atualiza (upsert por nome) um produto pesquisado no AfiliAds via POST /api/products. Para análise multi-agente completa (Hunter/SEO/Compliance), use analisar_produto em vez deste. Requer o app rodando.',
+  {
+    nome: z.string().min(1).describe('Nome do produto (chave de upsert)'),
+    network: z.string().default('clickbank').describe('Rede de afiliados (clickbank, maxweb, kiwify, etc.)'),
+    vertical: z.string().optional().describe('Vertical (ex.: weight_loss, health, finance)'),
+    hoplink: z.string().url().optional().describe('HopLink de afiliado'),
+    affiliate_page_url: z.string().url().optional().describe('URL da página de afiliado do vendor'),
+    status: z.enum(['novo', 'analisado', 'escolhido']).default('novo'),
+    score: z.number().min(0).max(100).optional(),
+    risk_level: z.string().optional().describe('Nível de risco (LOW, MEDIUM, HIGH)'),
+    gravity: z.number().optional(),
+    avg_payout: z.number().optional(),
+    commission_pct: z.number().optional(),
+    chosen_keyword: z.string().optional(),
+    summary: z.string().optional().describe('Resumo do produto'),
+  },
+  async ({ nome, network, vertical, hoplink, affiliate_page_url, status, score, risk_level, gravity, avg_payout, commission_pct, chosen_keyword, summary }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const body = {
+        name: nome,
+        network,
+        ...(vertical ? { vertical } : {}),
+        ...(hoplink ? { hopLink: hoplink } : {}),
+        ...(affiliate_page_url ? { affiliatePageUrl: affiliate_page_url } : {}),
+        status,
+        ...(score !== undefined ? { score } : {}),
+        ...(risk_level ? { riskLevel: risk_level } : {}),
+        ...(gravity !== undefined ? { gravity } : {}),
+        ...(avg_payout !== undefined ? { avgPayout: avg_payout } : {}),
+        ...(commission_pct !== undefined ? { commissionPct: commission_pct } : {}),
+        ...(chosen_keyword ? { chosenKeyword: chosen_keyword } : {}),
+        ...(summary ? { summary } : {}),
+      };
+      const data = await appPost('/api/products', body);
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
+server.tool(
+  'criar_campanha',
+  'Cria uma campanha no AfiliAds (banco local, NÃO cria no Google Ads). Use para sincronizar picks do Lowticket/Anunaki. Para criar a campanha no Google Ads depois, use google_ads_create_campaign. Requer o app rodando.',
+  {
+    nome: z.string().min(1).describe('Nome da campanha (ex.: CB_YUSLEEP_US_META_ABO_v1)'),
+    product_research_id: z.string().optional().describe('ID do produto pesquisado (de listar_produtos ou criar_produto)'),
+    platform: z.string().default('ClickBank').describe('Rede (ClickBank, MaxWeb, Kiwify, etc.)'),
+    vertical: z.string().default('Weight Loss'),
+    geo: z.string().default('US'),
+    channel: z.string().default('SEARCH').describe('Canal (SEARCH, DEMAND_GEN, META, NATIVE)'),
+    funnel: z.string().default('BRIDGE').describe('Funil (BRIDGE, DIRECT, VSL)'),
+    budget_test: z.number().min(0).default(50).describe('Orçamento total de teste ($)'),
+    budget_daily: z.number().min(0).default(0).describe('Orçamento diário ($)'),
+    offer_url: z.string().url().optional().describe('URL da oferta/vendor'),
+    presell_url: z.string().url().optional().describe('URL da presell/bridge'),
+    commission: z.number().min(0).default(0),
+    commission_net: z.number().min(0).default(0),
+    epc_breakeven: z.number().min(0).default(0),
+    cpc_max: z.number().min(0).default(0),
+    cpc_scale: z.number().min(0).default(0),
+    loop_enabled: z.boolean().default(false),
+    loop_interval: z.enum(['12h', '24h', '48h', '72h']).default('24h'),
+  },
+  async ({ nome, product_research_id, platform, vertical, geo, channel, funnel, budget_test, budget_daily, offer_url, presell_url, commission, commission_net, epc_breakeven, cpc_max, cpc_scale, loop_enabled, loop_interval }) => {
+    if (!MCP_TOKEN) return text('AFILIADS_MCP_TOKEN não configurado.');
+    try {
+      const body = {
+        name: nome,
+        ...(product_research_id ? { productResearchId: product_research_id } : {}),
+        platform,
+        vertical,
+        geo,
+        channel,
+        funnel,
+        budgetTest: budget_test,
+        budgetDaily: budget_daily,
+        ...(offer_url ? { offerUrl: offer_url } : {}),
+        ...(presell_url ? { presellUrl: presell_url } : {}),
+        commission,
+        commissionNet: commission_net,
+        epcBreakeven: epc_breakeven,
+        cpcMax: cpc_max,
+        cpcScale: cpc_scale,
+        loopEnabled: loop_enabled,
+        loopInterval: loop_interval,
+      };
+      const data = await appPost('/api/campaigns', body);
+      return text(data);
+    } catch (err) {
+      return text(`Erro: ${err.message}`);
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
