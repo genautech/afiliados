@@ -78,3 +78,7 @@ research/**/*.json3
 # Dados de campanhas e rascunhos dinâmicos (gerados pelos agentes em runtime)
 campaigns_data/
 product_src/
+
+# MCP token files (secrets)
+.mcp-token
+*.mcp-token
