@@ -172,7 +172,7 @@ Existem dois caminhos distintos para interagir com o Google Ads neste projeto. N
 
 ### 2. mcp-afiliads → app API (caminho canônico com campaign-rules, loop, readiness, mutation-guard)
 - **Uso:** todas as operações programáticas — criar campanha, sincronizar, readiness, experimentos, loop.
-- **Auth:** `AFILIADS_MCP_TOKEN` como header `x-afiliads-token` → app resolve userId via `AFILIADS_MCP_USER_EMAIL`.
+- **Auth:** `AFILIADS_MCP_TOKEN` como header `x-afiliads-token` → app resolve userId via `AFILIADS_MCP_USER_EMAIL` (ou `AFILIADS_USER_EMAIL` — o MCP server usa o segundo nome; ambos são aceitos pelo app).
 - **Escopo:** leitura (Postgres direto) + mutação (sempre via HTTP POST às rotas do app).
 - **Guards:** toda mutação passa pela cadeia completa: `resolveUserId` → `authorizeMutation` (confirmed:true, operation, resourceId, revision, idempotencyKey) → `assertMutationAllowed` (env gate `GOOGLE_ADS_MUTATIONS_ENABLED`, allowlist `GOOGLE_ADS_MUTATION_ALLOWLIST`) → `assertMutationCapability` (WeakSet branded). Quando `GOOGLE_ADS_MUTATIONS_ENABLED != true`, mutações são bloqueadas (ou operam em mock) — sem bypass.
 - **Meta (Facebook/Instagram):** nenhum tool MCP de mutação. Meta é somente read/diagnóstico.

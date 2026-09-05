@@ -10,11 +10,11 @@
  * We test the tool logic functions in isolation — not the full MCP server
  * transport — by extracting the same patterns used in index.mjs.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Shared helpers (mirrored from index.mjs) ───────────────────────────────
 
-function buildAuthorization(operation, resourceId, revision, idempotencyKey) {
+function buildAuthorization(operation: string, resourceId: string, revision: string, idempotencyKey: string) {
   return {
     confirmed: true,
     operation,
@@ -56,19 +56,19 @@ describe('buildAuthorization', () => {
 });
 
 describe('MCP mutate proxy patterns', () => {
-  let fetchMock;
+  let fetchMock: ReturnType<typeof vi.fn>;
   const APP_URL = 'http://localhost:3001';
   const MCP_TOKEN = 'test-token-abc';
 
-  async function appPost(path, body) {
+  async function appPost(path: string, body: Record<string, unknown>) {
     if (!MCP_TOKEN) throw new Error('AFILIADS_MCP_TOKEN não configurado.');
     const res = await fetchMock(`${APP_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-afiliads-token': MCP_TOKEN },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+    const data = await (res as any).json();
+    if (!(res as any).ok) throw new Error(data?.error || `Erro ${(res as any).status}`);
     return data;
   }
 
@@ -199,7 +199,7 @@ describe('MCP mutate proxy patterns', () => {
 describe('MCP token enforcement', () => {
   it('appPost requires token', async () => {
     const noToken = '';
-    async function appPostNoToken(path, body) {
+    async function appPostNoToken(path: string, body: Record<string, unknown>) {
       if (!noToken) throw new Error('AFILIADS_MCP_TOKEN não configurado.');
       return {};
     }
@@ -263,12 +263,12 @@ describe('google_ads_readiness logic', () => {
   it('PREPARE mode treats URL gap as warning, SCHEDULE treats as error', () => {
     const urlGapMsg = 'URL pode ter sido modificada após aprovação no checklist (lacuna 10B).';
 
-    const prepareErrors = [];
-    const prepareWarnings = [];
+    const prepareErrors: string[] = [];
+    const prepareWarnings: string[] = [];
     prepareWarnings.push(urlGapMsg);
 
-    const scheduleErrors = [];
-    const scheduleWarnings = [];
+    const scheduleErrors: string[] = [];
+    const scheduleWarnings: string[] = [];
     scheduleErrors.push(urlGapMsg);
 
     expect(prepareErrors).toHaveLength(0);
@@ -291,5 +291,35 @@ describe('google_ads_readiness logic', () => {
     }
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('FUZZY');
+  });
+});
+
+describe('MCP user email env var fallback', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  function resolveEmail(): string | undefined {
+    return process.env.AFILIADS_MCP_USER_EMAIL || process.env.AFILIADS_USER_EMAIL;
+  }
+
+  it('prefers AFILIADS_MCP_USER_EMAIL when both are set', () => {
+    process.env.AFILIADS_MCP_USER_EMAIL = 'mcp@example.com';
+    process.env.AFILIADS_USER_EMAIL = 'legacy@example.com';
+    expect(resolveEmail()).toBe('mcp@example.com');
+  });
+
+  it('falls back to AFILIADS_USER_EMAIL when MCP variant is missing', () => {
+    delete process.env.AFILIADS_MCP_USER_EMAIL;
+    process.env.AFILIADS_USER_EMAIL = 'legacy@example.com';
+    expect(resolveEmail()).toBe('legacy@example.com');
+  });
+
+  it('returns undefined when neither is set', () => {
+    delete process.env.AFILIADS_MCP_USER_EMAIL;
+    delete process.env.AFILIADS_USER_EMAIL;
+    expect(resolveEmail()).toBeUndefined();
   });
 });

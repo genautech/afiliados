@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
   let userId: string | null = null;
   const mcpToken = request.headers.get('x-afiliads-token');
   if (mcpToken && process.env.AFILIADS_MCP_TOKEN && mcpToken === process.env.AFILIADS_MCP_TOKEN) {
-    const email = process.env.AFILIADS_MCP_USER_EMAIL;
+    const email = process.env.AFILIADS_MCP_USER_EMAIL || process.env.AFILIADS_USER_EMAIL;
     const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
     userId = user?.id ?? null;
   } else {

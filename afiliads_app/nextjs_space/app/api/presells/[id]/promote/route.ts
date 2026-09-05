@@ -9,7 +9,7 @@ import { publishToWordPress, publishToFtp } from '@/lib/presell';
 async function resolveUserId(request: NextRequest): Promise<string | null> {
   const token = request.headers.get('x-afiliads-token');
   if (token && process.env.AFILIADS_MCP_TOKEN && token === process.env.AFILIADS_MCP_TOKEN) {
-    const email = process.env.AFILIADS_MCP_USER_EMAIL;
+    const email = process.env.AFILIADS_MCP_USER_EMAIL || process.env.AFILIADS_USER_EMAIL;
     const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
     return user?.id ?? null;
   }

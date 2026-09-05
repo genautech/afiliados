@@ -8,12 +8,15 @@ import { prisma } from '@/lib/prisma';
  * 1. x-afiliads-token header (MCP server path)
  * 2. NextAuth session (browser/app path)
  *
+ * Accepts both AFILIADS_MCP_USER_EMAIL (app convention) and
+ * AFILIADS_USER_EMAIL (MCP server convention) for the MCP path.
+ *
  * Returns null if neither auth method succeeds.
  */
 export async function resolveUserId(request: NextRequest): Promise<string | null> {
   const mcpToken = request.headers.get('x-afiliads-token');
   if (mcpToken && process.env.AFILIADS_MCP_TOKEN && mcpToken === process.env.AFILIADS_MCP_TOKEN) {
-    const email = process.env.AFILIADS_MCP_USER_EMAIL;
+    const email = process.env.AFILIADS_MCP_USER_EMAIL || process.env.AFILIADS_USER_EMAIL;
     const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
     return user?.id ?? null;
   }
