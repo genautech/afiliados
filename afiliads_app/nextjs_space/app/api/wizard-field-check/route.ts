@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
+import { isNoLlmKeyError, LLM_PROVIDER_LIST } from '@/lib/llm-errors';
 import { PLATFORMS, VERTICALS, GEOS, CHANNELS } from '@/lib/wizard-data';
 import { getPresellOutcomeReferencia } from '@/lib/presell';
 import { getMarketIntelReferencia } from '@/lib/marketIntel';
@@ -244,9 +245,16 @@ JSON puro.`;
       });
     } catch (llmErr: any) {
       console.error('Field check LLM error:', llmErr);
+      const msg = String(llmErr?.message ?? llmErr);
+      if (isNoLlmKeyError(msg)) {
+        return NextResponse.json({
+          success: false,
+          error: `⚠️ Nenhuma chave de API de IA configurada. Vá em Configurações → Provedores de IA, adicione pelo menos uma chave (${LLM_PROVIDER_LIST}) e salve.`
+        });
+      }
       return NextResponse.json({
         success: false,
-        error: `⚠️ Não foi possível verificar o campo devido à ausência das chaves de API necessárias (Google Ads ou provedor de IA). Como configurar: Vá na tela de Configurações, cadastre a API Key do seu provedor ativo de IA, e salve.`
+        error: `⚠️ O serviço de IA está temporariamente indisponível (${msg.slice(0, 120)}). Tente novamente em alguns segundos ou verifique suas chaves de API em Configurações.`
       });
     }
   } catch (err: any) {

@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { NO_LLM_KEY_ERROR } from './llm-errors';
 import { GoogleAuth } from 'google-auth-library';
 import { createHash } from 'crypto';
 import { estimateCostUsd, type CostMultipliers } from './llm-pricing';
@@ -776,6 +777,14 @@ async function callProvider(
   }
 }
 
+/**
+ * Fallback silencioso é o pior modo de falha da cadeia: a campanha continua respondendo, mas por
+ * um provedor que não é o escolhido. Sem esse log, só dá pra descobrir olhando AgentRun depois.
+ */
+function logProviderSkip(agent: string, provider: string, model: string, reason: string): void {
+  console.warn(`[LLM_FALLBACK] agent=${agent} pulou provider=${provider} model=${model} :: ${reason.slice(0, 200)}`);
+}
+
 export async function callAgent(
   userId: string,
   opts: LlmOptions & { agent: string; json?: boolean; validate?: (data: any, text: string) => string | null }
@@ -828,7 +837,7 @@ export async function callAgent(
           : ctx.models[step.provider] ?? preference.modelOverrides?.[step.provider] ?? step.model,
       }));
   }
-  if (chain.length === 0) throw new Error('Nenhuma API key de LLM configurada (Anthropic, OpenAI, Google, Grok, Kimi ou Ollama).');
+  if (chain.length === 0) throw new Error(NO_LLM_KEY_ERROR);
 
   const emptyUsage: LlmUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let lastError: any = null;
@@ -875,15 +884,18 @@ export async function callAgent(
       } catch (error: any) {
         const msg = error?.message ?? String(error);
         if (isQuotaError(msg) && i < chain.length - 1) {
+          logProviderSkip(opts.agent, step.provider, modelAttempt, `quota na reserva de budget: ${msg}`);
           movedToNextProvider = true;
           break;
         }
+        logProviderSkip(opts.agent, step.provider, modelAttempt, `falha na reserva de budget: ${msg}`);
         if (error?.message) lastError = error.message;
         else lastError = String(error);
         continue;
       }
       if (!reservation) {
         if ((ctx.budgets[step.provider] ?? 0) > 0) {
+          logProviderSkip(opts.agent, step.provider, modelAttempt, 'budget mensal do provedor esgotado');
           movedToNextProvider = true;
           continue;
         }
@@ -908,9 +920,11 @@ export async function callAgent(
           error: msg,
         });
         if (isQuotaError(msg) && i < chain.length - 1) {
+          logProviderSkip(opts.agent, step.provider, modelAttempt, `quota/rate-limit: ${msg}`);
           movedToNextProvider = true;
           break;
         }
+        logProviderSkip(opts.agent, step.provider, modelAttempt, msg);
         lastError = msg;
         continue;
       }
@@ -946,6 +960,7 @@ export async function callAgent(
             success: false,
             error: `JSON_INVALID_FINAL: ${parseError}`,
           });
+          logProviderSkip(opts.agent, step.provider, modelAttempt, `JSON inválido após correção: ${parseError}`);
           lastError = `JSON inválido após correção: ${parseError}`;
           movedToNextProvider = true;
           break; // Sai do loop de modelAttempts e tenta o próximo provider
