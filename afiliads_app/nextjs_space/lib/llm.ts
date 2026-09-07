@@ -148,7 +148,13 @@ export const AGENT_ROUTING_PREFERENCES: Record<string, AgentRoutingPreference> =
   },
   'bridge-page-validator': {
     providers: ['google', 'grok', 'kimi', 'ollama', 'openai', 'anthropic'],
-    modelOverrides: { kimi: KIMI_MODELS.K2_5 },
+    modelOverrides: { kimi: KIMI_MODELS.K2_6 },
+  },
+  // Validação de campo do wizard alimenta decisão de campanha real: não pode ser respondida
+  // pelo gpt-oss:20b local só porque o tier é 'light'. Mantém o tier (custo baixo), mas põe
+  // modelo de nuvem na frente — kimi como segunda rota, ollama como rede de segurança grátis.
+  'wizard-validator': {
+    providers: ['openrouter', 'kimi', 'grok', 'google', 'ollama'],
   },
 };
 
@@ -245,10 +251,13 @@ export const AGENT_TIERS: Record<string, Tier> = {
 //   Ollama grátis como rede de segurança.
 // - light (chat, validação simples): Ollama grátis lidera; Grok non-reasoning (barato, baixa
 //   latência) como fallback pago antes de subir pra Gemini/Claude.
+// Kimi (Moonshot direto) entra como fallback em todos os tiers: é a segunda rota para os
+// modelos Moonshot, independente do OpenRouter — se o OpenRouter cair, a cadeia não precisa
+// descer até o ollama local. Verificado vivo em 2026-09-07 (kimi-k2.6, api.moonshot.ai).
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'grok', 'google', 'openai', 'openrouter', 'ollama'],
-  standard: ['openrouter', 'grok', 'google', 'openai', 'anthropic', 'ollama'],
-  light: ['ollama', 'openrouter', 'grok', 'google', 'openai', 'anthropic'],
+  premium: ['anthropic', 'grok', 'google', 'openrouter', 'kimi', 'openai', 'ollama'],
+  standard: ['openrouter', 'kimi', 'grok', 'google', 'openai', 'anthropic', 'ollama'],
+  light: ['ollama', 'openrouter', 'kimi', 'grok', 'google', 'openai', 'anthropic'],
 };
 
 const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
@@ -258,7 +267,9 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   grok: { premium: 'grok-4.20-reasoning', standard: 'grok-4.1-fast-reasoning', light: 'grok-4.1-fast-non-reasoning' },
   ollama: { premium: 'gpt-oss:120b', standard: 'gpt-oss:20b', light: 'gpt-oss:20b' },
   abacusai: { premium: 'gpt-5.4-mini', standard: 'gpt-5.4-mini', light: 'gpt-5.4-mini' },
-  kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_5 },
+  // Atenção: kimi-k2.5 NÃO existe na API direta da Moonshot (404 "Not found the model"); ela
+  // serve k2.6, k2.7-code, k2.7-code-highspeed e k3. O k2.5 só é alcançável via OpenRouter.
+  kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_6 },
   openrouter: { premium: 'moonshotai/kimi-k3', standard: 'moonshotai/kimi-k2.5', light: 'moonshotai/kimi-k2.5' },
 };
 
@@ -311,7 +322,7 @@ const DEFAULT_BUDGETS: Record<Provider, number> = {
 // ambiente/Vertex compartilhada pelo dono da plataforma (uso a pagar ao admin).
 export type KeySource = 'platform' | 'byok';
 
-interface RoutingContext {
+export interface RoutingContext {
   mode: 'auto' | 'manual';
   manualProvider: Provider | null;
   keys: Partial<Record<Provider, string>>;
@@ -470,7 +481,7 @@ export function resolveOllamaApiBaseUrl(
   return url.toString().replace(/\/+$/, '');
 }
 
-async function callProvider(
+export async function callProvider(
   provider: Provider,
   model: string,
   apiKey: string,
@@ -785,6 +796,44 @@ function logProviderSkip(agent: string, provider: string, model: string, reason:
   console.warn(`[LLM_FALLBACK] agent=${agent} pulou provider=${provider} model=${model} :: ${reason.slice(0, 200)}`);
 }
 
+/**
+ * Cadeia efetiva de um agente: tier + model lock + preferência de provider, na ordem em que
+ * o callAgent realmente vai tentar. Existe como função exportada pra que um health-check possa
+ * conferir qual provedor deveria atender sem reimplementar essa lógica (e sem errar junto).
+ */
+export function resolveAgentChain(
+  ctx: RoutingContext,
+  agent: string,
+): { provider: Provider; model: string; overBudget: boolean }[] {
+  const tier = AGENT_TIERS[agent] ?? 'standard';
+  const preference = AGENT_ROUTING_PREFERENCES[agent];
+  const modelLock = AGENT_MODEL_LOCKS[agent];
+  let chain = buildChain(ctx, tier, 0);
+
+  if (modelLock) {
+    // Lock é explícito: garante o provider travado na cadeia mesmo fora das TIER_CHAINS.
+    if (ctx.keys[modelLock.provider] && !chain.some((s) => s.provider === modelLock.provider)) {
+      chain = [{ provider: modelLock.provider, model: modelLock.model, overBudget: false }, ...chain];
+    }
+    const lockedProvider = chain.find((step) => step.provider === modelLock.provider);
+    return lockedProvider ? [{ ...lockedProvider, model: modelLock.model }] : [];
+  }
+
+  if (preference) {
+    const rank = new Map(preference.providers.map((provider, index) => [provider, index]));
+    return chain
+      .sort((a, b) => (rank.get(a.provider) ?? 999) - (rank.get(b.provider) ?? 999))
+      .map((step) => ({
+        ...step,
+        model: step.provider === 'kimi'
+          ? selectKimiModel({ agent, requestedModel: ctx.models.kimi, fallbackModel: step.model })
+          : ctx.models[step.provider] ?? preference.modelOverrides?.[step.provider] ?? step.model,
+      }));
+  }
+
+  return chain;
+}
+
 export async function callAgent(
   userId: string,
   opts: LlmOptions & { agent: string; json?: boolean; validate?: (data: any, text: string) => string | null }
@@ -811,32 +860,7 @@ export async function callAgent(
 
   const tier = AGENT_TIERS[opts.agent] ?? 'standard';
   const ctx = await getRoutingContext(userId, opts.fallbackKey);
-  const preference = AGENT_ROUTING_PREFERENCES[opts.agent];
-  const modelLock = AGENT_MODEL_LOCKS[opts.agent];
-  // A reserva exata, incluindo prompt e concorrência, ocorre atomicamente por tentativa.
-  let chain = buildChain(ctx, tier, 0);
-  if (modelLock) {
-    // Lock é explícito: garante o provider travado na cadeia mesmo fora das TIER_CHAINS.
-    if (ctx.keys[modelLock.provider] && !chain.some((s) => s.provider === modelLock.provider)) {
-      chain = [{ provider: modelLock.provider, model: modelLock.model, overBudget: false }, ...chain];
-    }
-    const lockedProvider = chain.find((step) => step.provider === modelLock.provider);
-    chain = lockedProvider ? [{ ...lockedProvider, model: modelLock.model }] : [];
-  } else if (preference) {
-    const rank = new Map(preference.providers.map((provider, index) => [provider, index]));
-    chain = chain
-      .sort((a, b) => (rank.get(a.provider) ?? 999) - (rank.get(b.provider) ?? 999))
-      .map((step) => ({
-        ...step,
-        model: step.provider === 'kimi'
-          ? selectKimiModel({
-              agent: opts.agent,
-              requestedModel: ctx.models.kimi,
-              fallbackModel: step.model,
-            })
-          : ctx.models[step.provider] ?? preference.modelOverrides?.[step.provider] ?? step.model,
-      }));
-  }
+  const chain = resolveAgentChain(ctx, opts.agent);
   if (chain.length === 0) throw new Error(NO_LLM_KEY_ERROR);
 
   const emptyUsage: LlmUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };

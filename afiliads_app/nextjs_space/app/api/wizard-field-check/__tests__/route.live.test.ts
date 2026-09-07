@@ -10,7 +10,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
-import { AGENT_TIERS, buildChain, callAgent, getRoutingContext } from '@/lib/llm';
+import { callAgent, getRoutingContext, resolveAgentChain } from '@/lib/llm';
 import { POST } from '../route';
 
 vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
@@ -43,11 +43,10 @@ describe.skipIf(!live)('POST /api/wizard-field-check — LIVE', () => {
   });
 
   it('mostra qual provedor/modelo realmente atendeu (pega fallback silencioso)', async () => {
-    // wizard-validator é tier 'light' — a cadeia dele começa no ollama local de propósito.
-    const tier = AGENT_TIERS['wizard-validator'] ?? 'standard';
+    // Cadeia efetiva do agente (tier + preferência de provider), a mesma que o callAgent usa.
     const ctx = await getRoutingContext(userId);
-    const chain = buildChain(ctx, tier);
-    console.log(`[LIVE] cadeia ${tier}:`, chain.map((s) => `${s.provider}:${s.model}`).join(' → '));
+    const chain = resolveAgentChain(ctx, 'wizard-validator');
+    console.log('[LIVE] cadeia wizard-validator:', chain.map((s) => `${s.provider}:${s.model}`).join(' → '));
 
     const res = await callAgent(userId, {
       agent: 'wizard-validator',
@@ -59,9 +58,11 @@ describe.skipIf(!live)('POST /api/wizard-field-check — LIVE', () => {
 
     expect(res.error).toBeNull();
     expect(res.provider).toBeTruthy();
-    // O provedor que atendeu tem que ser o primeiro da cadeia; se não for, houve fallback
+    // O provedor que atendeu tem que ser o primeiro da cadeia efetiva; se não for, houve fallback
     // silencioso (chave morta / quota) e a campanha está rodando num modelo que não é o escolhido.
     expect(res.provider).toBe(chain[0]?.provider);
+    // E não pode ser o ollama local: validação de campo alimenta decisão de campanha real.
+    expect(res.provider).not.toBe('ollama');
   }, 120_000);
 
   it('valida o campo vertical com diagnóstico real do LLM', async () => {
