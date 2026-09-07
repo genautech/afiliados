@@ -50,7 +50,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
           campaignId: campaign.id,
           campaignTarget: { kind: 'campaign', campaignId: campaign.id },
           systemPrompt: `Você é o Paid Ads Auditor do AfiliAds rodando dentro do loop de auto-correção. A decisão pelas REGRAS OFICIAIS (já calculadas em código) foi \"${rules.decision}\". Seu papel: confirmar ou contestar com base nos números, e listar ajustes concretos. Você NÃO pode inventar métricas — use apenas as fornecidas. Responda APENAS JSON válido.`,
-          userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).\n[INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances (\"${campaign.bidStrategy || 'não configurada'}\") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.\nEconomia calculada (últimos ${econ.logCount} registros): gasto $${econ.spend.toFixed(2)}, receita $${econ.revenue.toFixed(2)}, lucro $${econ.profit.toFixed(2)}, ${econ.clicks} cliques, ${econ.hops} hops (passagem presell→oferta ${econ.hopRatePct.toFixed(0)}%), ${econ.conversions} conversões, EPC real $${econ.epcReal.toFixed(2)}, CPC real $${econ.cpcReal.toFixed(2)}, CVR ${econ.cvrRealPct.toFixed(2)}%, burn ${econ.budgetBurnPct.toFixed(0)}% do budget de teste.\nReferência da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.\nDecisão das regras: ${rules.decision} — gatilhos: ${rules.triggers.join(' | ')}\nRetorne JSON: {\"concorda\": true|false, \"decisao_sugerida\": \"SCALE|OTIMIZAR|PAUSAR|KILL|CONTINUAR\", \"diagnostico\": \"2-3 frases\", \"ajustes\": [\"até 4 ações concretas priorizadas\"]}`,
+          userPrompt: `Campanha: ${campaign.name} (${campaign.platform}, ${campaign.vertical}, funil ${campaign.funnel}).\n[INFO GOOGLE ADS]: O orçamento diário ($${campaign.budgetDaily}), estratégia de lances (\"${campaign.bidStrategy || 'não configurada'}\") e status de ativação foram importados e sincronizados via API do Google Ads, representando o estado real da conta de anúncios.\nEconomia calculada (últimos ${econ.logCount} registros): gasto $${econ.spend.toFixed(2)}, receita bruta $${econ.revenue.toFixed(2)}, reembolso $${econ.refunds.toFixed(2)}, receita líquida $${econ.revenueNet.toFixed(2)}, lucro $${econ.profit.toFixed(2)}, ${econ.clicks} cliques, ${econ.hops} hops (passagem presell→oferta ${econ.hopRatePct.toFixed(0)}%), ${econ.conversions} conversões, EPC líquido $${econ.epcReal.toFixed(2)}, CPC real $${econ.cpcReal.toFixed(2)}, CVR ${econ.cvrRealPct.toFixed(2)}%, burn ${econ.budgetBurnPct.toFixed(0)}% do budget de teste.\nReferência da campanha: comissão líquida $${campaign.commissionNet}, EPC break-even $${campaign.epcBreakeven}, CPC máx $${campaign.cpcMax}, CPC scale $${campaign.cpcScale}.\nDecisão das regras: ${rules.decision} — gatilhos: ${rules.triggers.join(' | ')}\nRetorne JSON: {\"concorda\": true|false, \"decisao_sugerida\": \"SCALE|OTIMIZAR|PAUSAR|KILL|CONTINUAR\", \"diagnostico\": \"2-3 frases\", \"ajustes\": [\"até 4 ações concretas priorizadas\"]}`,
         });
         agentsRun.push('ads-auditor');
         totalTokens += (res.usage.totalTokens ?? 0);
@@ -117,7 +117,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
         result: finalDecision,
         actualSpend: econ.spend,
         conversions: econ.conversions,
-        revenue: econ.revenue,
+        revenue: econ.revenueNet,
         epc: econ.epcReal,
         avgCpc: econ.cpcReal,
         breakevenCpc: campaign.cpcMax,
@@ -135,7 +135,7 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
         budgetTest: campaign.budgetTest,
         actualSpend: econ.spend,
         conversions: econ.conversions,
-        revenue: econ.revenue,
+        revenue: econ.revenueNet,
         epc: econ.epcReal,
         avgCpc: econ.cpcReal,
         breakevenCpc: campaign.cpcMax,

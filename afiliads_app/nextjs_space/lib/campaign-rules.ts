@@ -1,6 +1,10 @@
 export interface CampaignEconomics {
   spend: number;
+  /** Receita bruta, antes de reembolso. Só para exibição — nenhuma regra decide por ela. */
   revenue: number;
+  refunds: number;
+  /** Receita menos reembolso. É esta que sustenta lucro, EPC e qualquer decisão. */
+  revenueNet: number;
   profit: number;
   clicks: number;
   hops: number;
@@ -34,6 +38,7 @@ interface CampaignLike {
 interface DailyLogLike {
   spend: number;
   revenue: number;
+  refunds?: number;
   clicks: number;
   hops?: number;
   conversions: number;
@@ -51,12 +56,16 @@ export function validateCampaignConfig(c: CampaignLike): string[] {
   return missing;
 }
 
+// A04: reembolso reduz receita. Antes o lucro era receita bruta - gasto, então uma campanha
+// com gasto 100, receita 200 e reembolso 200 aparecia com lucro +100 e ia para SCALE — o
+// resultado real era -100. Toda decisão passa a usar receita líquida.
 export function computeEconomics(campaign: CampaignLike, logs: DailyLogLike[]): CampaignEconomics {
-  let spend = 0, revenue = 0, clicks = 0, hops = 0, conversions = 0;
+  let spend = 0, revenue = 0, refunds = 0, clicks = 0, hops = 0, conversions = 0;
   let daysWithSpend = 0, daysOverCpcMax = 0;
   for (const l of logs) {
     spend += l.spend ?? 0;
     revenue += l.revenue ?? 0;
+    refunds += l.refunds ?? 0;
     clicks += l.clicks ?? 0;
     hops += l.hops ?? 0;
     conversions += l.conversions ?? 0;
@@ -66,15 +75,18 @@ export function computeEconomics(campaign: CampaignLike, logs: DailyLogLike[]): 
       if (campaign.cpcMax > 0 && dayCpc > campaign.cpcMax) daysOverCpcMax++;
     }
   }
+  const revenueNet = revenue - refunds;
   return {
     spend,
     revenue,
-    profit: revenue - spend,
+    refunds,
+    revenueNet,
+    profit: revenueNet - spend,
     clicks,
     hops,
     hopRatePct: clicks > 0 ? (hops / clicks) * 100 : 0,
     conversions,
-    epcReal: clicks > 0 ? revenue / clicks : 0,
+    epcReal: clicks > 0 ? revenueNet / clicks : 0,
     cpcReal: clicks > 0 ? spend / clicks : 0,
     cvrRealPct: clicks > 0 ? (conversions / clicks) * 100 : 0,
     budgetBurnPct: campaign.budgetTest > 0 ? (spend / campaign.budgetTest) * 100 : 0,
@@ -100,6 +112,10 @@ export function evaluateRules(econ: CampaignEconomics, campaign: CampaignLike): 
   if (econ.conversions === 0 && econ.spend >= 2 * campaign.commissionNet) {
     triggers.push(`Gasto $${econ.spend.toFixed(2)} ≥ 2× comissão líquida ($${campaign.commissionNet.toFixed(2)}) sem nenhuma conversão`);
   }
+  // Houve conversão, mas o reembolso comeu tudo: economicamente é igual a não ter convertido.
+  if (econ.conversions > 0 && econ.revenueNet <= 0 && econ.spend >= 2 * campaign.commissionNet) {
+    triggers.push(`Receita líquida $${econ.revenueNet.toFixed(2)} (bruta $${econ.revenue.toFixed(2)} − reembolso $${econ.refunds.toFixed(2)}) com gasto $${econ.spend.toFixed(2)} — reembolso anulou a receita`);
+  }
   if (econ.daysOverCpcMax >= 3) {
     triggers.push(`CPC real acima do máximo ($${campaign.cpcMax.toFixed(2)}) em ${econ.daysOverCpcMax} dias`);
   }
@@ -111,8 +127,12 @@ export function evaluateRules(econ: CampaignEconomics, campaign: CampaignLike): 
   }
 
   // SCALE: economia comprovada com amostra mínima
-  if (econ.conversions >= 2 && econ.cpcReal > 0 && econ.epcReal >= 1.3 * econ.cpcReal) {
-    return { decision: 'SCALE', triggers: [`EPC real $${econ.epcReal.toFixed(2)} ≥ 1.3× CPC real $${econ.cpcReal.toFixed(2)} com ${econ.conversions} conversões — elegível para escalar (requer aprovação)`] };
+  // SCALE exige lucro líquido positivo além do EPC: escalar prejuízo é o pior erro do loop.
+  if (econ.conversions >= 2 && econ.cpcReal > 0 && econ.epcReal >= 1.3 * econ.cpcReal && econ.profit > 0) {
+    return { decision: 'SCALE', triggers: [`EPC líquido $${econ.epcReal.toFixed(2)} ≥ 1.3× CPC real $${econ.cpcReal.toFixed(2)} com ${econ.conversions} conversões e lucro $${econ.profit.toFixed(2)} — elegível para escalar (requer aprovação)`] };
+  }
+  if (econ.conversions >= 2 && econ.cpcReal > 0 && econ.epcReal >= 1.3 * econ.cpcReal && econ.profit <= 0) {
+    return { decision: 'OTIMIZAR', triggers: [`EPC líquido bate o alvo mas o lucro é $${econ.profit.toFixed(2)} (gasto $${econ.spend.toFixed(2)}, receita líquida $${econ.revenueNet.toFixed(2)}) — não escalar no prejuízo`] };
   }
 
   // OTIMIZAR: paga a conta mas sem margem de escala

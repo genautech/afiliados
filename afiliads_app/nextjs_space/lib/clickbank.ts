@@ -17,6 +17,8 @@ export interface CbSyncResult {
   ok: boolean;
   period: { start: string; end: string };
   transactions: number;
+  /** Transações TEST_* descartadas — visível para não parecer que o sync "perdeu" venda. */
+  testTransactionsIgnored?: number;
   matched: { campaign: string; date: string; sales: number; revenue: number; refunds: number }[];
   unmatchedTids: Record<string, { sales: number; revenue: number }>;
   error?: string;
@@ -64,8 +66,15 @@ async function fetchTransactions(apiKey: string, startDate: string, endDate: str
   return all;
 }
 
-const SALE_TYPES = new Set(['SALE', 'BILL', 'TEST_SALE', 'TEST_BILL']);
-const REFUND_TYPES = new Set(['RFND', 'CGBK', 'INSF', 'TEST_RFND']);
+// M01: transação de teste do ClickBank não pode virar receita real. TEST_SALE/TEST_BILL
+// entravam no diário como venda, inflando receita e conversões — e o loop decidia com isso.
+const SALE_TYPES = new Set(['SALE', 'BILL']);
+const REFUND_TYPES = new Set(['RFND', 'CGBK', 'INSF']);
+export const TEST_TXN_TYPES = new Set(['TEST_SALE', 'TEST_BILL', 'TEST_REBILL', 'TEST_RFND']);
+
+export function isTestTransaction(txnType: string): boolean {
+  return TEST_TXN_TYPES.has(txnType) || txnType.startsWith('TEST_');
+}
 
 export async function syncClickbank(userId: string, days = 3): Promise<CbSyncResult> {
   const creds = await getCbKey(userId);
@@ -79,7 +88,12 @@ export async function syncClickbank(userId: string, days = 3): Promise<CbSyncRes
 
   // Agrega por (trackingId, dia)
   const agg = new Map<string, { sales: number; revenue: number; refunds: number }>();
+  let testesIgnorados = 0;
   for (const t of txns) {
+    if (isTestTransaction(t.txnType)) {
+      testesIgnorados++;
+      continue;
+    }
     const tid = (t.trackingId ?? '').trim();
     const day = (t.transactionTime ?? '').slice(0, 10);
     if (!day) continue;
@@ -141,5 +155,5 @@ export async function syncClickbank(userId: string, days = 3): Promise<CbSyncRes
     create: { userId, serviceName: 'clickbank', fieldName: 'last_sync', fieldValue: new Date().toISOString() },
   });
 
-  return { ok: true, period, transactions: txns.length, matched, unmatchedTids };
+  return { ok: true, period, transactions: txns.length, testTransactionsIgnored: testesIgnorados, matched, unmatchedTids };
 }

@@ -21,6 +21,27 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/** Campos numéricos do DailyLog: ausentes no body ficam de fora do update (não viram 0). */
+const CAMPOS_NUMERICOS = ['impressions', 'spend', 'clicks', 'hops', 'conversions', 'revenue', 'refunds'] as const;
+/** Campos de texto: ausentes ficam de fora (não viram null). */
+const CAMPOS_TEXTO = ['network', 'offerName', 'vertical', 'geo', 'channel', 'funnel', 'decision', 'notes'] as const;
+
+export function buildPartialUpdate(body: Record<string, any>): Record<string, any> {
+  const update: Record<string, any> = {};
+  for (const campo of CAMPOS_NUMERICOS) {
+    const valor = body?.[campo];
+    if (valor === undefined || valor === null) continue;
+    const n = Number(valor);
+    if (Number.isFinite(n)) update[campo] = n;
+  }
+  for (const campo of CAMPOS_TEXTO) {
+    const valor = body?.[campo];
+    if (valor === undefined) continue;
+    update[campo] = valor;
+  }
+  return update;
+}
+
 export async function POST(request: NextRequest) {
   try {
     let userId: string | null = null;
@@ -51,25 +72,13 @@ export async function POST(request: NextRequest) {
     body.offerName = body?.offerName ?? parentCampaign.name;
     const logDate = new Date(body?.logDate ?? new Date());
     logDate.setHours(0, 0, 0, 0);
+    // M04: atualização parcial. O update antigo escrevia 0/null em TODO campo ausente do body,
+    // então um POST só com `spend` (sync do Google Ads) zerava a receita que o sync do ClickBank
+    // tinha acabado de gravar no mesmo dia. Só entra no update o que veio explícito.
+    const update = buildPartialUpdate(body);
     const log = await prisma.dailyLog.upsert({
       where: { campaignId_logDate: { campaignId: body?.campaignId, logDate } },
-      update: {
-        impressions: body?.impressions ?? 0,
-        spend: body?.spend ?? 0,
-        clicks: body?.clicks ?? 0,
-        hops: body?.hops ?? 0,
-        conversions: body?.conversions ?? 0,
-        revenue: body?.revenue ?? 0,
-        refunds: body?.refunds ?? 0,
-        network: body?.network ?? null,
-        offerName: body?.offerName ?? null,
-        vertical: body?.vertical ?? null,
-        geo: body?.geo ?? null,
-        channel: body?.channel ?? null,
-        funnel: body?.funnel ?? null,
-        decision: body?.decision ?? null,
-        notes: body?.notes ?? null,
-      },
+      update,
       create: {
         campaignId: body?.campaignId,
         userId: uid,

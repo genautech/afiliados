@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
     const criticalUnchecked = campaign.checklists?.filter((c: any) => c.isCritical && !c.isChecked) ?? [];
     const keywordsSelected = campaign.keywords?.filter((k: any) => k.isSelected)?.length ?? 0;
     const totalSpend = econ.spend;
-    const totalRevenue = econ.revenue;
+    // A04: relatório usa receita líquida, a mesma base das regras.
+    const totalRevenue = econ.revenueNet;
     const totalClicks = econ.clicks;
     const totalConversions = econ.conversions;
 
@@ -134,7 +135,7 @@ ${campaign.bidStrategy
 
 **Performance (calculada em código — use ESTES números, não recalcule):**
 - Gasto total: $${totalSpend.toFixed(2)} (${econ.budgetBurnPct.toFixed(0)}% do budget de teste)
-- Receita total: $${totalRevenue.toFixed(2)} · Lucro: $${econ.profit.toFixed(2)}
+- Receita líquida: $${totalRevenue.toFixed(2)} (bruta $${econ.revenue.toFixed(2)} − reembolso $${econ.refunds.toFixed(2)}) · Lucro: $${econ.profit.toFixed(2)}
 - Cliques: ${totalClicks} · Conversões: ${totalConversions} · CVR real: ${econ.cvrRealPct.toFixed(2)}%
 - EPC real: $${econ.epcReal.toFixed(4)} · CPC real: $${econ.cpcReal.toFixed(4)}
 - Dias com gasto: ${econ.daysWithSpend} · Dias com CPC acima do máximo: ${econ.daysOverCpcMax}
