@@ -1,3 +1,5 @@
+import type { SpendCoverage } from './spend-coverage';
+
 export interface CampaignEconomics {
   /** Gasto da janela de performance (ou total, quando não há janela). */
   spend: number;
@@ -60,6 +62,12 @@ export interface EconomicsOptions {
    */
   performanceWindowDays?: number;
   now?: Date;
+  /**
+   * A03: recorte que a ingestão de gasto acabou de cobrir. Quando presente, o
+   * `observedAt` é a observação mais recente da plataforma e entra no cálculo de
+   * `dataAgeHours` junto com o `syncedAt` dos diários. Null = sync falhou nesta rodada.
+   */
+  spendCoverage?: SpendCoverage | null;
 }
 
 // Campos mínimos para qualquer análise econômica fazer sentido
@@ -95,6 +103,10 @@ export function computeEconomics(
   // Acumulado de orçamento: TODO o histórico, sem janela.
   let spendTotal = 0;
   let ultimoSyncMs: number | null = null;
+  if (options.spendCoverage) {
+    const ms = paraData(options.spendCoverage.observedAt).getTime();
+    if (Number.isFinite(ms)) ultimoSyncMs = ms;
+  }
   for (const l of logs) {
     spendTotal += l.spend ?? 0;
     if (l.syncedAt) {
