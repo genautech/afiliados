@@ -8,14 +8,22 @@ const { findMany } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     integration: { findMany },
+    user: { findUnique: vi.fn() },
   },
 }));
+vi.mock('next-auth', () => ({ getServerSession: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
 import { POST } from '../route';
+import { resetTrackingGuardState } from '@/lib/tracking-guard';
 
 describe('POST /api/tracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetTrackingGuardState();
+    findMany.mockResolvedValue([]);
+    vi.stubEnv('META_PIXEL_ID', '');
+    vi.stubEnv('META_ACCESS_TOKEN', '');
   });
 
   it('rejeita requisição sem eventName', async () => {
@@ -41,6 +49,8 @@ describe('POST /api/tracking', () => {
   });
 
   it('despacha evento formatado com sucesso para a API do Meta', async () => {
+    // Credencial vem do ambiente/integração — o body não aceita mais accessToken (S02).
+    vi.stubEnv('META_ACCESS_TOKEN', 'mock-token');
     // Mock global fetch for meta CAPI
     const globalFetch = global.fetch;
     global.fetch = vi.fn().mockResolvedValue({
@@ -54,7 +64,6 @@ describe('POST /api/tracking', () => {
         body: JSON.stringify({
           eventName: 'PageView',
           pixelId: '123456789',
-          accessToken: 'mock-token',
           userData: {
             email: 'test@example.com',
             firstName: 'Genautech',

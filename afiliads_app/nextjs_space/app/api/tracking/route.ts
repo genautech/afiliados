@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { readIntegrationFieldValue } from '@/lib/integration-secrets';
+import { consumirRateLimit, isFinancialEvent, registrarEventId } from '@/lib/tracking-guard';
 import crypto from 'crypto';
 
 interface TrackingEventPayload {
   userId?: string;
   pixelId?: string; // Optional if configured in db or env
-  accessToken?: string; // Optional if configured in db or env
+  // accessToken NÃO é mais aceito no body: era proxy anônimo para a CAPI com credencial
+  // de terceiro. A credencial sai sempre da integração do usuário ou do ambiente.
   eventName: string; // e.g. PageView, Lead, Purchase, InitiateCheckout
   eventTime?: number; // Unix timestamp in seconds
   eventSourceUrl?: string;
@@ -44,11 +48,25 @@ function hashValue(value?: string): string | null {
   return crypto.createHash('sha256').update(clean).digest('hex');
 }
 
+/**
+ * Identidade do chamador: sessão do app ou token de integração do MCP. Nunca o `userId` do
+ * body — era exatamente por ali que um anônimo disparava conversão na conta de outro.
+ */
+async function resolveAuthUserId(request: NextRequest): Promise<string | null> {
+  const mcpToken = request.headers.get('x-afiliads-token');
+  if (mcpToken && process.env.AFILIADS_MCP_TOKEN && mcpToken === process.env.AFILIADS_MCP_TOKEN) {
+    const email = process.env.AFILIADS_MCP_USER_EMAIL;
+    const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
+    return user?.id ?? null;
+  }
+  const session = await getServerSession(authOptions);
+  return session?.user ? ((session.user as any)?.id ?? null) : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: TrackingEventPayload = await request.json();
     const {
-      userId,
       eventName,
       eventTime,
       eventSourceUrl,
@@ -62,9 +80,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'eventName é obrigatório' }, { status: 400 });
     }
 
+    // Credencial nunca vem do cliente. Sem isso, a rota era proxy aberto para a CAPI.
+    if ((body as any).accessToken) {
+      return NextResponse.json(
+        { error: 'accessToken não é aceito no corpo da requisição' },
+        { status: 400 },
+      );
+    }
+
+    const authUserId = await resolveAuthUserId(request);
+    const financeiro = isFinancialEvent(eventName);
+
+    // Evento financeiro move dinheiro e otimização: exige chamador autenticado e integração
+    // Meta ativa na conta dele. Evento de navegação segue público, com rate limit por IP.
+    if (financeiro && !authUserId) {
+      return NextResponse.json(
+        { error: `Evento ${eventName} exige autenticação` },
+        { status: 401 },
+      );
+    }
+
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || request.headers.get('x-real-ip')
+      || 'desconhecido';
+    if (!financeiro && !consumirRateLimit(ip)) {
+      return NextResponse.json({ error: 'Limite de eventos excedido' }, { status: 429 });
+    }
+
+    // Deduplicação por eventId: retry do cliente não pode virar duas conversões.
+    if (eventId && !registrarEventId(eventId)) {
+      return NextResponse.json({ success: true, eventId, deduplicated: true });
+    }
+
+    // Para evento financeiro, a conta é a do chamador autenticado — nunca a que veio no body.
+    // Para navegação, o body ainda pode apontar a conta dona do pixel (não expõe credencial).
+    const userId = financeiro ? authUserId : (authUserId ?? body.userId);
+
     // Retrieve Meta credentials from DB integrations or Environment Variables
     let pixelId = body.pixelId || process.env.META_PIXEL_ID;
-    let accessToken = body.accessToken || process.env.META_ACCESS_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN;
+    let accessToken = process.env.META_ACCESS_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN;
+    let temIntegracao = false;
 
     if (userId && (!pixelId || !accessToken)) {
       try {
@@ -80,9 +135,17 @@ export async function POST(request: NextRequest) {
         const dbToken = read(rows.find(r => r.fieldName === 'access_token' || r.fieldName === 'meta_access_token'));
         if (dbPixel) pixelId = dbPixel;
         if (dbToken) accessToken = dbToken;
+        temIntegracao = Boolean(dbPixel && dbToken);
       } catch (err) {
         console.warn('Failed to retrieve Meta credentials from DB integrations:', err);
       }
+    }
+
+    if (financeiro && !temIntegracao) {
+      return NextResponse.json(
+        { error: 'Nenhuma integração Meta ativa vinculada a esta conta' },
+        { status: 403 },
+      );
     }
 
     if (!pixelId) {

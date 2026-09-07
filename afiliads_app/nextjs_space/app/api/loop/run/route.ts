@@ -22,12 +22,24 @@ export async function POST(request: NextRequest) {
     const userId = await resolveUserId(request);
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-    const body = await request.json().catch(() => ({}));
+    // Body vazio é chamada legítima ("roda meus loops vencidos"); body com JSON quebrado não —
+    // antes virava {} silenciosamente e caía no caminho de varredura.
+    const raw = (await request.text()).trim();
+    let body: any = {};
+    if (raw) {
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        return NextResponse.json({ error: 'Body inválido: JSON malformado' }, { status: 400 });
+      }
+    }
     if (body?.campaignId) {
       const result = await runCampaignLoop(userId, body.campaignId, body?.trigger === 'daily-log' ? 'daily-log' : 'manual');
       return NextResponse.json(result);
     }
-    const results = await runDueLoops('manual');
+    // Escopo explícito no usuário autenticado: esta rota nunca varre campanha de terceiro.
+    // A varredura global vive em /api/loop/cron, atrás de segredo interno.
+    const results = await runDueLoops('manual', { kind: 'user', userId });
     return NextResponse.json({ ran: results.length, results });
   } catch (err: any) {
     console.error('Loop run error:', err);

@@ -321,10 +321,31 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
   };
 }
 
-export async function runDueLoops(trigger: 'cron' | 'manual' = 'cron'): Promise<LoopRunResult[]> {
+/**
+ * Alcance de uma varredura de loops. É obrigatório e explícito de propósito: a versão anterior
+ * de runDueLoops varria as campanhas de TODOS os usuários e a rota autenticada
+ * /api/loop/run chamava ela sem userId — qualquer usuário logado disparava o loop (e as
+ * pausas automáticas no Google Ads) nas campanhas de todo mundo. Sem valor default aqui,
+ * nenhum chamador consegue cair no escopo global sem escrever isso.
+ */
+export type LoopScope =
+  | { kind: 'user'; userId: string }
+  | { kind: 'all-users'; reason: string };
+
+export async function runDueLoops(
+  trigger: 'cron' | 'manual',
+  scope: LoopScope,
+): Promise<LoopRunResult[]> {
   const now = Date.now();
+  if (scope.kind === 'user' && !scope.userId) {
+    throw new Error('runDueLoops: escopo de usuário exige userId');
+  }
   const candidates = await prisma.campaign.findMany({
-    where: { loopEnabled: true, status: { notIn: ['KILL'] } },
+    where: {
+      loopEnabled: true,
+      status: { notIn: ['KILL'] },
+      ...(scope.kind === 'user' ? { userId: scope.userId } : {}),
+    },
     select: { id: true, userId: true, loopInterval: true, lastLoopRunAt: true, status: true },
   });
   const due = candidates.filter((c) => {

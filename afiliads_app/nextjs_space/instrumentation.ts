@@ -58,7 +58,11 @@ async function registerLoopScheduler() {
 
       // 2) Roda o loop de decisão nas campanhas devidas
       const { runDueLoops } = await import('./lib/loop-engine');
-      const results = await runDueLoops('cron');
+      // Scheduler in-process: é o entrypoint global legítimo (roda em nome de todas as contas).
+      const results = await runDueLoops('cron', {
+        kind: 'all-users',
+        reason: 'loop-scheduler in-process (instrumentation.ts)',
+      });
       if (results.length > 0) {
         console.log(`[loop-scheduler] ${results.length} campanha(s) processada(s):`, results.map(r => `${r.campaignName}→${r.decision}`).join(', '));
       }
