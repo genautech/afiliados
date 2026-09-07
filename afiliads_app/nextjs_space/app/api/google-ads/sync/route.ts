@@ -4,7 +4,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, fetchGoogleAdsDailyMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
-import { getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
+import { getGoogleAdsConfig, isMockMode, fetchGoogleCampaignStatus } from '@/lib/google-ads';
+import { PENDING_LAUNCH, PENDING_PAUSE } from '@/lib/campaign-status';
 import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
 import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
 import { deriveCampaignLaunchState } from '@/lib/campaign-launch-state';
@@ -111,14 +112,20 @@ export async function POST(request: NextRequest) {
       let dailyLogsUpdated = 0;
       let dailyMetricsError: string | null = null;
       try {
-        const diario = await fetchGoogleAdsDailyMetrics(userId, gadsData.name, 30);
-        for (const dia of diario) {
+        const googleCampaignId = updatedCampaign.googleCampaignId;
+        if (!googleCampaignId) {
+          throw new Error('Campanha sem ID numérico do Google Ads; sincronize o pull antes de ingerir gasto');
+        }
+        // A05: o gasto é acumulado desde o lançamento, não uma janela fixa de 30 dias.
+        const desde = updatedCampaign.launchedAt ?? updatedCampaign.createdAt;
+        const batch = await fetchGoogleAdsDailyMetrics(userId, googleCampaignId, desde);
+        for (const dia of batch.metrics) {
           const logDate = new Date(`${dia.date}T00:00:00.000Z`);
           const dadosPlataforma = {
             spend: dia.costMicros / 1_000_000,
             clicks: dia.clicks,
             impressions: dia.impressions,
-            syncedAt: new Date(),
+            syncedAt: batch.observedAt,
           };
           await prisma.dailyLog.upsert({
             where: { campaignId_logDate: { campaignId, logDate } },
@@ -205,9 +212,50 @@ export async function POST(request: NextRequest) {
       if (pushUpdates.status) statusCapability = issueCapability('mutateGoogleCampaign.status');
       if (pushUpdates.budgetDaily !== undefined) budgetCapability = issueCapability('mutateGoogleCampaign.budget');
 
-      const res = await mutateGoogleCampaign(userId, gadsId, pushUpdates, { status: statusCapability, budget: budgetCapability });
+      // A01: o status local só muda depois que o Google Ads confirma. Enquanto não confirma,
+      // a campanha fica em PENDING_LAUNCH/PENDING_PAUSE com a falha registrada como decisão —
+      // antes bastava a chamada não explodir para o painel afirmar ATIVA/PAUSADA.
+      const statusPendente = pushUpdates.status === 'ENABLED' ? PENDING_LAUNCH : PENDING_PAUSE;
+      const registrarPendencia = async (motivo: string) => {
+        await prisma.campaignDecision.create({
+          data: {
+            campaignId,
+            userId,
+            decision: 'SYNC_PUSH_FAILED',
+            rationale: `PUSH não confirmado pelo Google Ads: ${motivo}`,
+          },
+        }).catch(() => {});
+        if (pushUpdates.status) {
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { status: statusPendente },
+          }).catch(() => {});
+        }
+      };
 
-      // Atualiza local se enviou com sucesso
+      let res: Awaited<ReturnType<typeof mutateGoogleCampaign>>;
+      try {
+        res = await mutateGoogleCampaign(userId, gadsId, pushUpdates, { status: statusCapability, budget: budgetCapability });
+        if (!res.success) throw new Error(res.log || 'Google Ads não confirmou a mutação');
+        // Releitura remota: a resposta do mutate diz que o pedido foi aceito, não que o
+        // estado mudou. Em mock não há o que reler.
+        if (pushUpdates.status && !isMockMode(adsConfig)) {
+          const remoto = await fetchGoogleCampaignStatus(userId, gadsId);
+          if (remoto !== pushUpdates.status) {
+            throw new Error(`estado remoto ainda é ${remoto}, esperado ${pushUpdates.status}`);
+          }
+        }
+      } catch (pushError: any) {
+        const motivo = pushError?.message || 'falha desconhecida no push';
+        await registrarPendencia(motivo);
+        return NextResponse.json({
+          error: `Push não confirmado no Google Ads: ${motivo}`,
+          status: pushUpdates.status ? statusPendente : campaign.status,
+          retryable: true,
+        }, { status: 502 });
+      }
+
+      // Confirmado remotamente: agora o estado local pode afirmar o que existe lá fora.
       const updatedCampaign = await prisma.campaign.update({
         where: { id: campaignId },
         data: {

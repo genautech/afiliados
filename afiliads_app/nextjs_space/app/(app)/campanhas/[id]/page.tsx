@@ -36,6 +36,7 @@ const launchStateLabels: Record<string, string> = {
   CONFIGURING: 'Em configuração',
   READY_FOR_REMOTE_CREATE: 'Pronta para criar no Google Ads',
   REMOTE_PAUSED: 'Criada, mas PAUSED no Google Ads',
+  PENDING_PAUSE: 'Pausa pendente — pode continuar rodando no Google Ads',
   PAUSED: 'Pausada no Google Ads',
   ACTIVE: 'Ativa e verificada no Google Ads',
 };

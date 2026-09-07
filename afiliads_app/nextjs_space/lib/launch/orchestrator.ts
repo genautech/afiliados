@@ -13,6 +13,7 @@
 //   5. Falha parcial compensa: se um canal criou e outro falhou, o que subiu é
 //      pausado e a linha vira COMPENSATED. Nada fica no ar sem o par.
 import { prisma } from '@/lib/prisma';
+import { PENDING_LAUNCH } from '@/lib/campaign-status';
 import { evaluateClaimGate, type ClaimGateRow } from '@/lib/subsidios/ebook-os/claim-gate';
 import { googleAdsAdapter } from './google-adapter';
 import { metaAdsAdapter } from './meta-adapter';
@@ -310,16 +311,19 @@ export async function executeLaunch(input: LaunchInput): Promise<LaunchResult> {
 
   if (success) {
     const anyLive = outcomes.some(o => o.mode === 'LIVE');
+    // A01: o adapter cria a campanha PAUSED no anunciante. Marcar ATIVA aqui era estado
+    // local otimista — o painel dizia "no ar" com a campanha parada lá fora. Fica
+    // PENDING_LAUNCH até uma ativação confirmada remotamente (rota de sync/push).
     await prisma.campaign.update({
       where: { id: campaignId },
       data: {
         launchCheckpoint: 'SUCCESS',
         launchIdempotencyKey: idempotencyKey,
-        ...(anyLive ? { status: 'ATIVA' } : {}),
+        ...(anyLive ? { status: PENDING_LAUNCH } : {}),
       },
     });
     logs.push(anyLive
-      ? 'Lançamento concluído. Campanhas criadas PAUSED no anunciante — ativar manualmente.'
+      ? 'Lançamento concluído. Campanhas criadas PAUSED no anunciante — ativar pela rota de sync/push.'
       : 'Simulação concluída. Nenhum recurso real foi criado.');
   }
 

@@ -1,3 +1,7 @@
+import { confirmLoopPause } from './google-ads/loop-pause';
+import { reconcileCampaignStatus } from './google-ads/reconcile-status';
+import { syncCampaignSpend } from './google-ads/spend-sync';
+import type { SpendCoverage } from './spend-coverage';
 import { prisma } from './prisma';
 import { callAgent } from './llm';
 import { computeEconomics, evaluateRules, type RulesResult, type CampaignEconomics } from './campaign-rules';
@@ -29,25 +33,71 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
   // 30 dias a $5/dia mostrava $70 gastos de um budget de teste de $100 — nunca batia 100% e
   // nunca pausava, mesmo tendo gasto $150. Orçamento é acumulado desde o lançamento; janela
   // deslizante vale só para as métricas de performance (CPC/EPC/CVR).
-  const campaign = await prisma.campaign.findFirst({
+  let campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, userId },
     include: { dailyLogs: { orderBy: { logDate: 'desc' } } },
   });
   if (!campaign) throw new Error('Campanha não encontrada');
 
+  // A01/A02: antes de decidir qualquer coisa, resolve pendência de confirmação remota. Sem
+  // isso o loop opera sobre um status que o Google Ads nunca confirmou — e uma campanha que
+  // subiu PAUSED apareceria como candidata a SCALE.
+  const reconciliacao = await reconcileCampaignStatus(userId, campaign);
+  if (reconciliacao.reconciliado) {
+    campaign = {
+      ...campaign,
+      status: reconciliacao.status,
+      loopEnabled: reconciliacao.loopEnabled ?? campaign.loopEnabled,
+    };
+    // Campanha confirmada parada não recebe loop de otimização: só a checagem de compliance.
+    if (campaign.status === 'PAUSADA') return runComplianceOnlyCheck(userId, campaignId);
+  }
+
+  let pendingPause: 'KILL' | 'PAUSAR' | null = null;
+  if (campaign.loopEnabled && campaign.googleCampaignId) {
+    const previous = await prisma.campaignDecision.findFirst({
+      where: { userId, campaignId, decision: { in: ['AUTO_PAUSE_PENDING', 'AUTO_PAUSE_CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (previous?.decision === 'AUTO_PAUSE_PENDING') {
+      try {
+        const intent = JSON.parse(previous.rationale || '{}');
+        if (intent.googleCampaignId === campaign.googleCampaignId && ['KILL','PAUSADO'].includes(intent.target)) pendingPause = intent.target === 'KILL' ? 'KILL' : 'PAUSAR';
+      } catch { /* Sem contrato de intenção válido, não executa uma mutação por inferência. */ }
+    }
+  }
+
+  let spendCoverage: SpendCoverage | null = null;
+  let spendSyncError: string | null = null;
+  if (campaign.googleCampaignId) {
+    try {
+      const synced = await syncCampaignSpend(userId, campaignId);
+      spendCoverage = synced.coverage;
+      const refreshed = await prisma.campaign.findFirst({
+        where: { id: campaignId, userId }, include: { dailyLogs: { orderBy: { logDate: 'desc' } } },
+      });
+      if (!refreshed) throw new Error('Campanha indisponível após sync');
+      campaign = refreshed;
+    } catch (error) {
+      spendCoverage = null;
+      spendSyncError = error instanceof Error ? error.message : 'Falha na ingestão de gasto';
+    }
+  }
+
   const econ = computeEconomics(campaign, campaign.dailyLogs, {
     performanceWindowDays: PERFORMANCE_WINDOW_DAYS,
+    spendCoverage,
   });
   const rules: RulesResult = evaluateRules(econ, campaign);
 
   const agentsRun: string[] = [];
   let totalTokens = 0;
   let llmSummary: string | null = null;
-  let error: string | null = null;
-  let finalDecision = rules.decision;
+  let error: string | null = spendSyncError;
+  let finalDecision = pendingPause ?? rules.decision;
   const allTriggers = [...rules.triggers];
 
-  const needsLlm = !['SEM_DADOS', 'CONFIG_INCOMPLETA'].includes(rules.decision);
+  const needsLlm = !['SEM_DADOS', 'CONFIG_INCOMPLETA', 'PAUSAR', 'KILL'].includes(finalDecision);
   const wanted = (campaign.loopAgents ?? 'ads').split(',').map((s) => s.trim()).filter(Boolean);
 
   if (needsLlm) {
@@ -156,58 +206,16 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
       },
     }).catch((e) => console.error('TestResult upsert error:', e?.message));
   }
-  // KILL/PAUSAR mudam status automaticamente; SCALE só sugere (aprovação humana)
-  if (finalDecision === 'KILL') {
-    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'KILL', lastLoopRunAt: new Date() } });
+  // A decisão de segurança é uma intenção. Só a releitura remota confirma o estado local.
+  if (finalDecision === 'KILL' || finalDecision === 'PAUSAR') {
     try {
-      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
-      const gadsConfig = await getGoogleAdsConfig(userId);
-      if (gadsConfig) {
-        let gadsId = campaign.googleCampaignId;
-        if (!gadsId || isNaN(Number(gadsId))) {
-          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) {
-            gadsId = gadsData.googleCampaignId;
-            await prisma.campaign.update({
-              where: { id: campaign.id },
-              data: { googleCampaignId: gadsId },
-            }).catch(() => {});
-          }
-        }
-        if (gadsId && !isNaN(Number(gadsId))) {
-          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
-          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: KILL)');
-        }
-      }
-    } catch (err: any) {
-      console.error('Google Ads Auto-Pause (KILL) error:', err?.message);
-    }
-  } else if (finalDecision === 'PAUSAR') {
-    // 'PAUSADO' (não 'PAUSADA') é a forma usada em todo o resto do app — ver
-    // app/api/google-ads/sync/route.ts e os badges de status nas telas de campanha.
-    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSADO', lastLoopRunAt: new Date() } });
-    try {
-      const { getGoogleAdsConfig, fetchGoogleCampaign, mutateGoogleCampaign } = await import('./google-ads');
-      const gadsConfig = await getGoogleAdsConfig(userId);
-      if (gadsConfig) {
-        let gadsId = campaign.googleCampaignId;
-        if (!gadsId || isNaN(Number(gadsId))) {
-          const gadsData = await fetchGoogleCampaign(userId, campaign.googleCampaignName || campaign.name);
-          if (gadsData?.googleCampaignId) {
-            gadsId = gadsData.googleCampaignId;
-            await prisma.campaign.update({
-              where: { id: campaign.id },
-              data: { googleCampaignId: gadsId },
-            }).catch(() => {});
-          }
-        }
-        if (gadsId && !isNaN(Number(gadsId))) {
-          await mutateGoogleCampaign(userId, gadsId, { status: 'PAUSED' });
-          allTriggers.push('Google Ads Auto-Pause: Campanha pausada na conta de anúncios (decisão: PAUSAR)');
-        }
-      }
-    } catch (err: any) {
-      console.error('Google Ads Auto-Pause (PAUSAR) error:', err?.message);
+      await confirmLoopPause(userId, campaign, finalDecision === 'KILL' ? 'KILL' : 'PAUSADO');
+      allTriggers.push('Pausa confirmada remotamente no Google Ads');
+    } catch (pauseError) {
+      const message = pauseError instanceof Error ? pauseError.message : 'Falha ao confirmar pausa';
+      error = [error, `Pausa pendente: ${message}`].filter(Boolean).join(' | ');
+      allTriggers.push(`Pausa não confirmada: ${message}`);
+      // Mantém o status e a cadência anterior, permitindo reconciliar na próxima varredura.
     }
   } else {
     await prisma.campaign.update({ where: { id: campaign.id }, data: { lastLoopRunAt: new Date() } });

@@ -40,6 +40,19 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
 import { POST } from '../sync/route';
 
+// Espelha o contrato real de fetchGoogleAdsDailyMetrics (DailyMetricsBatch), não só a lista:
+// o batch carrega a cobertura (from/through/timeZone/observedAt) que a rota usa em syncedAt.
+function batch(metrics: Array<{ date: string; costMicros: number; clicks: number; impressions: number; conversions: number }>) {
+  return {
+    googleCampaignId: '123',
+    from: metrics[0]?.date ?? '2026-09-01',
+    through: metrics[metrics.length - 1]?.date ?? '2026-09-06',
+    timeZone: 'America/Sao_Paulo',
+    observedAt: new Date('2026-09-06T12:00:00.000Z'),
+    metrics,
+  };
+}
+
 function req(body: unknown) {
   return new NextRequest('http://localhost/api/google-ads/sync', {
     method: 'POST',
@@ -55,8 +68,15 @@ describe('A03 — sync grava gasto diário', () => {
     mocks.campaignFindFirst.mockResolvedValue({
       id: 'c1', name: 'camp', googleCampaignName: 'camp', googleCampaignId: '123',
       status: 'ATIVA', loopEnabled: true,
+      launchedAt: new Date('2026-09-01T00:00:00.000Z'), createdAt: new Date('2026-08-20T00:00:00.000Z'),
     });
-    mocks.campaignUpdate.mockResolvedValue({ id: 'c1' });
+    // O update devolve a campanha inteira (é isso que o Prisma faz); a rota lê
+    // googleCampaignId e launchedAt daqui para montar a janela de ingestão.
+    mocks.campaignUpdate.mockResolvedValue({
+      id: 'c1', name: 'camp', googleCampaignName: 'camp', googleCampaignId: '123',
+      status: 'ATIVA', loopEnabled: true,
+      launchedAt: new Date('2026-09-01T00:00:00.000Z'), createdAt: new Date('2026-08-20T00:00:00.000Z'),
+    });
     mocks.decisionCreate.mockResolvedValue({});
     mocks.keywordFindMany.mockResolvedValue([]);
     mocks.fetchKeywordMetrics.mockResolvedValue([]);
@@ -68,15 +88,17 @@ describe('A03 — sync grava gasto diário', () => {
   });
 
   it('gasto 50 e 100 cliques viram DailyLog.spend=50 com syncedAt', async () => {
-    mocks.fetchDailyMetrics.mockResolvedValue([
+    mocks.fetchDailyMetrics.mockResolvedValue(batch([
       { date: '2026-09-06', costMicros: 50_000_000, clicks: 100, impressions: 900, conversions: 2 },
-    ]);
+    ]));
 
     const res = await POST(req({ campaignId: 'c1', direction: 'pull' }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.dailyLogsUpdated).toBe(1);
+    // A05: a janela começa no lançamento e é uma Date, não um número de dias.
+    expect(mocks.fetchDailyMetrics).toHaveBeenCalledWith('user-1', '123', new Date('2026-09-01T00:00:00.000Z'));
     const chamada = mocks.dailyLogUpsert.mock.calls[0][0];
     expect(chamada.update.spend).toBe(50);
     expect(chamada.update.clicks).toBe(100);
@@ -85,9 +107,9 @@ describe('A03 — sync grava gasto diário', () => {
   });
 
   it('não escreve receita nem reembolso — esses campos são do ClickBank (M04)', async () => {
-    mocks.fetchDailyMetrics.mockResolvedValue([
+    mocks.fetchDailyMetrics.mockResolvedValue(batch([
       { date: '2026-09-06', costMicros: 50_000_000, clicks: 100, impressions: 900, conversions: 2 },
-    ]);
+    ]));
 
     await POST(req({ campaignId: 'c1', direction: 'pull' }));
 
@@ -109,10 +131,10 @@ describe('A03 — sync grava gasto diário', () => {
   });
 
   it('vários dias geram um upsert por dia', async () => {
-    mocks.fetchDailyMetrics.mockResolvedValue([
+    mocks.fetchDailyMetrics.mockResolvedValue(batch([
       { date: '2026-09-05', costMicros: 10_000_000, clicks: 10, impressions: 100, conversions: 0 },
       { date: '2026-09-06', costMicros: 20_000_000, clicks: 20, impressions: 200, conversions: 1 },
-    ]);
+    ]));
 
     const res = await POST(req({ campaignId: 'c1', direction: 'pull' }));
     expect((await res.json()).dailyLogsUpdated).toBe(2);

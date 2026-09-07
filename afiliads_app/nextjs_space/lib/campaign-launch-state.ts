@@ -1,7 +1,10 @@
+import { PENDING_PAUSE } from './campaign-status';
+
 export const CAMPAIGN_LAUNCH_STATES = [
   'CONFIGURING',
   'READY_FOR_REMOTE_CREATE',
   'REMOTE_PAUSED',
+  'PENDING_PAUSE',
   'PAUSED',
   'ACTIVE',
 ] as const;
@@ -20,5 +23,8 @@ export function deriveCampaignLaunchState(input: CampaignLaunchStateInput): Camp
   if (!input.googleCampaignId) return 'READY_FOR_REMOTE_CREATE';
   if (input.status === 'ATIVA') return 'ACTIVE';
   if (input.status === 'PAUSADA' || input.status === 'PAUSADO') return 'PAUSED';
+  // A01: pausa pedida e não confirmada. Chamar isso de REMOTE_PAUSED esconderia uma campanha
+  // que provavelmente continua gastando lá fora.
+  if (input.status === PENDING_PAUSE) return 'PENDING_PAUSE';
   return 'REMOTE_PAUSED';
 }

@@ -165,7 +165,7 @@ describe('executeLaunch', () => {
     expect(r.channels.map(c => c.channel)).toEqual(['META_ADS']);
   });
 
-  it('só marca campanha ATIVA quando algum canal rodou LIVE', async () => {
+  it('A01: canal LIVE deixa a campanha em PENDING_LAUNCH, nunca ATIVA', async () => {
     await executeLaunch(base);
     const mockCall = h.campaign.update.mock.calls.at(-1)?.[0];
     expect(mockCall.data.status).toBeUndefined();
@@ -180,6 +180,7 @@ describe('executeLaunch', () => {
     h.google.create.mockResolvedValue({ externalIds: { campaign: 'g1' }, mode: 'LIVE', logs: [] });
     h.meta.create.mockResolvedValue({ externalIds: { campaign: 'm1' }, mode: 'LIVE', logs: [] });
     await executeLaunch({ ...base, idempotencyKey: 'k2' });
-    expect(h.campaign.update.mock.calls.at(-1)?.[0].data.status).toBe('ATIVA');
+    // O adapter cria a campanha PAUSED no anunciante: ATIVA aqui seria mentira do painel.
+    expect(h.campaign.update.mock.calls.at(-1)?.[0].data.status).toBe('PENDING_LAUNCH');
   });
 });

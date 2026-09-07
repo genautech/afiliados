@@ -224,60 +224,121 @@ export interface SyncedDailyMetric {
  * A03: gasto diário da campanha. Sem isso o DailyLog nunca recebia `spend` vindo da
  * plataforma e o loop ficava em SEM_DADOS — cego para o que a campanha realmente gastou.
  */
+export interface DailyMetricsBatch {
+  googleCampaignId: string;
+  from: string;
+  through: string;
+  timeZone: string;
+  observedAt: Date;
+  metrics: SyncedDailyMetric[];
+}
+
 export async function fetchGoogleAdsDailyMetrics(
   userId: string,
-  campaignName: string,
-  days = 30,
-): Promise<SyncedDailyMetric[]> {
-  const config = await getGoogleAdsConfig(userId);
-  if (!config) return [];
-
-  if (isMockMode(config)) {
-    console.log(`[Google Ads Mock] Métricas diárias de "${campaignName}" não são simuladas`);
-    return [];
+  googleCampaignId: string,
+  since: Date,
+  now = new Date(),
+): Promise<DailyMetricsBatch> {
+  if (!/^\d+$/.test(googleCampaignId) || !Number.isFinite(since?.getTime()) || !Number.isFinite(now.getTime())) {
+    throw new Error('Campanha ou intervalo inválido para sincronizar gasto');
   }
-
+  const configOuNulo = await getGoogleAdsConfig(userId);
+  if (!configOuNulo || isMockMode(configOuNulo)) throw new Error('Gasto exige integração Google Ads real configurada');
+  // Const separada: dentro do closure `search` o TS perde o narrowing do `if` acima.
+  const config: GoogleAdsCredentials = configOuNulo;
   const token = await getAccessToken(config);
   const url = buildApiUrl(config, 'googleAds:search');
-  const janela = days <= 7 ? 'LAST_7_DAYS' : days <= 14 ? 'LAST_14_DAYS' : 'LAST_30_DAYS';
-  const query = `
-    SELECT
-      segments.date,
-      metrics.cost_micros,
-      metrics.clicks,
-      metrics.impressions,
-      metrics.conversions
-    FROM campaign
-    WHERE campaign.name = '${campaignName.replace(/'/g, "\\'")}'
-      AND segments.date DURING ${janela}
-  `;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: buildApiHeaders(token, config),
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) {
-    // Erro real, não silencioso: quem chama decide se aborta o sync ou segue sem gasto.
-    throw new Error(`Google Ads recusou a consulta de métricas diárias (${res.status}): ${await res.text()}`);
+  async function search(query: string, pageToken?: string) {
+    const res = await fetch(url, {
+      method: 'POST', headers: buildApiHeaders(token, config),
+      body: JSON.stringify({ query, ...(pageToken ? { pageToken } : {}) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`Google Ads recusou consulta de gasto (${res.status})`);
+    const body = await res.json();
+    if (!body || typeof body !== 'object' || (body.results !== undefined && !Array.isArray(body.results))) throw new Error('Resposta de métricas inválida');
+    return body;
   }
-
-  const data = await res.json();
-  const porDia = new Map<string, SyncedDailyMetric>();
-  for (const row of data?.results ?? []) {
-    const date = row?.segments?.date;
-    if (!date) continue;
-    const cur = porDia.get(date) ?? { date, costMicros: 0, clicks: 0, impressions: 0, conversions: 0 };
-    cur.costMicros += Number(row?.metrics?.costMicros ?? 0);
-    cur.clicks += Number(row?.metrics?.clicks ?? 0);
-    cur.impressions += Number(row?.metrics?.impressions ?? 0);
-    cur.conversions += Number(row?.metrics?.conversions ?? 0);
-    porDia.set(date, cur);
+  const account = await search('SELECT customer.time_zone FROM customer');
+  const timeZone = account.results?.[0]?.customer?.timeZone;
+  if (typeof timeZone !== 'string' || !timeZone) throw new Error('Fuso da conta Google Ads ausente');
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const day = (date: Date) => {
+    const parts = formatter.formatToParts(date);
+    return ['year','month','day'].map(type => parts.find(p => p.type === type)!.value).join('-');
+  };
+  const from = day(since), through = day(now);
+  const fromMs = Date.parse(from + 'T00:00:00Z'), throughMs = Date.parse(through + 'T00:00:00Z');
+  if (fromMs > throughMs || (throughMs - fromMs) / 86400000 > 3660) throw new Error('Intervalo de gasto inválido ou superior a dez anos; reconciliação necessária');
+  const query = `SELECT segments.date, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions
+    FROM campaign WHERE campaign.id = ${googleCampaignId}
+    AND segments.date BETWEEN '${from}' AND '${through}'`;
+  const byDay = new Map<string, SyncedDailyMetric>();
+  // A API omite dias sem métricas. Depois de ler todas as páginas, eles são zeros explícitos.
+  for (let ms = fromMs; ms <= throughMs; ms += 86400000) {
+    const date = new Date(ms).toISOString().slice(0, 10);
+    byDay.set(date, { date, costMicros: 0, clicks: 0, impressions: 0, conversions: 0 });
   }
-  return Array.from(porDia.values()).sort((a, b) => a.date.localeCompare(b.date));
+  const number = (v: unknown, integer: boolean) => {
+    if (!(typeof v === 'number' || (typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v)))) throw new Error('Métrica ausente ou inválida');
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || (integer && !Number.isSafeInteger(n))) throw new Error('Métrica fora dos limites');
+    return n;
+  };
+  let pageToken: string | undefined;
+  const seenTokens = new Set<string>();
+  const seenDates = new Set<string>();
+  do {
+    const body = await search(query, pageToken);
+    for (const row of body.results ?? []) {
+      const date = row?.segments?.date;
+      if (typeof date !== 'string' || !byDay.has(date) || seenDates.has(date)) throw new Error('Data de métrica inválida ou duplicada');
+      seenDates.add(date);
+      byDay.set(date, { date, costMicros: number(row.metrics?.costMicros, true), clicks: number(row.metrics?.clicks, true), impressions: number(row.metrics?.impressions, true), conversions: number(row.metrics?.conversions, false) });
+    }
+    pageToken = body.nextPageToken;
+    if (pageToken !== undefined && (typeof pageToken !== 'string' || !pageToken || seenTokens.has(pageToken) || seenTokens.size >= 100)) throw new Error('Paginação de métricas inválida');
+    if (pageToken) seenTokens.add(pageToken);
+  } while (pageToken);
+  return { googleCampaignId, from, through, timeZone, observedAt: now, metrics: [...byDay.values()] };
 }
 
 // Atualiza configurações da campanha no Google Ads (Mutate)
+/**
+ * Status remoto de UMA campanha, buscada pelo ID numérico (não pelo nome, que é mutável).
+ * A01: a saga de pausa só grava o estado local depois que este helper confirma o que o
+ * Google Ads realmente tem — por isso ele nunca responde em mock e nunca "chuta" ENABLED.
+ */
+export type GoogleCampaignStatus = 'ENABLED' | 'PAUSED' | 'REMOVED' | 'UNKNOWN';
+
+export async function fetchGoogleCampaignStatus(
+  userId: string,
+  googleCampaignId: string,
+): Promise<GoogleCampaignStatus> {
+  if (!/^\d+$/.test(googleCampaignId)) throw new Error('ID de campanha do Google Ads inválido');
+  const config = await getGoogleAdsConfig(userId);
+  if (!config || isMockMode(config)) throw new Error('Confirmação de status exige integração Google Ads real');
+  const token = await getAccessToken(config);
+  const res = await fetch(buildApiUrl(config, 'googleAds:search'), {
+    method: 'POST',
+    headers: buildApiHeaders(token, config),
+    body: JSON.stringify({ query: `SELECT campaign.id, campaign.status FROM campaign WHERE campaign.id = ${googleCampaignId} LIMIT 1` }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`Google Ads recusou consulta de status (${res.status})`);
+  const body = await res.json();
+  const rows = body?.results;
+  if (rows !== undefined && !Array.isArray(rows)) throw new Error('Resposta de status inválida');
+  // Campanha some da consulta quando é removida definitivamente da conta.
+  if (!rows?.length) return 'REMOVED';
+  const row = rows[0];
+  if (String(row?.campaign?.id ?? '') !== googleCampaignId) throw new Error('Google Ads devolveu outra campanha na consulta de status');
+  const status = row?.campaign?.status;
+  if (status === 'ENABLED' || status === 'PAUSED' || status === 'REMOVED') return status;
+  // Estado que não sabemos ler não pode virar confirmação de pausa.
+  return 'UNKNOWN';
+}
+
 export async function mutateGoogleCampaign(
   userId: string,
   googleCampaignId: string,

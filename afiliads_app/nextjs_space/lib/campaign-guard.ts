@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { PENDING_LAUNCH } from './campaign-status';
 
 export type CampaignGuardTarget =
   | { kind: 'non-campaign' }
@@ -26,7 +27,9 @@ export interface CampaignGuardDependencies {
 }
 
 export const INACTIVITY_LIMIT_MINUTES = 30;
-export const LLM_ELIGIBLE_CAMPAIGN_STATUSES = new Set(['RASCUNHO', 'EM_TESTE', 'ATIVA']);
+// PENDING_LAUNCH entra aqui porque é campanha que já subiu LIVE e só espera a releitura remota
+// confirmar (A01): bloquear o LLM nela cegaria o loop justamente enquanto ela gasta.
+export const LLM_ELIGIBLE_CAMPAIGN_STATUSES = new Set(['RASCUNHO', 'EM_TESTE', 'ATIVA', PENDING_LAUNCH]);
 
 function logDecisionConsole(decision: CampaignGuardDecision): void {
   const ts = new Date().toISOString();
