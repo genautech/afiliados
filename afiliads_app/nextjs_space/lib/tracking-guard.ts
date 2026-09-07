@@ -47,21 +47,101 @@ export function consumirRateLimit(
   return true;
 }
 
-const eventosVistos = new Map<string, number>();
+// R02 — deduplicação com ciclo de vida.
+//
+// A versão anterior guardava só o `eventId`, e guardava ANTES de falar com o Meta. Dois
+// buracos:
+//  (a) chave global — o `eventId` "1" de uma conta silenciava o `eventId` "1" de outra, e o
+//      mesmo id reaproveitado num PageView bloqueava o Purchase correspondente;
+//  (b) falso-positivo em falha real — se a CAPI devolvia 503, o evento nunca foi entregue mas
+//      já constava como visto; o retry do cliente voltava `deduplicated: true` e a conversão
+//      sumia de vez.
+// Agora a chave é composta e cada evento passa por PENDING → DELIVERED | FAILED. Só DELIVERED
+// (e um PENDING ainda recente, ou seja, requisição gêmea em voo) deduplica; FAILED e PENDING
+// vencido liberam o retry.
+
+export type EstadoEvento = 'PENDING' | 'DELIVERED' | 'FAILED';
+
+export interface ChaveEvento {
+  /** Conta dona do evento. Anônimo (navegação sem sessão) cai em 'anon'. */
+  accountId: string | null;
+  pixelId: string;
+  eventType: string;
+  eventId: string;
+}
+
+/** Chave composta: `${accountId}_${pixelId}_${eventType}_${eventId}`. */
+export function montarChaveEvento({ accountId, pixelId, eventType, eventId }: ChaveEvento): string {
+  return `${accountId ?? 'anon'}_${pixelId}_${eventType}_${eventId}`;
+}
+
+type RegistroEvento = { estado: EstadoEvento; em: number };
+const eventosVistos = new Map<string, RegistroEvento>();
+
 export const DEDUP_TTL_MS = 24 * 3600_000;
+/** Janela em que um PENDING ainda é considerado "em voo". Depois disso, é retry legítimo. */
+export const PENDING_TTL_MS = 120_000;
+
+export interface EventoReivindicado {
+  duplicado: false;
+  chave: string;
+  /** Meta confirmou a entrega: a chave passa a deduplicar retries. */
+  confirmar(): void;
+  /** Entrega falhou de verdade: libera a chave para o retry do cliente. */
+  falhar(): void;
+}
+
+export interface EventoDuplicado {
+  duplicado: true;
+  chave: string;
+  estado: Extract<EstadoEvento, 'PENDING' | 'DELIVERED'>;
+}
+
+export type ReivindicacaoEvento = EventoReivindicado | EventoDuplicado;
+
+function limparVencidos(agora: number, ttlMs: number): void {
+  for (const [chave, registro] of eventosVistos) {
+    const limite = registro.estado === 'PENDING' ? PENDING_TTL_MS : ttlMs;
+    if (agora - registro.em >= limite) eventosVistos.delete(chave);
+  }
+}
 
 /**
- * Marca um eventId como visto. Retorna true se é a primeira vez (deve processar),
- * false se é repetição dentro da janela (deve deduplicar).
+ * Reivindica o direito de processar um evento. Devolve `duplicado: false` com os callbacks de
+ * fim de ciclo, ou `duplicado: true` quando outra requisição já entregou (DELIVERED) ou está
+ * entregando agora (PENDING recente).
  */
-export function registrarEventId(eventId: string, agora = Date.now(), ttlMs = DEDUP_TTL_MS): boolean {
-  for (const [id, visto] of eventosVistos) {
-    if (agora - visto >= ttlMs) eventosVistos.delete(id);
+export function reivindicarEvento(
+  chaveEvento: ChaveEvento,
+  agora = Date.now(),
+  ttlMs = DEDUP_TTL_MS,
+): ReivindicacaoEvento {
+  limparVencidos(agora, ttlMs);
+  const chave = montarChaveEvento(chaveEvento);
+  const anterior = eventosVistos.get(chave);
+
+  if (anterior) {
+    if (anterior.estado === 'DELIVERED' && agora - anterior.em < ttlMs) {
+      return { duplicado: true, chave, estado: 'DELIVERED' };
+    }
+    if (anterior.estado === 'PENDING' && agora - anterior.em < PENDING_TTL_MS) {
+      return { duplicado: true, chave, estado: 'PENDING' };
+    }
+    // FAILED, ou PENDING vencido: o evento não chegou ao Meta. Retry pode seguir.
   }
-  const anterior = eventosVistos.get(eventId);
-  if (anterior !== undefined && agora - anterior < ttlMs) return false;
-  eventosVistos.set(eventId, agora);
-  return true;
+
+  eventosVistos.set(chave, { estado: 'PENDING', em: agora });
+  return {
+    duplicado: false,
+    chave,
+    confirmar: () => eventosVistos.set(chave, { estado: 'DELIVERED', em: Date.now() }),
+    falhar: () => eventosVistos.set(chave, { estado: 'FAILED', em: Date.now() }),
+  };
+}
+
+/** Só para inspeção em teste. */
+export function estadoEvento(chaveEvento: ChaveEvento): EstadoEvento | undefined {
+  return eventosVistos.get(montarChaveEvento(chaveEvento))?.estado;
 }
 
 /** Só para teste: zera o estado em memória entre casos. */

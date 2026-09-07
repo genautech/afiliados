@@ -135,3 +135,94 @@ describe('S02 — autenticação de eventos de tracking', () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe('R02/R03 — dedup com ciclo de vida e integração da conta', () => {
+  const respostaOk = () => ({ ok: true, text: async () => JSON.stringify({ events_received: 1 }) } as any);
+  const resposta503 = () => ({ ok: false, status: 503, text: async () => JSON.stringify({ error: 'unavailable' }) } as any);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetTrackingGuardState();
+    mocks.findMany.mockResolvedValue(integracaoMeta);
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: 'user-1' } } as never);
+    vi.stubEnv('META_PIXEL_ID', '');
+    vi.stubEnv('META_ACCESS_TOKEN', '');
+  });
+
+  it('R02 — 503 do Meta não vira falso-positivo: o retry é reenviado', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(resposta503())
+      .mockResolvedValueOnce(respostaOk());
+
+    const payload = { eventName: 'Purchase', eventId: 'evt-503', userData: {}, customData: { value: 10 } };
+    const falha = await POST(req(payload));
+    expect(falha.status).toBe(503);
+    expect((await falha.json()).retryable).toBe(true);
+
+    const retry = await POST(req(payload));
+    expect(retry.status).toBe(200);
+    expect((await retry.json()).deduplicated).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    fetchSpy.mockRestore();
+  });
+
+  it('R02 — queda de rede também libera o retry', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(respostaOk());
+
+    const payload = { eventName: 'Purchase', eventId: 'evt-rede', userData: {}, customData: { value: 10 } };
+    const falha = await POST(req(payload));
+    expect(falha.status).toBe(502);
+
+    const retry = await POST(req(payload));
+    expect(retry.status).toBe(200);
+    expect((await retry.json()).deduplicated).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    fetchSpy.mockRestore();
+  });
+
+  it('R02 — mesmo eventId em contas diferentes não colide', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(respostaOk());
+    const payload = { eventName: 'Purchase', eventId: 'evt-1', userData: {}, customData: { value: 10 } };
+
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: 'conta-a' } } as never);
+    const a = await POST(req(payload));
+    vi.mocked(getServerSession).mockResolvedValue({ user: { id: 'conta-b' } } as never);
+    const b = await POST(req(payload));
+
+    expect((await a.json()).deduplicated).toBeUndefined();
+    expect((await b.json()).deduplicated).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    fetchSpy.mockRestore();
+  });
+
+  it('R02 — mesmo eventId em eventos diferentes não colide', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(respostaOk());
+
+    const lead = await POST(req({ eventName: 'Lead', eventId: 'evt-1', userData: {} }));
+    const compra = await POST(req({ eventName: 'Purchase', eventId: 'evt-1', userData: {}, customData: { value: 10 } }));
+
+    expect((await lead.json()).deduplicated).toBeUndefined();
+    expect((await compra.json()).deduplicated).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    fetchSpy.mockRestore();
+  });
+
+  it('R03 — credencial global no .env não bloqueia nem sequestra a conta com integração', async () => {
+    vi.stubEnv('META_PIXEL_ID', 'pixel-global');
+    vi.stubEnv('META_ACCESS_TOKEN', 'token-global');
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(respostaOk());
+
+    const res = await POST(req({ eventName: 'Purchase', userData: {}, customData: { value: 10 } }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenCalledWith({ where: { userId: 'user-1', serviceName: 'meta' } });
+    const url = String(fetchSpy.mock.calls[0][0]);
+    expect(url).toContain('123456789');
+    expect(url).not.toContain('pixel-global');
+    expect(url).toContain('token-da-conta');
+    expect(url).not.toContain('token-global');
+    fetchSpy.mockRestore();
+  });
+});

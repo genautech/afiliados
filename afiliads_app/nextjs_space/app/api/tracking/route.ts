@@ -3,7 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { readIntegrationFieldValue } from '@/lib/integration-secrets';
-import { consumirRateLimit, isFinancialEvent, registrarEventId } from '@/lib/tracking-guard';
+import {
+  consumirRateLimit,
+  isFinancialEvent,
+  reivindicarEvento,
+  type ReivindicacaoEvento,
+} from '@/lib/tracking-guard';
 import crypto from 'crypto';
 
 interface TrackingEventPayload {
@@ -107,21 +112,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Limite de eventos excedido' }, { status: 429 });
     }
 
-    // Deduplicação por eventId: retry do cliente não pode virar duas conversões.
-    if (eventId && !registrarEventId(eventId)) {
-      return NextResponse.json({ success: true, eventId, deduplicated: true });
-    }
-
     // Para evento financeiro, a conta é a do chamador autenticado — nunca a que veio no body.
     // Para navegação, o body ainda pode apontar a conta dona do pixel (não expõe credencial).
     const userId = financeiro ? authUserId : (authUserId ?? body.userId);
 
-    // Retrieve Meta credentials from DB integrations or Environment Variables
+    // R03: a integração da conta é consultada SEMPRE que há conta identificada. Antes o lookup
+    // só rodava quando o ambiente não tinha credencial (`!pixelId || !accessToken`), então uma
+    // META_PIXEL_ID global no .env silenciava a conta: `temIntegracao` ficava false e todo
+    // Purchase de conta legítima levava 403 — e o evento que passava ia para o pixel global em
+    // vez do pixel do dono. Precedência: integração da conta > pixelId do body > .env.
     let pixelId = body.pixelId || process.env.META_PIXEL_ID;
     let accessToken = process.env.META_ACCESS_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN;
     let temIntegracao = false;
 
-    if (userId && (!pixelId || !accessToken)) {
+    if (userId) {
       try {
         // access_token é gravado criptografado por /api/integrations; ler o
         // fieldValue cru mandaria "enc:v1:..." para a CAPI do Meta.
@@ -153,6 +157,24 @@ export async function POST(request: NextRequest) {
     }
     if (!accessToken) {
       return NextResponse.json({ error: 'accessToken do Meta não configurado ou fornecido' }, { status: 422 });
+    }
+
+    // R02: deduplicação por chave composta, reivindicada só depois de saber o pixel de destino
+    // (a chave depende dele) e desfeita se a entrega falhar de verdade — ver lib/tracking-guard.
+    const idEvento = eventId || crypto.randomUUID();
+    const reivindicacao: ReivindicacaoEvento = reivindicarEvento({
+      accountId: userId ?? null,
+      pixelId,
+      eventType: eventName,
+      eventId: idEvento,
+    });
+    if (reivindicacao.duplicado) {
+      return NextResponse.json({
+        success: true,
+        eventId: idEvento,
+        deduplicated: true,
+        state: reivindicacao.estado,
+      });
     }
 
     // Hash user data fields to comply with Meta CAPI requirements
@@ -188,7 +210,7 @@ export async function POST(request: NextRequest) {
       event_time: eventTime || Math.floor(Date.now() / 1000),
       event_source_url: eventSourceUrl || request.headers.get('referer') || 'https://afiliads.app',
       action_source: 'website',
-      event_id: eventId || crypto.randomUUID(),
+      event_id: idEvento,
       user_data: formattedUserData,
       custom_data: customData ? {
         currency: customData.currency || 'BRL',
@@ -212,13 +234,24 @@ export async function POST(request: NextRequest) {
     const targetId = pixelId;
     const url = `https://graph.facebook.com/v19.0/${targetId}/events?access_token=${accessToken}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (erroRede: any) {
+      // Rede caiu: o evento não chegou ao Meta. Libera a chave para o retry do cliente.
+      reivindicacao.falhar();
+      console.error('Meta CAPI network error:', erroRede);
+      return NextResponse.json(
+        { success: false, error: 'Falha de rede ao falar com a Conversions API', retryable: true },
+        { status: 502 },
+      );
+    }
 
     const resultText = await response.text();
     let resultJson: any = {};
@@ -229,13 +262,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (!response.ok) {
+      // Falha real de entrega (503, 429 do Meta, token expirado): marca FAILED para que o
+      // retry do cliente não volte com `deduplicated: true` sobre um evento que nunca entrou.
+      reivindicacao.falhar();
       console.error('Meta CAPI API Error response:', resultJson);
       return NextResponse.json({
         success: false,
         error: `Meta API retornou erro ${response.status}`,
-        details: resultJson
+        details: resultJson,
+        retryable: true,
       }, { status: response.status });
     }
+
+    reivindicacao.confirmar();
 
     return NextResponse.json({
       success: true,
