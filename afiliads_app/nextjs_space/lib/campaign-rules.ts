@@ -1,5 +1,10 @@
 export interface CampaignEconomics {
+  /** Gasto da janela de performance (ou total, quando não há janela). */
   spend: number;
+  /** A05: gasto acumulado desde o lançamento, sem janela. É o que mede burn de orçamento. */
+  spendTotal: number;
+  /** A03: idade do sync de gasto mais recente, em horas. Null = nunca sincronizado. */
+  dataAgeHours: number | null;
   /** Receita bruta, antes de reembolso. Só para exibição — nenhuma regra decide por ela. */
   revenue: number;
   refunds: number;
@@ -43,6 +48,18 @@ interface DailyLogLike {
   hops?: number;
   conversions: number;
   logDate: Date | string;
+  /** A03: quando o gasto deste dia veio da plataforma. Null = nunca sincronizado. */
+  syncedAt?: Date | string | null;
+}
+
+export interface EconomicsOptions {
+  /**
+   * A05: janela para métricas de performance (CPC/EPC/CVR/dias acima do CPC máx).
+   * O gasto acumulado e o burn de orçamento NUNCA usam janela — são desde o lançamento.
+   * Sem valor, tudo usa o histórico inteiro.
+   */
+  performanceWindowDays?: number;
+  now?: Date;
 }
 
 // Campos mínimos para qualquer análise econômica fazer sentido
@@ -59,10 +76,38 @@ export function validateCampaignConfig(c: CampaignLike): string[] {
 // A04: reembolso reduz receita. Antes o lucro era receita bruta - gasto, então uma campanha
 // com gasto 100, receita 200 e reembolso 200 aparecia com lucro +100 e ia para SCALE — o
 // resultado real era -100. Toda decisão passa a usar receita líquida.
-export function computeEconomics(campaign: CampaignLike, logs: DailyLogLike[]): CampaignEconomics {
+function paraData(v: Date | string): Date {
+  return v instanceof Date ? v : new Date(v);
+}
+
+export function computeEconomics(
+  campaign: CampaignLike,
+  logs: DailyLogLike[],
+  options: EconomicsOptions = {},
+): CampaignEconomics {
+  const agora = options.now ?? new Date();
+  const janelaMs = options.performanceWindowDays
+    ? options.performanceWindowDays * 86400_000
+    : null;
+  const naJanela = (l: DailyLogLike) =>
+    janelaMs === null || agora.getTime() - paraData(l.logDate).getTime() <= janelaMs;
+
+  // Acumulado de orçamento: TODO o histórico, sem janela.
+  let spendTotal = 0;
+  let ultimoSyncMs: number | null = null;
+  for (const l of logs) {
+    spendTotal += l.spend ?? 0;
+    if (l.syncedAt) {
+      const ms = paraData(l.syncedAt).getTime();
+      if (Number.isFinite(ms) && (ultimoSyncMs === null || ms > ultimoSyncMs)) ultimoSyncMs = ms;
+    }
+  }
+
+  // Performance: janela deslizante (ou tudo, se não houver janela).
   let spend = 0, revenue = 0, refunds = 0, clicks = 0, hops = 0, conversions = 0;
   let daysWithSpend = 0, daysOverCpcMax = 0;
   for (const l of logs) {
+    if (!naJanela(l)) continue;
     spend += l.spend ?? 0;
     revenue += l.revenue ?? 0;
     refunds += l.refunds ?? 0;
@@ -77,6 +122,8 @@ export function computeEconomics(campaign: CampaignLike, logs: DailyLogLike[]): 
   }
   const revenueNet = revenue - refunds;
   return {
+    spendTotal,
+    dataAgeHours: ultimoSyncMs === null ? null : (agora.getTime() - ultimoSyncMs) / 3600_000,
     spend,
     revenue,
     refunds,
@@ -89,12 +136,15 @@ export function computeEconomics(campaign: CampaignLike, logs: DailyLogLike[]): 
     epcReal: clicks > 0 ? revenueNet / clicks : 0,
     cpcReal: clicks > 0 ? spend / clicks : 0,
     cvrRealPct: clicks > 0 ? (conversions / clicks) * 100 : 0,
-    budgetBurnPct: campaign.budgetTest > 0 ? (spend / campaign.budgetTest) * 100 : 0,
+    budgetBurnPct: campaign.budgetTest > 0 ? (spendTotal / campaign.budgetTest) * 100 : 0,
     daysWithSpend,
     daysOverCpcMax,
     logCount: logs.length,
   };
 }
+
+/** A03: acima disso o gasto sincronizado é velho demais para sustentar uma decisão. */
+export const MAX_DATA_AGE_HOURS = 24;
 
 // Thresholds oficiais do loop (mesma régua para código, LLM e manual)
 export function evaluateRules(econ: CampaignEconomics, campaign: CampaignLike): RulesResult {
@@ -104,6 +154,15 @@ export function evaluateRules(econ: CampaignEconomics, campaign: CampaignLike): 
   }
   if (econ.daysWithSpend < 1 || econ.spend <= 0) {
     return { decision: 'SEM_DADOS', triggers: ['Nenhum dia com gasto registrado no diário — registre os dados do Google Ads antes de auditar'] };
+  }
+
+  // A03: decidir com dado velho é pior que não decidir. Só vale quando houve algum sync de
+  // plataforma; diário 100% manual (dataAgeHours null) segue pelo caminho normal.
+  if (econ.dataAgeHours !== null && econ.dataAgeHours > MAX_DATA_AGE_HOURS) {
+    return {
+      decision: 'SEM_DADOS',
+      triggers: [`Dados desatualizados: último sync de gasto há ${econ.dataAgeHours.toFixed(0)}h (limite ${MAX_DATA_AGE_HOURS}h) — sincronize o Google Ads antes de decidir`],
+    };
   }
 
   const triggers: string[] = [];
@@ -123,7 +182,7 @@ export function evaluateRules(econ: CampaignEconomics, campaign: CampaignLike): 
 
   // PAUSAR: budget de teste consumido sem veredito
   if (econ.budgetBurnPct >= 100) {
-    return { decision: 'PAUSAR', triggers: [`Budget de teste 100% consumido ($${econ.spend.toFixed(2)} de $${campaign.budgetTest.toFixed(2)}) — pausar e decidir com os dados completos`] };
+    return { decision: 'PAUSAR', triggers: [`Budget de teste 100% consumido ($${econ.spendTotal.toFixed(2)} acumulados de $${campaign.budgetTest.toFixed(2)}) — pausar e decidir com os dados completos`] };
   }
 
   // SCALE: economia comprovada com amostra mínima

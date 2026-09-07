@@ -211,6 +211,72 @@ export async function fetchGoogleAdsKeywordMetrics(
   return Array.from(byText.values());
 }
 
+export interface SyncedDailyMetric {
+  /** YYYY-MM-DD, no fuso da conta do Google Ads. */
+  date: string;
+  costMicros: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+}
+
+/**
+ * A03: gasto diário da campanha. Sem isso o DailyLog nunca recebia `spend` vindo da
+ * plataforma e o loop ficava em SEM_DADOS — cego para o que a campanha realmente gastou.
+ */
+export async function fetchGoogleAdsDailyMetrics(
+  userId: string,
+  campaignName: string,
+  days = 30,
+): Promise<SyncedDailyMetric[]> {
+  const config = await getGoogleAdsConfig(userId);
+  if (!config) return [];
+
+  if (isMockMode(config)) {
+    console.log(`[Google Ads Mock] Métricas diárias de "${campaignName}" não são simuladas`);
+    return [];
+  }
+
+  const token = await getAccessToken(config);
+  const url = buildApiUrl(config, 'googleAds:search');
+  const janela = days <= 7 ? 'LAST_7_DAYS' : days <= 14 ? 'LAST_14_DAYS' : 'LAST_30_DAYS';
+  const query = `
+    SELECT
+      segments.date,
+      metrics.cost_micros,
+      metrics.clicks,
+      metrics.impressions,
+      metrics.conversions
+    FROM campaign
+    WHERE campaign.name = '${campaignName.replace(/'/g, "\\'")}'
+      AND segments.date DURING ${janela}
+  `;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: buildApiHeaders(token, config),
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    // Erro real, não silencioso: quem chama decide se aborta o sync ou segue sem gasto.
+    throw new Error(`Google Ads recusou a consulta de métricas diárias (${res.status}): ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  const porDia = new Map<string, SyncedDailyMetric>();
+  for (const row of data?.results ?? []) {
+    const date = row?.segments?.date;
+    if (!date) continue;
+    const cur = porDia.get(date) ?? { date, costMicros: 0, clicks: 0, impressions: 0, conversions: 0 };
+    cur.costMicros += Number(row?.metrics?.costMicros ?? 0);
+    cur.clicks += Number(row?.metrics?.clicks ?? 0);
+    cur.impressions += Number(row?.metrics?.impressions ?? 0);
+    cur.conversions += Number(row?.metrics?.conversions ?? 0);
+    porDia.set(date, cur);
+  }
+  return Array.from(porDia.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // Atualiza configurações da campanha no Google Ads (Mutate)
 export async function mutateGoogleCampaign(
   userId: string,

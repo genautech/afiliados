@@ -286,6 +286,9 @@ model DailyLog {
   decision    String?
   notes       String?  @db.Text
   createdAt   DateTime @default(now())
+  // A03: quando o gasto deste dia foi ingerido da plataforma. O loop recusa decidir com dado
+  // velho — sem isso não dá pra distinguir "não gastou" de "ninguém sincronizou".
+  syncedAt    DateTime?
   campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

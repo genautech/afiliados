@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
+import { fetchGoogleCampaign, fetchGoogleAdsKeywordMetrics, fetchGoogleAdsDailyMetrics, mutateGoogleCampaign } from '@/lib/google-ads';
 import { getGoogleAdsConfig, isMockMode } from '@/lib/google-ads';
 import { authorizeMutation } from '@/lib/google-ads/route-mutation-authorization';
 import { assertMutationAllowed } from '@/lib/google-ads/mutation-guard';
@@ -105,11 +105,41 @@ export async function POST(request: NextRequest) {
         console.error('Falha ao sincronizar métricas de keyword (não bloqueia o sync de campanha):', e?.message);
       }
 
+      // A03: gasto diário da plataforma alimenta o DailyLog. Antes o sync atualizava keyword
+      // mas nunca gravava `spend`, e o loop (que decide olhando DailyLog) ficava em SEM_DADOS.
+      // Só toca em spend/clicks/impressions: receita e reembolso são do ClickBank (ver M04).
+      let dailyLogsUpdated = 0;
+      let dailyMetricsError: string | null = null;
+      try {
+        const diario = await fetchGoogleAdsDailyMetrics(userId, gadsData.name, 30);
+        for (const dia of diario) {
+          const logDate = new Date(`${dia.date}T00:00:00.000Z`);
+          const dadosPlataforma = {
+            spend: dia.costMicros / 1_000_000,
+            clicks: dia.clicks,
+            impressions: dia.impressions,
+            syncedAt: new Date(),
+          };
+          await prisma.dailyLog.upsert({
+            where: { campaignId_logDate: { campaignId, logDate } },
+            update: dadosPlataforma,
+            create: { campaignId, userId, logDate, network: 'Google Ads', ...dadosPlataforma },
+          });
+          dailyLogsUpdated++;
+        }
+      } catch (e: any) {
+        // Erro real, sem mock silencioso: fica na resposta e no console para quem operar ver.
+        dailyMetricsError = e?.message ?? String(e);
+        console.error('Falha ao ingerir gasto diário do Google Ads:', dailyMetricsError);
+      }
+
       return NextResponse.json({
         success: true,
         campaign: updatedCampaign,
         launchState: deriveCampaignLaunchState(updatedCampaign),
         keywordsUpdated,
+        dailyLogsUpdated,
+        dailyMetricsError,
         message: 'Dados importados do Google Ads com sucesso.',
       });
     } else if (direction === 'push') {

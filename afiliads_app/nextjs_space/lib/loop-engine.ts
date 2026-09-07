@@ -2,6 +2,9 @@ import { prisma } from './prisma';
 import { callAgent } from './llm';
 import { computeEconomics, evaluateRules, type RulesResult, type CampaignEconomics } from './campaign-rules';
 
+/** Janela de performance (CPC/EPC/CVR). O orçamento acumulado ignora esta janela. */
+export const PERFORMANCE_WINDOW_DAYS = 14;
+
 const INTERVAL_MS: Record<string, number> = {
   '12h': 12 * 3600_000,
   '24h': 24 * 3600_000,
@@ -22,13 +25,19 @@ export interface LoopRunResult {
 }
 
 export async function runCampaignLoop(userId: string, campaignId: string, trigger: 'manual' | 'cron' | 'daily-log'): Promise<LoopRunResult> {
+  // A05: o `take: 14` fazia o burn de orçamento enxergar só os últimos 14 dias. Campanha de
+  // 30 dias a $5/dia mostrava $70 gastos de um budget de teste de $100 — nunca batia 100% e
+  // nunca pausava, mesmo tendo gasto $150. Orçamento é acumulado desde o lançamento; janela
+  // deslizante vale só para as métricas de performance (CPC/EPC/CVR).
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, userId },
-    include: { dailyLogs: { orderBy: { logDate: 'desc' }, take: 14 } },
+    include: { dailyLogs: { orderBy: { logDate: 'desc' } } },
   });
   if (!campaign) throw new Error('Campanha não encontrada');
 
-  const econ = computeEconomics(campaign, campaign.dailyLogs);
+  const econ = computeEconomics(campaign, campaign.dailyLogs, {
+    performanceWindowDays: PERFORMANCE_WINDOW_DAYS,
+  });
   const rules: RulesResult = evaluateRules(econ, campaign);
 
   const agentsRun: string[] = [];
