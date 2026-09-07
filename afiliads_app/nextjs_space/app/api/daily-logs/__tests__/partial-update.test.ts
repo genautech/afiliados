@@ -22,7 +22,8 @@ vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/loop-engine', () => ({ runCampaignLoop: vi.fn().mockResolvedValue({}) }));
 
-import { POST, buildPartialUpdate } from '../route';
+import { POST } from '../route';
+import { buildPartialUpdate } from '@/lib/daily-logs-helper';
 
 function req(body: unknown) {
   return new NextRequest('http://localhost/api/daily-logs', {

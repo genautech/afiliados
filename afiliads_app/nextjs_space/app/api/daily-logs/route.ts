@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { runCampaignLoop } from '@/lib/loop-engine';
+import { buildPartialUpdate } from '@/lib/daily-logs-helper';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,27 +20,6 @@ export async function GET(request: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
-}
-
-/** Campos numéricos do DailyLog: ausentes no body ficam de fora do update (não viram 0). */
-const CAMPOS_NUMERICOS = ['impressions', 'spend', 'clicks', 'hops', 'conversions', 'revenue', 'refunds'] as const;
-/** Campos de texto: ausentes ficam de fora (não viram null). */
-const CAMPOS_TEXTO = ['network', 'offerName', 'vertical', 'geo', 'channel', 'funnel', 'decision', 'notes'] as const;
-
-export function buildPartialUpdate(body: Record<string, any>): Record<string, any> {
-  const update: Record<string, any> = {};
-  for (const campo of CAMPOS_NUMERICOS) {
-    const valor = body?.[campo];
-    if (valor === undefined || valor === null) continue;
-    const n = Number(valor);
-    if (Number.isFinite(n)) update[campo] = n;
-  }
-  for (const campo of CAMPOS_TEXTO) {
-    const valor = body?.[campo];
-    if (valor === undefined) continue;
-    update[campo] = valor;
-  }
-  return update;
 }
 
 export async function POST(request: NextRequest) {
