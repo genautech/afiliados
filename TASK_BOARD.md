@@ -2,6 +2,29 @@
 
 This board tracks high-level tasks and coordination points between various agents (Hermes, Claude Code, Codex, etc.) working on the Afiliads project.
 
+## Validação 2026-09-07 — 8 bloqueadores críticos (Claude Code CLI)
+
+**Status:** `tsc --noEmit` limpo (0 erros) e suíte completa **934 passed / 6 skipped** em 2026-09-07 (Claude Code). `next build` ainda não reexecutado.
+**Branch:** `feature/kimi-code-integration` (working tree sujo — mudanças ainda não commitadas).
+**Handoffs:** `hermes/handoffs/CLAUDE-CORRECOES-BLOQUEADORES-2026-09-07.md` · relatório `hermes/handoffs/VALIDACAO-BLOQUEADORES-2026-09-07.md`
+
+| ID | O que era (simples) | Evidência no código | Testes |
+|----|---------------------|---------------------|--------|
+| R01 | Função auxiliar no lugar errado quebrava o build | `lib/daily-logs-helper.ts` + import na rota daily-logs | partial-update ✓ |
+| R02 | Retry de tracking marcado como “já enviado” à toa | `tracking-guard` PENDING→DELIVERED/FAILED + chave composta | security.test ✓ |
+| R03 | Pixel global do .env furava a conta | tracking: integração da conta **sempre** consultada e sobrescreve .env | security.test ✓ |
+| R04/R06 | Gasto do dia / cobertura incompleta | `spend-sync.ts` transação serializável + `SpendCoverage` explícito | spend-sync 9/9 ✓ + sync-daily-spend ✓ |
+| R05 | Loop dizia “sem dados” antes de ver orçamento estourado | burn acumulado (`spendTotal`) → PAUSAR; frescor ainda pode SEM_DADOS se sync velho | campaign-rules-window 8/8 ✓ |
+| R07 | MCP zerava receita ao omitir campo | `mcp-afiliads/index.mjs` campos `.optional()`, omite undefined | revisão estática |
+| A01/A02 | App pausava no banco sem confirmar no Google | `PENDING_PAUSE`/`PENDING_LAUNCH` + loop-pause + sync saga + `reconcile-status` (releitura fecha a pendência no loop) | loop-pause + push-saga + orchestrator + reconcile-status 10/10 ✓ |
+| I02 | Cadeia LLM recolocava provedor desligado | `lib/llm.ts` filtra `!ctx.disabled.has(p)` na cadeia | revisão estática |
+
+**Regra de ouro (atual):** campanhas podem operar com **supervisão técnica ativa**. Pausa automática protegida por saga (estado pendente até confirmação remota).
+
+**Ainda aberto (não é desses 8):** CAPI Madgicx + DNS NeuroVera; `campaign_guard` registry EXIT 2; Meta ABO 3 AS fora do wizard; commit/PR destas mudanças; smoke Kimi pago.
+
+---
+
 ## Current Focus (As of 2026-08-02)
 
 - **Challenge: Complexidade da Orquestração de Agentes**
@@ -170,6 +193,90 @@ Fonte: `docs/conhecimento-aplicado/2026-08-19-paginas-para-afiliados-thiago-lapr
 - **Impacto:** Previne queima de budget por estratégia avançada usada indevidamente.
 - **Dependências:** Nenhuma.
 - **Notas:** Alinhar com o FIELD_HELP já existente no wizard.
+
+---
+
+## ⚠️ CRITICAL BLOCKERS — Revisão 2026-09-07
+
+**Status:** Campanhas NÃO PODEM operar sem supervisão até resolução.  
+**Fonte:** Revisão contínua `reports/AFILIADS-REVISAO-CONTINUACAO-2026-09-07.md`  
+**Validação:** 900 testes passaram · TypeScript passou · 10 reproduções manuais confirmaram defeitos
+
+### Bloqueador 1: Export de daily-logs falha na checagem de rotas
+- **Risco:** Rota `/api/daily-logs` pode quebrar em build/produção do Next.js
+- **Impacto:** Logs de performance diários inacessíveis → cegueira operacional
+- **Severidade:** Alta
+
+### Bloqueador 2: Tracking descarta conversão após falha + retry falso-positivo
+- **Risco:** Conversão real é perdida silenciosamente; sistema reporta sucesso no retry
+- **Impacto:** Underreporting de vendas → decisões de kill/scale baseadas em dados falsos
+- **Severidade:** **CRÍTICA** — pode custar dinheiro real
+
+### Bloqueador 3: Ingestão de gastos e proteção de orçamento incompletas
+- **Risco:** Não há corte automático de gasto quando budget é atingido
+- **Impacto:** Overspend sem limites → prejuízo direto
+- **Severidade:** **CRÍTICA** — risco financeiro imediato
+
+### Bloqueador 4: MCP pode apagar receitas; dashboard ignora reembolsos
+- **Risco:** Dados de receita são perdidos ou corrompidos pelo MCP; reembolsos não deduzidos do ROAS
+- **Impacto:** ROAS inflado → scale em campanha quebrada
+- **Severidade:** **CRÍTICA** — decisões baseadas em números mentirosos
+
+### Bloqueador 5: Wizard transforma "não sei" em 0 e "1,5" em 15
+- **Risco:** Inputs de usuário são parseados incorretamente (strings → números malformados)
+- **Impacto:** Configurações de campanha absurdas (budget R$0 ou R$150 em vez de R$1,50)
+- **Severidade:** Alta
+
+### Bloqueador 6: Pausa automática e status "ATIVA" sem confirmação remota
+- **Risco:** Status local diz "ATIVA" mas campanha remota está PAUSED; pausa automática não verifica se funcionou
+- **Impacto:** Gastar em campanha "pausada" ou achar que está rodando quando não está
+- **Severidade:** **CRÍTICA** — dinheiro queimado ou oportunidade perdida
+
+### Regra de Ouro
+> **Nenhuma campanha (NeuroVera, Audifort, YuSleep) entra em spend real até:**
+> 1. Bloqueadores 2, 3, 4, 6 resolvidos ou mitigados com fallback manual
+> 2. Bloqueadores 1 e 5 resolvidos
+> 3. `campaign_guard` validar estado saudável (Exit 0)
+
+---
+
+### [PLAYBOOK-3] Briefs de Produção Criativa — 18 Ads (6 por campanha)
+- **Status:** Concluído (2026-09-07)
+- **Assigned:** Hermes Agent
+- **Goal:** Produzir briefs executáveis com prompts, copy, roteiros e implementação para as 3 campanhas.
+- **Entregáveis:**
+    - NeuroVera: `CB_NEUROVERA_US_META_ABO_v1/CREATIVE-PRODUCTION-BRIEF.md` — 6 ads (fridge-forget, desk-fog, ingredients-stack, permission-filter UGC, moody-cinematic, social-proof)
+    - Audifort: `CB_AUDIFORT_US_META_ABO_v1/CREATIVE-PRODUCTION-BRIEF.md` — 6 ads (repeat-myself, no-stim-calm, ingredients-audit, permission-filter UGC, moody-cinematic, social-proof)
+    - YuSleep: `CB_YUSLEEP_US_META_ABO_v1/CREATIVE-PRODUCTION-BRIEF.md` — 6 ads (ceiling-2am, calm-routine, ingredients-stack, permission-filter UGC, moody-cinematic, social-proof)
+    - Todos com prompts Fal.ai prontos, copy Meta Ads Manager, roteiros Higgsfield UGC 9:16, guia de implementação CBO
+- **Impacto:** Pipeline criativo 100% pronto para produção. Só falta rodar os prompts no Fal.ai/Higgsfield e subir no Ads Manager.
+
+---
+
+### [PLAYBOOK-2] Meta Creative Workflow — Competitor Intel + Trends + Winner Iteration
+- **Status:** Concluído (2026-09-07)
+- **Assigned:** Hermes Agent
+- **Goal:** Aplicar workflow de 3 fases do Sam Piliero (The Moonlighters) para criação de criativos Meta Ads baseado em inteligência competitiva real.
+- **Entregáveis:**
+    - Skill `meta-creative-workflow` criado: 3 fases (Competitor Recreation, Marketplace Trends, Winner Iteration)
+    - Master aplicado às 3 campanhas: `CREATIVE-WORKFLOW-MASTER.md` com batches CT específicos para NeuroVera, Audifort, YuSleep
+    - Integração com low-budget playbook: quando usar cada fase no CT→LT→ASC→Side CT
+    - Stack de geração mapeado: Fal.ai, Higgsfield, ComfyUI, Nano Banana API por campanha e fase
+    - Checklist de qualidade com compliance, formatos, hooks, CTA
+- **Impacto:** Pipeline criativo estruturado evita adivinhação e maximiza chance de home runs via dados reais de mercado.
+
+---
+
+### [PLAYBOOK-1] Low-Budget Meta Playbook aplicado às 3 campanhas ativas
+- **Status:** Concluído (2026-09-07)
+- **Assigned:** Hermes Agent
+- **Goal:** Aplicar as estratégias do vídeo de Sergio C (Post-Andromeda low budget) às campanhas NeuroVera, Audifort e YuSleep.
+- **Entregáveis:**
+    - Template reutilizável: `orquestracao/playbooks/LOW-BUDGET-META-PLAYBOOK-TEMPLATE.md`
+    - NeuroVera: `CB_NEUROVERA_US_META_ABO_v1/LOW-BUDGET-ANDROMEDA-PLAYBOOK.md` — atualizado com Fase D (funnel metrics pós-clique)
+    - Audifort: `CB_AUDIFORT_US_META_ABO_v1/LOW-BUDGET-ANDROMEDA-PLAYBOOK.md` — novo
+    - YuSleep: `CB_YUSLEEP_US_META_ABO_v1/LOW-BUDGET-ANDROMEDA-PLAYBOOK.md` — novo
+- **Impacto:** Todas as campanhas low-budget agora seguem estrutura CT→LT→ASC→Funnel, evitando spray de criativos e maximizando eficiência por dólar.
 
 ### [PAGES-5] Checklist semanal de revisão de link de afiliado
 - **Status:** Proposto

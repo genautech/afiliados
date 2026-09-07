@@ -82,3 +82,9 @@ product_src/
 # MCP token files (secrets)
 .mcp-token
 *.mcp-token
+
+# Env de runtime do MCP (segredos) e artefatos de empacotamento
+*.env
+!.env.example
+*.tgz
+*.doctor-bak
