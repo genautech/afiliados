@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_PROVIDERS,
   AGENT_ROUTING_PREFERENCES,
+  assertAllowedProviderModel,
   KIMI_MODELS,
   resolveAgentChain,
   type Provider,
@@ -56,6 +57,33 @@ describe('roteamento por agente', () => {
       const passoKimi = resolveAgentChain(ctxComTodasAsChaves(), agent).find((s) => s.provider === 'kimi');
       if (passoKimi) {
         expect(passoKimi.model, `${agent} caiu no k2.5 direto`).not.toBe(KIMI_MODELS.K2_5);
+      }
+    }
+  });
+
+  it('agente premium continua no Claude quando a chave direta da Anthropic morre', () => {
+    // Sem crédito na Anthropic, o próximo hop do TIER_CHAINS premium tem que ser Claude via
+    // OpenRouter — não um modelo de outra família. Verificado vivo: anthropic/claude-opus-4.8
+    // responde pelo OpenRouter mesmo com a conta direta zerada.
+    // Usa fact-steward, que é premium sem preferência própria — ads-auditor e
+    // compliance-sentinel têm preferência explícita por google e não exercitam a cadeia base.
+    const ctx = ctxComTodasAsChaves();
+    delete (ctx.keys as Record<string, string>).anthropic;
+
+    const chain = resolveAgentChain(ctx, 'fact-steward');
+    expect(chain[0].provider).toBe('openrouter');
+    expect(chain[0].model).toContain('claude');
+  });
+
+  it('todo modelo default e override existe na allowlist do provedor', () => {
+    // Pega id de modelo inventado antes de virar 404 em runtime: foi assim que o
+    // gemini-2.5-pro-preview-06-05 entrou como premium do google (404 no Vertex).
+    for (const agent of Object.keys(AGENT_ROUTING_PREFERENCES)) {
+      for (const step of resolveAgentChain(ctxComTodasAsChaves(), agent)) {
+        expect(
+          () => assertAllowedProviderModel(step.provider, step.model),
+          `${agent} -> ${step.provider}:${step.model}`,
+        ).not.toThrow();
       }
     }
   });

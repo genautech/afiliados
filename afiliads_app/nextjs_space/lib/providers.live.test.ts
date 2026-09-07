@@ -7,7 +7,7 @@
 // configurado existe nesse provedor?" sem depender do fallback esconder a resposta.
 import { describe, expect, it, beforeAll } from 'vitest';
 import { prisma } from './prisma';
-import { ACTIVE_PROVIDERS, callProvider, getRoutingContext, type Provider } from './llm';
+import { ACTIVE_PROVIDERS, callAgent, callProvider, getRoutingContext, resolveAgentChain, type Provider } from './llm';
 
 const live = process.env.RUN_LIVE_LLM === '1';
 
@@ -46,6 +46,24 @@ describe.skipIf(!live)('provedores de LLM — LIVE', () => {
     // plataforma inteira estar de pé só no ollama local.
     const remotos = results.filter((r) => r.ok && r.provider !== 'ollama');
     expect(remotos.length, `nenhum provedor remoto respondeu: ${JSON.stringify(results)}`).toBeGreaterThan(0);
+  }, 300_000);
+
+  it('agente premium é atendido por Claude mesmo com a conta Anthropic sem crédito', async () => {
+    const user = await prisma.user.findFirst({ select: { id: true } });
+    const chain = resolveAgentChain(ctx, 'fact-steward');
+    console.log('[PREMIUM] cadeia:', chain.map((s) => `${s.provider}:${s.model}`).join(' → '));
+
+    const res = await callAgent(user!.id, {
+      agent: 'fact-steward',
+      systemPrompt: 'Responda em uma frase curta.',
+      userPrompt: 'Diga apenas: pong.',
+      campaignTarget: { kind: 'non-campaign' },
+    });
+    console.log(`[PREMIUM] atendeu: provider=${res.provider} model=${res.model} ${res.durationMs}ms`);
+
+    expect(res.error).toBeNull();
+    // O que importa: continua sendo Claude, mesmo que pela rota do OpenRouter.
+    expect(res.model.toLowerCase()).toContain('claude');
   }, 300_000);
 });
 

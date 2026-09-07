@@ -156,6 +156,14 @@ export const AGENT_ROUTING_PREFERENCES: Record<string, AgentRoutingPreference> =
   'wizard-validator': {
     providers: ['openrouter', 'kimi', 'grok', 'google', 'ollama'],
   },
+  'ads-auditor': {
+    providers: ['google', 'kimi', 'grok', 'openai', 'anthropic', 'openrouter', 'ollama'],
+    modelOverrides: { google: 'gemini-2.5-pro' },
+  },
+  'compliance-sentinel': {
+    providers: ['google', 'kimi', 'grok', 'openai', 'anthropic', 'openrouter', 'ollama'],
+    modelOverrides: { google: 'gemini-2.5-pro' },
+  },
 };
 
 export const AGENT_MODEL_LOCKS: Partial<Record<string, { provider: Provider; model: string }>> = {
@@ -255,7 +263,7 @@ export const AGENT_TIERS: Record<string, Tier> = {
 // modelos Moonshot, independente do OpenRouter — se o OpenRouter cair, a cadeia não precisa
 // descer até o ollama local. Verificado vivo em 2026-09-07 (kimi-k2.6, api.moonshot.ai).
 const TIER_CHAINS: Record<Tier, Provider[]> = {
-  premium: ['anthropic', 'grok', 'google', 'openrouter', 'kimi', 'openai', 'ollama'],
+  premium: ['anthropic', 'openrouter', 'grok', 'google', 'kimi', 'openai', 'ollama'],
   standard: ['openrouter', 'kimi', 'grok', 'google', 'openai', 'anthropic', 'ollama'],
   light: ['ollama', 'openrouter', 'kimi', 'grok', 'google', 'openai', 'anthropic'],
 };
@@ -270,7 +278,11 @@ const DEFAULT_MODELS: Record<Provider, Record<Tier, string>> = {
   // Atenção: kimi-k2.5 NÃO existe na API direta da Moonshot (404 "Not found the model"); ela
   // serve k2.6, k2.7-code, k2.7-code-highspeed e k3. O k2.5 só é alcançável via OpenRouter.
   kimi: { premium: KIMI_MODELS.K3, standard: KIMI_MODELS.K3, light: KIMI_MODELS.K2_6 },
-  openrouter: { premium: 'moonshotai/kimi-k3', standard: 'moonshotai/kimi-k2.5', light: 'moonshotai/kimi-k2.5' },
+  // O premium do OpenRouter é Claude de propósito: é a segunda rota para os agentes premium
+  // (compliance, auditoria, fact-steward) quando a chave direta da Anthropic está sem crédito.
+  // Verificado vivo em 2026-09-07 — anthropic/claude-fable-5 dá 404 nessa conta por política de
+  // dados, então o default é o opus-4.8, que responde. Standard/light seguem no kimi por custo.
+  openrouter: { premium: 'anthropic/claude-opus-4.8', standard: 'moonshotai/kimi-k2.5', light: 'moonshotai/kimi-k2.5' },
 };
 
 const ALLOWED_MODELS: Record<Provider, ReadonlySet<string>> = {
@@ -281,7 +293,11 @@ const ALLOWED_MODELS: Record<Provider, ReadonlySet<string>> = {
   ollama: new Set(['gpt-oss:120b', 'gpt-oss:20b']),
   abacusai: new Set(['gpt-5.4-mini']),
   kimi: new Set(Object.values(KIMI_MODELS)),
-  openrouter: new Set(['openrouter/auto', 'moonshotai/kimi-k3', 'moonshotai/kimi-k2.6', 'moonshotai/kimi-k2.5']),
+  openrouter: new Set([
+    'openrouter/auto',
+    'moonshotai/kimi-k3', 'moonshotai/kimi-k2.6', 'moonshotai/kimi-k2.5',
+    'anthropic/claude-opus-4.8', 'anthropic/claude-sonnet-5',
+  ]),
 };
 
 export function assertAllowedProviderModel(provider: Provider, model: string): void {
@@ -1045,7 +1061,11 @@ export async function callAgent(
         durationMs,
         provider: step.provider,
         model: modelAttempt,
-        error: lastError ?? null, // Ensure error is explicitly string or null
+        // Sucesso é sucesso: o erro do provedor que falhou antes não pode vazar pro resultado.
+        // Consumidores tratam `error` não-nulo como falha (ex.: app/api/campaign-audit/route.ts),
+        // e com o anthropic sem crédito na frente do tier premium isso marcaria como erro toda
+        // auditoria que deu certo pelo fallback. O hop pulado fica no log do logProviderSkip.
+        error: null,
       };
       if (llmCacheEnabled()) llmResponseCache.set(cacheKey, { at: Date.now(), result: successResult });
       return successResult;

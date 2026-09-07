@@ -19,6 +19,8 @@ const MODEL_PRICES: Array<{ match: string; price: ModelPrice }> = [
   { match: 'claude-opus-4-7', price: { inputPer1M: 5, outputPer1M: 25 } },
   { match: 'claude-opus', price: { inputPer1M: 5, outputPer1M: 25 } },
   { match: 'claude-fable-5', price: { inputPer1M: 3, outputPer1M: 15 } },
+  // Claude via OpenRouter (anthropic/claude-sonnet-5): $2/$10, mais barato que a rota direta.
+  { match: 'claude-sonnet-5', price: { inputPer1M: 2, outputPer1M: 10 } },
   { match: 'claude', price: { inputPer1M: 3, outputPer1M: 15 } },
   // OpenAI
   { match: 'gpt-4o-mini', price: { inputPer1M: 0.15, outputPer1M: 0.6 } },
