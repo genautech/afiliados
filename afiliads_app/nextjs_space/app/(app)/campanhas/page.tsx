@@ -34,9 +34,20 @@ export default function CampanhasPage() {
     if (filterStatus !== 'all') params.set('status', filterStatus);
     if (filterPlatform !== 'all') params.set('platform', filterPlatform);
     fetch(`/api/campaigns?${params}`)
-      .then(r => r.json())
-      .then(d => setCampaigns(d ?? []))
-      .catch(console.error)
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok) {
+          toast.error(d?.error || `Erro ao carregar campanhas (${r.status})`);
+          return [];
+        }
+        return Array.isArray(d) ? d : [];
+      })
+      .then(setCampaigns)
+      .catch((err) => {
+        console.error(err);
+        toast.error('Erro ao carregar campanhas');
+        setCampaigns([]);
+      })
       .finally(() => setLoading(false));
   };
 
