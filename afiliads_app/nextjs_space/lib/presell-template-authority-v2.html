@@ -5,21 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITULO_DA_PAGINA}}</title>
 <meta name="description" content="{{META_DESCRICAO}}">
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=GOOGLE_ADS_ID"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('consent', 'default', {
-    'ad_storage': 'denied',
-    'ad_user_data': 'denied',
-    'ad_personalization': 'denied',
-    'analytics_storage': 'denied'
-  });
-  gtag('config', 'GOOGLE_ADS_ID');
-</script>
-{{GA4_TAG}}
+{{GOOGLE_TAGS}}
 {{META_PIXEL_TAG}}
 {{GTM_HEAD}}
 <link rel="preconnect" href="https://fonts.googleapis.com">
