@@ -8,6 +8,11 @@ export const PRESELL_PAGE_TYPES = [
   'vsl',
   'interstitial',
   'authority',
+  // authority_v2 = authority com foto lifestyle real (ver renderPresellHtml em lib/presell.ts).
+  // Estava só em VALID_PAGE_TYPES/TEMPLATE_FILE_BY_TYPE e fora daqui, então todo consumidor que
+  // valida por esta lista o rejeitava em silêncio — inclusive o override de aprendizado em
+  // lib/campaign-strategy.ts, que descartava um authority_v2 com lucro real.
+  'authority_v2',
   'tsl',
   'cookie_popup',
   'review',

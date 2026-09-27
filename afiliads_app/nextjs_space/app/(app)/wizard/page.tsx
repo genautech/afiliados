@@ -520,7 +520,9 @@ export default function WizardPage() {
       // — inclusive "interstitial" só quando o canal é YOUTUBE/DEMAND_GEN e nunca em SEARCH/PMAX.
       // Aplica como sugestão (não sobrescreve escolha manual já salva de uma campanha existente).
       const suggestedPageType = data.strategy.recommendedBridgeType;
-      if (['advertorial', 'pogo', 'vsl', 'interstitial'].includes(suggestedPageType)) {
+      // Antes esta lista tinha só 4 dos 9 pageTypes, então uma sugestão de review/tsl/authority/
+      // cookie_popup vinda do motor determinístico era descartada sem aviso.
+      if ((PRESELL_PAGE_TYPES as readonly string[]).includes(suggestedPageType)) {
         const curPageType = baseline.pageType;
         if (!onlyIfEmpty || curPageType === undefined || curPageType === null || String(curPageType).trim() === '') {
           setPageType(suggestedPageType as PresellPageType);

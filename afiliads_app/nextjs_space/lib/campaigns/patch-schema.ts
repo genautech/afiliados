@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PRESELL_PAGE_TYPES } from '@/lib/presell-types';
 
 const httpsUrl = (max: number) => z.string().max(max).refine((value) => {
   if (value === '') return true;
@@ -21,7 +22,7 @@ export const patchCampaignSchema = z.object({
   budgetTest: z.number().finite().nonnegative().optional(),
   campaignNameGenerated: z.string().max(255).nullable().optional(),
   platform: z.string().max(255).optional(),
-  pageType: z.enum(['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'tsl', 'cookie_popup', 'review']).optional(),
+  pageType: z.enum(PRESELL_PAGE_TYPES).optional(),
   popupGate: z.boolean().optional(),
   videoUrl: httpsUrl(2048).optional(),
   hostingerDomain: z.string().max(255).optional(),

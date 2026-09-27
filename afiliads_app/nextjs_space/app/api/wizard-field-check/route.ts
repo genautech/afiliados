@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { callAgent } from '@/lib/llm';
 import { isNoLlmKeyError, LLM_PROVIDER_LIST } from '@/lib/llm-errors';
 import { PLATFORMS, VERTICALS, GEOS, CHANNELS } from '@/lib/wizard-data';
+import { PRESELL_PAGE_TYPES } from '@/lib/presell-types';
 import { getPresellOutcomeReferencia } from '@/lib/presell';
 import { getMarketIntelReferencia } from '@/lib/marketIntel';
 
@@ -24,7 +25,7 @@ const FIELD_KINDS: Record<string, FieldKind> = {
   geo: { kind: 'enum', options: GEOS },
   channel: { kind: 'enum', options: CHANNELS },
   funnel: { kind: 'enum', options: ['BRIDGE', 'DIRECT', 'REVIEW', 'SL'] },
-  pageType: { kind: 'enum', options: ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2'] },
+  pageType: { kind: 'enum', options: PRESELL_PAGE_TYPES },
   popupGate: { kind: 'enum', options: ['true', 'false'] },
   testDuration: { kind: 'enum', options: ['48h', '72h', '5', '7'] },
   commission: { kind: 'number', min: 0 },

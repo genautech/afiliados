@@ -4,6 +4,7 @@ import { syncCampaignSpend } from './google-ads/spend-sync';
 import type { SpendCoverage } from './spend-coverage';
 import { prisma } from './prisma';
 import { callAgent } from './llm';
+import { checkPresellCompliance } from './loop-compliance';
 import { computeEconomics, evaluateRules, type RulesResult, type CampaignEconomics } from './campaign-rules';
 
 /** Janela de performance (CPC/EPC/CVR). O orçamento acumulado ignora esta janela. */
@@ -124,36 +125,14 @@ export async function runCampaignLoop(userId: string, campaignId: string, trigge
       }
     }
 
-    if (wanted.includes('compliance') && campaign.presellUrl) {
-      try {
-        const page = await fetch(campaign.presellUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' });
-        if (page.ok) {
-          const html = (await page.text())
-            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/\s+/g, ' ')
-            .slice(0, 10000);
-          const res = await callAgent(userId, {
-            agent: 'compliance-sentinel',
-            json: true,
-            campaignId: campaign.id,
-            campaignTarget: { kind: 'campaign', campaignId: campaign.id },
-            systemPrompt: 'Você é o Compliance Sentinel do AfiliAds no loop de auto-correção. Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
-            userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}):\n\"\"\"${html}\"\"\"\nRetorne JSON: {\"aprovado\": true|false, \"alertas\": [{\"nivel\": \"critico|atencao\", \"texto\": \"...\"}]}`,
-          });
-          agentsRun.push('compliance-sentinel');
-          totalTokens += (res.usage.totalTokens ?? 0);
-          const criticos = (res.data?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
-          if (criticos.length > 0) {
-            allTriggers.push(`Compliance: ${criticos.length} alerta(s) crítico(s) na presell — ${criticos.map((a: any) => a.texto).join(' | ')}`);
-            if (finalDecision === 'CONTINUAR' || finalDecision === 'SCALE') finalDecision = 'OTIMIZAR';
-          }
-        } else {
-          allTriggers.push(`Presell inacessível (HTTP ${page.status}) em ${campaign.presellUrl} — verificar hospedagem`);
-        }
-      } catch (e: any) {
-        allTriggers.push(`Presell inacessível (${e?.message}) — verificar hospedagem/URL`);
+    if (wanted.includes('compliance')) {
+      const compliance = await checkPresellCompliance(userId, campaign, { pausada: false });
+      agentsRun.push(...compliance.agentsRun);
+      totalTokens += compliance.totalTokens;
+      allTriggers.push(...compliance.triggers);
+      if (compliance.error) error = error ?? compliance.error;
+      if (compliance.critical && (finalDecision === 'CONTINUAR' || finalDecision === 'SCALE')) {
+        finalDecision = 'OTIMIZAR';
       }
     }
   }
@@ -263,39 +242,12 @@ export async function runComplianceOnlyCheck(userId: string, campaignId: string)
   let finalDecision = 'CONTINUAR';
   const allTriggers: string[] = [];
 
-  if (campaign.presellUrl) {
-    try {
-      const page = await fetch(campaign.presellUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' });
-      if (page.ok) {
-        const html = (await page.text())
-          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .slice(0, 10000);
-        const res = await callAgent(userId, {
-          agent: 'compliance-sentinel',
-          json: true,
-          campaignId: campaign.id,
-          campaignTarget: { kind: 'campaign', campaignId: campaign.id, purpose: 'paused-compliance' },
-          systemPrompt: 'Você é o Compliance Sentinel do AfiliAds verificando uma campanha PAUSADA (sem gasto de ads ativo, mas a presell pode continuar publicada e acessível). Audite o texto REAL da presell contra políticas do Google Ads (claims de cura/renda, urgência falsa, depoimentos proibidos). Responda APENAS JSON válido.',
-          userPrompt: `Presell da campanha ${campaign.name} (${campaign.presellUrl}) — campanha está PAUSADA, este é um check de compliance de rotina, não uma auditoria de ads:\n\"\"\"${html}\"\"\"\nRetorne JSON: {\"aprovado\": true|false, \"alertas\": [{\"nivel\": \"critico|atencao\", \"texto\": \"...\"}]}`,
-        });
-        agentsRun.push('compliance-sentinel');
-        totalTokens += (res.usage.totalTokens ?? 0);
-        const criticos = (res.data?.alertas ?? []).filter((a: any) => a?.nivel === 'critico');
-        if (criticos.length > 0) {
-          allTriggers.push(`Compliance (campanha pausada): ${criticos.length} alerta(s) crítico(s) na presell — ${criticos.map((a: any) => a.texto).join(' | ')}`);
-          finalDecision = 'OTIMIZAR';
-        }
-      } else {
-        allTriggers.push(`Presell inacessível (HTTP ${page.status}) em ${campaign.presellUrl} — verificar hospedagem`);
-      }
-    } catch (e: any) {
-      allTriggers.push(`Presell inacessível (${e?.message}) — verificar hospedagem/URL`);
-      error = `compliance-sentinel: ${e?.message}`;
-    }
-  }
+  const compliance = await checkPresellCompliance(userId, campaign, { pausada: true });
+  agentsRun.push(...compliance.agentsRun);
+  totalTokens += compliance.totalTokens;
+  allTriggers.push(...compliance.triggers);
+  if (compliance.error) error = compliance.error;
+  if (compliance.critical) finalDecision = 'OTIMIZAR';
 
   if (finalDecision !== 'CONTINUAR') {
     await prisma.campaignDecision.create({

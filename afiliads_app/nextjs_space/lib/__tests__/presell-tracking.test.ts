@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderPresellHtml, patchTrackingInHtml, type PresellContent } from '../presell';
+import { PRESELL_PAGE_TYPES } from '../presell-types';
 
 const content = {
   titulo_pagina: 'T', meta_descricao: 'D', nome_site: 'S', autor: 'A', categoria: 'C',
@@ -41,7 +42,9 @@ describe('tracking na presell renderizada', () => {
   });
 
   it('todos os pageTypes renderizam sem placeholder de tracking', () => {
-    for (const pageType of ['advertorial', 'pogo', 'vsl', 'authority', 'authority_v2', 'review', 'tsl', 'cookie_popup']) {
+    // Deriva da fonte única: pageType novo no enum entra automaticamente neste teste. interstitial
+    // fica de fora porque exige screenshot da sales page (ver generatePresell), coberto à parte.
+    for (const pageType of PRESELL_PAGE_TYPES.filter((t) => t !== 'interstitial')) {
       const html = renderPresellHtml(content, { ...base, pageType, metaPixelId: '123' });
       expect(html, pageType).not.toMatch(/GOOGLE_ADS_ID|CONVERSION_LABEL|\{\{(GOOGLE_TAGS|GA4_TAG|META_PIXEL_TAG|GTM_HEAD|GTM_BODY|TRACKING_SCRIPT)\}\}/);
     }
@@ -91,5 +94,22 @@ describe('patchTrackingInHtml (presell já salva)', () => {
     expect(html).toContain("'send_to': 'AW-77/ZZ'");
     expect(html).toContain("fbq('init', '55')");
     expect(html).toContain('gtag/js?id=AW-77');
+  });
+});
+
+// Invariante de vocabulário: todo pageType do enum canônico tem template e renderiza. O drift que
+// isto trava é real — authority_v2 existia em VALID_PAGE_TYPES e no mapa de templates mas não no
+// enum, então os consumidores que validam pelo enum o rejeitavam em silêncio (o override de
+// aprendizado de lib/campaign-strategy.ts descartava um authority_v2 lucrativo).
+describe('vocabulário de pageType', () => {
+  it('todo pageType do enum tem template próprio e renderiza HTML', () => {
+    for (const pageType of PRESELL_PAGE_TYPES.filter((t) => t !== 'interstitial')) {
+      const html = renderPresellHtml(content, { ...base, pageType });
+      expect(html.length, pageType).toBeGreaterThan(500);
+    }
+  });
+
+  it('authority_v2 está no enum (o caso que quebrou)', () => {
+    expect(PRESELL_PAGE_TYPES).toContain('authority_v2');
   });
 });

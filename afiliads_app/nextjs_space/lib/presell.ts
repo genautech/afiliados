@@ -8,6 +8,7 @@ import { getMarketIntelReferencia } from './marketIntel';
 import { enforceCompliance, getAnalyzedClaims } from './complianceVerifier';
 import { shadowClaimReuse } from './compliance-shadow';
 import type { AnalyzedClaimItem } from './validations/market-research';
+import { PRESELL_PAGE_TYPES } from './presell-types';
 
 export interface PresellContent {
   categoria: string;
@@ -1373,7 +1374,9 @@ export async function generatePresell(userId: string, args: {
   const geo = args.geo ?? 'US';
   const language = args.language ?? (geo === 'BR' ? 'pt-BR' : 'en');
   const normalizedPageType = args.pageType === 'authority_review' ? 'authority' : args.pageType;
-  const VALID_PAGE_TYPES = ['advertorial', 'pogo', 'vsl', 'interstitial', 'authority', 'authority_v2', 'tsl', 'cookie_popup', 'review'];
+  // Fonte única do vocabulário (lib/presell-types.ts) — a lista literal que ficava aqui já
+  // divergia do enum canônico em authority_v2.
+  const VALID_PAGE_TYPES: readonly string[] = PRESELL_PAGE_TYPES;
   const pageType = normalizedPageType && VALID_PAGE_TYPES.includes(normalizedPageType) ? normalizedPageType : 'advertorial';
   const popupGate = !!args.popupGate;
   if (pageType === 'vsl' && !args.videoUrl?.trim()) {
