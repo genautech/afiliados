@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchPageContent, analyzeDom, classifySalesPage } from '@/lib/salesPageAnalyzer';
+import { shadowSalesPageType } from '@/lib/strategy-shadow';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(req: NextRequest) {
@@ -36,6 +37,10 @@ export async function POST(req: NextRequest) {
 
     const characteristics = analyzeDom(htmlContent);
     const salesPageType = classifySalesPage(characteristics);
+
+    // Modo sombra (TYPESAFE_SHADOW=1): mesma página classificada por julgamento, só pra medir
+    // divergência contra a heurística de tag/botão. Não muda o valor persistido.
+    await shadowSalesPageType(htmlContent, salesPageType, productId ?? url);
 
     if (productId) {
       await prisma.productResearch.update({

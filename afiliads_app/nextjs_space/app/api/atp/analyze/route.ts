@@ -6,6 +6,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { atpFetch, atpErrorResponse } from '@/lib/atp';
 import { callLLM } from '@/lib/llm';
+import { parseAgentJson } from '@/lib/json-validation';
+import { judgeKeywords } from '@/lib/strategy-judgments';
 
 type Row = {
   keyword: string;
@@ -72,10 +74,16 @@ const INTENT_WEIGHT: Record<string, number> = {
   informational: 0.6,
 };
 
+// Taxonomia canônica de camada (a mesma de lib/strategy-judgments.ts, lib/agents.ts:44 e
+// LAYER_TO_STAGE em lib/campaign-strategy.ts): A = fundo/comercial, B = comparação, C = problema,
+// D = informacional. O prompt que existia aqui usava A e D invertidos, então keyword comercial
+// entrava como camada D e virava estágio TOPO na campanha — 7 dias de teste e canal de vídeo pra
+// tráfego de alta intenção. Só vale como fallback: o valor bom vem de judgeKeywords().
 function fallbackLayer(intent: string, kw: string): string {
-  if (intent === 'transactional') return 'D';
-  if (intent === 'commercial') return 'C';
-  if (/how to|what is|como |o que|why |stop |relief|remedy/.test(kw)) return 'A';
+  if (intent === 'transactional') return 'A';
+  if (intent === 'commercial') return 'B';
+  if (/how to|como |stop |relief|remedy|sintoma|dor /.test(kw)) return 'C';
+  if (/what is|o que e|o que é|why |por que/.test(kw)) return 'D';
   return 'B';
 }
 
@@ -126,45 +134,60 @@ export async function POST(request: NextRequest) {
     scored.sort((a, b) => b.score - a.score);
     const top = scored.slice(0, 40);
 
-    // Classificação de camadas A-D e match types via LLM do app (não gasta crédito ATP)
-    let llmResult: any = null;
+    // Camada A-D e match type por julgamento tipado (lib/strategy-judgments.ts): uma request,
+    // duas perguntas fechadas por keyword, todas em paralelo. Antes daqui saía um prompt pedindo
+    // JSON com as 40 keywords repetidas de volta, com ```json arrancado na mão e reencontro por
+    // string — quando o parse falhava (silencioso) tudo caía no fallbackLayer de regex.
+    const judged = await judgeKeywords(
+      top.map((r) => r.keyword),
+      {
+        produto: campaign?.name ?? search.keyword,
+        vertical: campaign?.vertical ?? null,
+        geo: campaign?.geo ?? search.region,
+        cpc_maximo_viavel: cpcTeto || null,
+        seed_pesquisada: search.keyword,
+      },
+    );
+
+    const ranking = top.map((r, index) => {
+      const j = judged?.[index];
+      return {
+        ...r,
+        layer: j?.layer.value ?? fallbackLayer(r.intent, r.keyword),
+        matchType: j?.matchType.value ?? 'phrase',
+        // Confiança do julgamento de camada: a UI pode marcar pra revisão o que ficou baixo em
+        // vez de todo mundo aparecer igualmente decidido.
+        layerConfidence: j?.layer.confidence ?? null,
+        layerSource: j?.layer.usable ? 'julgamento' : 'heuristica',
+      };
+    });
+
+    // A melhor keyword sai da economia calculada em código (intenção × volume × margem de CPC),
+    // que é determinística. O LLM generativo entra só pra escrever o porquê em pt-BR — que é
+    // texto, não decisão. Se ele falhar, a rationale determinística assume.
+    let llmResult: { best?: { keyword?: string; rationale?: string } } | null = null;
     try {
-      const systemPrompt = `Você é um estrategista de Google Ads para marketing de afiliados. Classifique keywords nas camadas: A=Problema (dor do público), B=Solução (categoria/produto genérico), C=Comparação (review, best, vs, funciona), D=Comercial (comprar, preço, desconto, marca do produto). Sugira matchType ("exact" para termos de alta intenção e baixo volume, "phrase" para o resto). Responda APENAS com JSON válido, sem markdown.`;
-      const userPrompt = `Produto/campanha: ${campaign?.name ?? search.keyword} (vertical: ${campaign?.vertical ?? 'n/a'}, geo: ${campaign?.geo ?? search.region}, CPC máximo viável: $${cpcTeto || 'desconhecido'}).
-Seed pesquisada no AnswerThePublic: "${search.keyword}" (${search.language}/${search.region}).
-
-Keywords (com volume, cpc, intent, score econômico):
-${top.map((r) => `- "${r.keyword}" vol=${r.volume ?? '?'} cpc=${r.cpc ?? '?'} intent=${r.intent} score=${r.score}${r.viable === false ? ' INVIÁVEL(cpc>teto)' : ''}`).join('\n')}
-
-Retorne JSON: {"best": {"keyword": "...", "layer": "A|B|C|D", "matchType": "exact|phrase", "rationale": "1-2 frases em pt-BR do porquê é a melhor keyword para campanha de afiliado"}, "keywords": [{"keyword": "...", "layer": "A|B|C|D", "matchType": "exact|phrase"}]} para TODAS as keywords listadas.`;
+      const melhor = ranking[0];
       const raw = await callLLM(userId, {
-        agent: 'atp-keyword-analyst', systemPrompt, userPrompt,
+        agent: 'atp-keyword-analyst',
+        systemPrompt: 'Você é um estrategista de Google Ads para marketing de afiliados. Responda APENAS com JSON válido, sem markdown.',
+        userPrompt: `Campanha: ${campaign?.name ?? search.keyword} (vertical: ${campaign?.vertical ?? 'n/a'}, geo: ${campaign?.geo ?? search.region}, CPC máximo viável: $${cpcTeto || 'desconhecido'}).
+A melhor keyword já foi escolhida pela economia da campanha: "${melhor.keyword}" (camada ${melhor.layer}, ${melhor.matchType}, volume ${melhor.volume ?? '?'}, cpc ${melhor.cpc ?? '?'}, score ${melhor.score}).
+Retorne JSON: {"best": {"keyword": "${melhor.keyword}", "rationale": "1-2 frases em pt-BR explicando por que essa keyword é a melhor aposta para campanha de afiliado"}}`,
         campaignId: campaign?.id,
         campaignTarget: campaign
           ? { kind: 'campaign', campaignId: campaign.id }
           : { kind: 'non-campaign' },
       });
-      llmResult = JSON.parse(raw.text.replace(/```json|```/g, '').trim());
+      llmResult = parseAgentJson(raw.text);
     } catch {
       llmResult = null;
     }
 
-    const layerByKw = new Map<string, { layer: string; matchType: string }>();
-    for (const k of llmResult?.keywords ?? []) {
-      if (k?.keyword) layerByKw.set(String(k.keyword).toLowerCase(), { layer: k?.layer ?? 'B', matchType: k?.matchType ?? 'phrase' });
-    }
-    const ranking = top.map((r) => {
-      const cls = layerByKw.get(r.keyword);
-      return {
-        ...r,
-        layer: cls?.layer ?? fallbackLayer(r.intent, r.keyword),
-        matchType: cls?.matchType ?? 'phrase',
-      };
-    });
-
-    const best = llmResult?.best?.keyword
-      ? { ...llmResult.best, ...(ranking.find((r) => r.keyword === String(llmResult.best.keyword).toLowerCase()) ?? {}) }
-      : { ...ranking[0], rationale: 'Maior score econômico (intenção × volume × margem de CPC).' };
+    const best = {
+      ...ranking[0],
+      rationale: llmResult?.best?.rationale || 'Maior score econômico (intenção × volume × margem de CPC).',
+    };
 
     return NextResponse.json({
       campaign: campaign ? { id: campaign.id, name: campaign.name, cpcMax: campaign.cpcMax, epcBreakeven: campaign.epcBreakeven, commissionNet: campaign.commissionNet } : null,

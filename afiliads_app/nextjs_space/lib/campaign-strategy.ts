@@ -2,6 +2,8 @@ import { ProductResearch } from '@prisma/client';
 import { recommendBridgePage, BridgePageType } from '@/lib/bridgePageRecommender';
 import { SalesPageType } from '@/lib/salesPageAnalyzer';
 import { PRESELL_PAGE_TYPES, PresellPageType } from '@/lib/presell-types';
+import { compareVendorProhibitions, logNormalizationDivergence } from '@/lib/strategy-shadow';
+import { judgeStrategyInputs } from '@/lib/strategy-judgments';
 
 export type Channel = 'SEARCH' | 'YOUTUBE' | 'DEMAND_GEN' | 'PMAX';
 export type Funnel = 'BRIDGE' | 'DIRECT' | 'REVIEW' | 'SL';
@@ -113,7 +115,14 @@ function dominantKeywordLayer(keywords: SelectedKeywordInput[]): KeywordLayer | 
  * de Google Search quando na verdade só o termo "FemiCore" era proibido (brand bidding);
  * ver hermes/knowledge/femicore-approval-details.md. Esse termo vira `forbiddenAdTerms`,
  * consumido por quem gera keyword/RSA (negativa exata obrigatória), não por este gate. */
-function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; reason: string | null; forbiddenAdTerms: string[] } {
+function deriveBlockedChannels(product: ProductResearch): {
+  blocked: Channel[];
+  reason: string | null;
+  forbiddenAdTerms: string[];
+  /** Veredito da regex por regra de forbiddenChannels, na ordem original — entrada do modo
+   * sombra em lib/strategy-shadow.ts, que mede esse escopo contra o julgamento. */
+  escopoPorRegra: Array<{ regra: string; escopo: 'canal_inteiro' | 'apenas_termo_de_marca' }>;
+} {
   const insights = (product.affiliateInsights as any) ?? {};
   const validation = insights.campaignValidation ?? {};
   const blocked = new Set<Channel>();
@@ -130,6 +139,10 @@ function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; 
   }
 
   const forbidden: string[] = Array.isArray(insights.forbiddenChannels) ? insights.forbiddenChannels : [];
+  const escopoPorRegra: Array<{ regra: string; escopo: 'canal_inteiro' | 'apenas_termo_de_marca' }> = forbidden.map((raw) => ({
+    regra: String(raw),
+    escopo: /\b(bid|keyword|termo|marca|palavra)\b/i.test(String(raw)) ? 'apenas_termo_de_marca' : 'canal_inteiro',
+  }));
   for (const raw of forbidden) {
     const s = String(raw).toLowerCase();
     // Entradas que qualificam a proibição a um termo/keyword específico (brand bidding) não
@@ -143,7 +156,12 @@ function deriveBlockedChannels(product: ProductResearch): { blocked: Channel[]; 
   const channelLevelForbidden = forbidden.filter((raw) => !/\b(bid|keyword|termo|marca|palavra)\b/i.test(raw));
   if (channelLevelForbidden.length) reasons.push(`Vendor proíbe explicitamente: ${channelLevelForbidden.join(', ')}.`);
 
-  return { blocked: Array.from(blocked), reason: reasons.length ? reasons.join(' ') : null, forbiddenAdTerms: getForbiddenAdTerms(product) };
+  return {
+    blocked: Array.from(blocked),
+    reason: reasons.length ? reasons.join(' ') : null,
+    forbiddenAdTerms: getForbiddenAdTerms(product),
+    escopoPorRegra,
+  };
 }
 
 /** Termos que não podem aparecer em keyword ou copy de anúncio (brand bidding proibido pelo
@@ -195,10 +213,56 @@ export async function deriveCampaignStrategy(
   const funnelStage: FunnelStage = dominantLayer ? LAYER_TO_STAGE[dominantLayer] : 'MEIO';
 
   const strategy = (product.strategy as any) ?? {};
-  const presellNorm = normalizePresellTipo(strategy?.presell?.tipo);
-  const channelFromStrategy = normalizeChannel(strategy?.campanha?.tipo);
+  const presellTipoTexto = strategy?.presell?.tipo ? String(strategy.presell.tipo) : null;
+  const canalTexto = strategy?.campanha?.tipo ? String(strategy.campanha.tipo) : null;
+  const presellNormHeuristico = normalizePresellTipo(presellTipoTexto);
+  const canalHeuristico = normalizeChannel(canalTexto);
 
-  const { blocked: blockedChannels, reason: channelBlockReason, forbiddenAdTerms } = deriveBlockedChannels(product);
+  const { blocked: blockedChannels, reason: channelBlockReason, forbiddenAdTerms, escopoPorRegra } = deriveBlockedChannels(product);
+
+  // Uma request para tudo que precisa de julgamento sobre este produto: normalização do texto do
+  // dossiê (tipo de presell, funil, canal) e escopo de cada proibição do vendor. Perguntas
+  // independentes sobre o mesmo estado rodam em paralelo — não são 3 chamadas, é uma.
+  const judged = await judgeStrategyInputs({
+    produto: product.name,
+    presellTipoTexto,
+    canalTexto,
+    regras: escopoPorRegra.map((e) => e.regra),
+  });
+
+  // Normalização: o julgamento manda, a cadeia de includes() fica como fallback. 'nao_informado'
+  // é tratado como null de propósito — presellNorm nulo significa "o dossiê não trouxe preferência
+  // explícita", e é isso que libera a sugestão de interstitial mais abaixo.
+  const presellTipoJulgado = judged?.presellTipo?.value && judged.presellTipo.value !== 'nao_informado'
+    ? (judged.presellTipo.value as PresellPageType)
+    : null;
+  const funilJulgado = judged?.funil?.value && judged.funil.value !== 'nao_informado'
+    ? (judged.funil.value as Funnel)
+    : null;
+  const presellNorm: { funnel: Funnel; pageType: PresellPageType } | null = presellTipoJulgado
+    ? { pageType: presellTipoJulgado, funnel: funilJulgado ?? presellNormHeuristico?.funnel ?? 'BRIDGE' }
+    : presellNormHeuristico;
+  const channelFromStrategy: Channel | null =
+    judged?.canal?.value && judged.canal.value !== 'nao_informado' ? (judged.canal.value as Channel) : canalHeuristico;
+
+  if (judged) {
+    // Awaited de propósito: gravação de telemetria solta vira promise pendente que o runtime
+    // serverless corta quando a resposta sai. recordShadowRows engole os próprios erros.
+    await Promise.all([
+      judged.presellTipo
+        ? logNormalizationDivergence('tipo_presell', presellNormHeuristico?.pageType ?? null, presellNorm?.pageType ?? null, judged.presellTipo.confidence, product.id)
+        : null,
+      judged.funil
+        ? logNormalizationDivergence('funil', presellNormHeuristico?.funnel ?? null, presellNorm?.funnel ?? null, judged.funil.confidence, product.id)
+        : null,
+      judged.canal
+        ? logNormalizationDivergence('canal', canalHeuristico, channelFromStrategy, judged.canal.confidence, product.id)
+        : null,
+      // Proibições do vendor seguem decididas pela regex (deriveBlockedChannels) — aqui só registra
+      // a divergência, já que a resposta veio na mesma request.
+      compareVendorProhibitions(judged.prohibitions, escopoPorRegra.map((e) => e.escopo), product.id),
+    ]);
+  }
 
   let recommendedChannel: Channel | null = channelFromStrategy && !blockedChannels.includes(channelFromStrategy)
     ? channelFromStrategy

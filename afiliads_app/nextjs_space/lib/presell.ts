@@ -6,6 +6,7 @@ import { callAgent } from './llm';
 import { computeEconomics } from './campaign-rules';
 import { getMarketIntelReferencia } from './marketIntel';
 import { enforceCompliance, getAnalyzedClaims } from './complianceVerifier';
+import { shadowClaimReuse } from './compliance-shadow';
 import type { AnalyzedClaimItem } from './validations/market-research';
 
 export interface PresellContent {
@@ -450,7 +451,13 @@ function cookieConsentHtml(locale: Locale): string {
  * `ctaClicks` pra rankear pageType por canal, mas nada no HTML gerado jamais escrevia nesse
  * campo. `sendBeacon` é fire-and-forget: não bloqueia navegação, não precisa esperar resposta,
  * e funciona cross-origin sem CORS porque é uma requisição "simples" (sem header custom). */
-function trackingScriptHtml(clickBeaconUrl?: string): string {
+function trackingScriptHtml(clickBeaconUrl?: string, googleAdsId?: string, conversionLabel?: string): string {
+  // Evento de conversão só é emitido com ID **e** label reais cadastrados. Antes o JS saía com
+  // 'GOOGLE_ADS_ID/CONVERSION_LABEL' literal quando faltava cadastro, e cada clique disparava um
+  // send_to inválido — conversão nenhuma chegava no Google Ads (achado em 2026-09-08).
+  const adsId = (googleAdsId ?? '').trim().replace(/[^\w-]/g, '');
+  const label = (conversionLabel ?? '').trim().replace(/[^\w-]/g, '');
+  const sendTo = adsId && label ? `${adsId}/${label}` : '';
   return `<script>
 (function(){
   var COOKIE_NAME = 'afp_track';
@@ -508,15 +515,36 @@ function trackingScriptHtml(clickBeaconUrl?: string): string {
     btn.addEventListener('click', function(){
       persist();
       if (CLICK_BEACON_URL && navigator.sendBeacon) { try { navigator.sendBeacon(CLICK_BEACON_URL); } catch (e) {} }
-      if (typeof gtag === 'function') gtag('event', 'conversion', {'send_to': 'GOOGLE_ADS_ID/CONVERSION_LABEL'});
+      ${sendTo ? `if (typeof gtag === 'function') gtag('event', 'conversion', {'send_to': '${sendTo}'});` : ''}
     });
   });
 })();
 </script>`;
 }
 
-function ga4TagHtml(measurementId: string): string {
-  return `<script>gtag('config', '${measurementId.replace(/[^\w-]/g, '')}');</script>`;
+/** Bloco único do Google (loader gtag.js + Consent Mode v2 default + config de Ads e GA4).
+ * Antes o loader e o gtag('config') estavam hardcoded nos 6 templates com o literal
+ * GOOGLE_ADS_ID, e {{GA4_TAG}} só emitia o config — sem ID cadastrado a página ia pro ar
+ * pedindo https://www.googletagmanager.com/gtag/js?id=GOOGLE_ADS_ID (404) e configurando uma
+ * conta inexistente. Sem nenhum ID do Google, agora não sai script nenhum. */
+function googleTagsHtml(googleAdsId?: string, ga4Id?: string): string {
+  const ads = (googleAdsId ?? '').trim().replace(/[^\w-]/g, '');
+  const ga4 = (ga4Id ?? '').trim().replace(/[^\w-]/g, '');
+  if (!ads && !ga4) return '';
+  const configs = [ads, ga4].filter(Boolean).map((id) => `  gtag('config', '${id}');`).join('\n');
+  return `<script async src="https://www.googletagmanager.com/gtag/js?id=${ads || ga4}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('consent', 'default', {
+    ad_storage: 'denied',
+    analytics_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied'
+  });
+  gtag('js', new Date());
+${configs}
+</script>`;
 }
 
 /** GTM (opcional, além de GA4/Meta/Google Ads individuais já suportados) — pedido explícito
@@ -736,7 +764,7 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
 
   t = t.replace(/LINK_DE_AFILIADO_AQUI/g, esc(opts.hopLink));
   t = t.replace('{{DISCLAIMER_SAUDE}}', opts.isHealthNiche ? locale.disclaimerSaude : '');
-  t = t.replace('{{GA4_TAG}}', opts.ga4Id?.trim() ? ga4TagHtml(opts.ga4Id.trim()) : '');
+  t = t.replace('{{GOOGLE_TAGS}}', googleTagsHtml(opts.googleAdsId, opts.ga4Id));
   t = t.replace('{{META_PIXEL_TAG}}', opts.metaPixelId?.trim() ? metaPixelTagHtml(opts.metaPixelId.trim()) : '');
   t = t.replace('{{GTM_HEAD}}', opts.gtmContainerId?.trim() ? gtmHeadHtml(opts.gtmContainerId.trim()) : '');
   t = t.replace('{{GTM_BODY}}', opts.gtmContainerId?.trim() ? gtmBodyHtml(opts.gtmContainerId.trim()) : '');
@@ -747,7 +775,7 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
   t = t.replace('{{POPUP_GATE}}', opts.popupGate ? popupGateHtml(locale) : '');
   const appBaseUrl = process.env.NEXTAUTH_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
   const clickBeaconUrl = opts.presellId && appBaseUrl ? `${appBaseUrl}/api/presells/click?id=${opts.presellId}` : undefined;
-  t = t.replace('{{TRACKING_SCRIPT}}', trackingScriptHtml(clickBeaconUrl));
+  t = t.replace('{{TRACKING_SCRIPT}}', trackingScriptHtml(clickBeaconUrl, opts.googleAdsId, opts.conversionLabel));
   if (pageType === 'vsl') t = t.replace('{{VIDEO_EMBED}}', renderVideoEmbed(opts.videoUrl ?? ''));
   if (pageType === 'interstitial') {
     t = t.replace('{{SALES_PAGE_SCREENSHOT_URL}}', esc(opts.salesPageScreenshotUrl ?? ''));
@@ -802,13 +830,93 @@ export function renderPresellHtml(c: PresellContent, opts: { productName: string
     ? `<img class="produto-img produto-img-sm" src="${esc(opts.imagemRotuloUrl)}" alt="${esc(opts.productName)} label" loading="lazy">`
     : '');
 
-  // GOOGLE_ADS_ID/CONVERSION_LABEL substituídos por último, de propósito: {{TRACKING_SCRIPT}}
-  // (injetado acima) também contém esses tokens no próprio JS gerado — se essa troca rodasse
-  // antes da injeção, o texto ficaria literal "GOOGLE_ADS_ID/CONVERSION_LABEL" no HTML final.
-  if (opts.googleAdsId) t = t.replace(/GOOGLE_ADS_ID/g, esc(opts.googleAdsId));
-  if (opts.conversionLabel) t = t.replace(/CONVERSION_LABEL/g, esc(opts.conversionLabel));
+  // Rede de segurança: nenhum placeholder de tracking pode sobrar no HTML publicado. Se sobrar,
+  // é template novo com o literal antigo — falha na geração em vez de subir página quebrada.
+  const leftover = t.match(/GOOGLE_ADS_ID|CONVERSION_LABEL|\{\{(GOOGLE_TAGS|GA4_TAG|META_PIXEL_TAG|GTM_HEAD|GTM_BODY|TRACKING_SCRIPT)\}\}/);
+  if (leftover) throw new Error(`Template "${pageType}" deixou placeholder de tracking no HTML final: ${leftover[0]}`);
 
   return t;
+}
+
+export interface TrackingIds {
+  googleAdsId?: string;
+  conversionLabel?: string;
+  ga4Id?: string;
+  metaPixelId?: string;
+  gtmContainerId?: string;
+}
+
+/** Corrige o tracking de uma presell **já renderizada e salva** (Presell.html no banco, página
+ * publicada em WordPress/FTP), sem passar de novo pelo LLM. Necessário porque o HTML é
+ * persistido no momento da geração: cadastrar o ID em Configurações depois não reescreve
+ * página nenhuma. Troca o bloco do Google inteiro, o Meta Pixel e o send_to do evento de
+ * conversão; devolve a lista do que mudou pra o script poder relatar. */
+export function patchTrackingInHtml(html: string, ids: TrackingIds): { html: string; changes: string[] } {
+  const changes: string[] = [];
+  let out = html;
+
+  // 1) Bloco do Google (loader + dataLayer/consent/config) — remove o que existir, quebrado ou não.
+  const googleBlock = /[ \t]*(?:<!--[^\n]*(?:gtag|GOOGLE ADS)[^\n]*-->\s*)?<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=[^"]*"><\/script>\s*<script>[\s\S]*?<\/script>\n?/i;
+  const hadGoogle = googleBlock.test(out);
+  out = out.replace(googleBlock, '');
+  // config solto do GA4 (formato antigo do {{GA4_TAG}}).
+  out = out.replace(/[ \t]*<script>\s*gtag\('config', '[^']*'\);\s*<\/script>\n?/g, '');
+  const googleTags = googleTagsHtml(ids.googleAdsId, ids.ga4Id);
+  if (googleTags) {
+    out = insertInHead(out, googleTags);
+    changes.push(`google: ${[ids.googleAdsId, ids.ga4Id].filter(Boolean).join(' + ')}`);
+  } else if (hadGoogle) {
+    changes.push('google: bloco quebrado removido (nenhum ID cadastrado)');
+  }
+
+  // 2) Meta Pixel.
+  const metaBlock = /[ \t]*<script>\s*window\.__initMetaPixel[\s\S]*?<\/script>\n?/;
+  const hadMeta = metaBlock.test(out);
+  out = out.replace(metaBlock, '');
+  if (ids.metaPixelId?.trim()) {
+    out = insertInHead(out, metaPixelTagHtml(ids.metaPixelId.trim()));
+    changes.push(`meta pixel: ${ids.metaPixelId.trim()}${hadMeta ? ' (substituído)' : ' (ausente antes)'}`);
+  }
+
+  // 3) GTM.
+  const gtmHead = /[ \t]*<script>\(function\(w,d,s,l,i\)[\s\S]*?<\/script>\n?/;
+  const gtmBody = /[ \t]*<noscript><iframe src="https:\/\/www\.googletagmanager\.com\/ns\.html[^>]*><\/iframe><\/noscript>\n?/;
+  out = out.replace(gtmHead, '').replace(gtmBody, '');
+  if (ids.gtmContainerId?.trim()) {
+    out = insertInHead(out, gtmHeadHtml(ids.gtmContainerId.trim()));
+    out = out.replace(/<body([^>]*)>/i, (m) => `${m}\n${gtmBodyHtml(ids.gtmContainerId!.trim())}`);
+    changes.push(`gtm: ${ids.gtmContainerId.trim()}`);
+  }
+
+  // 4) Evento de conversão do CTA — inclusive o literal GOOGLE_ADS_ID/CONVERSION_LABEL antigo.
+  const adsId = (ids.googleAdsId ?? '').trim().replace(/[^\w-]/g, '');
+  const label = (ids.conversionLabel ?? '').trim().replace(/[^\w-]/g, '');
+  const convStmt = /if \(typeof gtag === 'function'\) gtag\('event', 'conversion', \{'send_to': '[^']*'\}\);/g;
+  const hadConv = convStmt.test(out);
+  convStmt.lastIndex = 0;
+  if (adsId && label) {
+    const replacement = `if (typeof gtag === 'function') gtag('event', 'conversion', {'send_to': '${adsId}/${label}'});`;
+    if (hadConv) {
+      out = out.replace(convStmt, replacement);
+    } else {
+      // Presell gerada sem o evento (nenhum ID no momento da geração): reinsere no handler do CTA.
+      out = out.replace(
+        /(if \(CLICK_BEACON_URL && navigator\.sendBeacon\) \{ try \{ navigator\.sendBeacon\(CLICK_BEACON_URL\); \} catch \(e\) \{\} \})/,
+        `$1\n      ${replacement}`
+      );
+    }
+    changes.push(`conversão: ${adsId}/${label}`);
+  } else if (hadConv) {
+    out = out.replace(convStmt, '');
+    changes.push('conversão: evento inválido removido (falta ID ou label)');
+  }
+
+  return { html: out, changes };
+}
+
+function insertInHead(html: string, snippet: string): string {
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${snippet}\n</head>`);
+  return `${snippet}\n${html}`;
 }
 
 function wpSites(): Record<string, { user: string; appPassword: string }> {
@@ -1393,6 +1501,9 @@ export async function generatePresell(userId: string, args: {
     if (!candidate?.headline) throw new Error('Presell Builder retornou conteúdo inválido');
 
     const verdict = enforceCompliance(JSON.stringify(candidate), analyzedClaims);
+    // Modo sombra: o julgamento recebe o conteúdo estruturado (estado melhor que o JSON.stringify
+    // que a regex precisa) e compara claim por claim. Não decide nada — ver compliance-shadow.ts.
+    await shadowClaimReuse(candidate, analyzedClaims, verdict.violations, args.campaignId);
     if (verdict.passed) {
       content = candidate;
       break;

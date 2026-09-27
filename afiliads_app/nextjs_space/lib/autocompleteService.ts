@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { judgeSearchIntents } from './strategy-judgments';
 
 export interface AutocompleteIntentGroup {
   questions: string[];
@@ -126,31 +127,35 @@ export async function getAutocompleteIntentMap(
     fetchGroup(modifiers.brand, 'brand')
   ]);
 
-  // Include baseline results that are not categorised into questions/commercial/etc.
+  // Sugestões do baseline que nenhum grupo de modificador trouxe: precisam ser classificadas pela
+  // intenção da busca em si. A classificação por substring aqui embaixo errava por construção —
+  // "vale a pena" está na lista informational e "preço" na commercial, mas quem não contém nenhum
+  // modificador caía em informational por default, então sugestão comercial pura virava conteúdo
+  // informacional no mapa de intenção. Agora o julgamento decide, e a lista de modificadores fica
+  // como fallback (mesmo comportamento de antes) quando não há julgamento disponível.
   const baselineClean = cleanSuggestions(baseline, normalizedKeyword);
-  for (const s of baselineClean) {
-    const alreadyGrouped = [
-      ...resultGroups.questions,
-      ...resultGroups.commercial,
-      ...resultGroups.informational,
-      ...resultGroups.brand
-    ].includes(s);
+  const jaAgrupadas = new Set([
+    ...resultGroups.questions,
+    ...resultGroups.commercial,
+    ...resultGroups.informational,
+    ...resultGroups.brand,
+  ]);
+  const semGrupo = baselineClean.filter((s) => !jaAgrupadas.has(s));
 
-    if (!alreadyGrouped) {
-      // Intelligently put baseline suggestions into default categories
-      if (modifiers.questions.some(q => s.includes(q))) {
-        resultGroups.questions.push(s);
-      } else if (modifiers.commercial.some(c => s.includes(c))) {
-        resultGroups.commercial.push(s);
-      } else if (modifiers.informational.some(i => s.includes(i))) {
-        resultGroups.informational.push(s);
-      } else if (modifiers.brand.some(b => s.includes(b))) {
-        resultGroups.brand.push(s);
-      } else {
-        // Default to informational if unclassified
-        resultGroups.informational.push(s);
+  if (semGrupo.length) {
+    const judged = await judgeSearchIntents(semGrupo, { keyword: normalizedKeyword, idioma: lang });
+    semGrupo.forEach((s, index) => {
+      const julgada = judged?.[index]?.value;
+      if (julgada) {
+        resultGroups[julgada].push(s);
+        return;
       }
-    }
+      if (modifiers.questions.some(q => s.includes(q))) resultGroups.questions.push(s);
+      else if (modifiers.commercial.some(c => s.includes(c))) resultGroups.commercial.push(s);
+      else if (modifiers.informational.some(i => s.includes(i))) resultGroups.informational.push(s);
+      else if (modifiers.brand.some(b => s.includes(b))) resultGroups.brand.push(s);
+      else resultGroups.informational.push(s);
+    });
   }
 
   // Deduplicate and clean everything finally

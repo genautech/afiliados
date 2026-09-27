@@ -1,9 +1,12 @@
 import { callAgent } from './llm';
+import { judgeAdCopyBrandBidding } from './compliance-judgments';
 
 export interface RsaResult {
   titles: string[];
   descriptions: string[];
   warnings?: string[];
+  /** Itens removidos pelo gate de brand bidding (ver blockBrandBiddingItems). */
+  blockedByBrandGate?: string[];
 }
 
 function validateRsa(data: any): string | null {
@@ -90,5 +93,42 @@ Lembre: títulos max 30 chars, descrições max 90 chars. JSON puro.`;
     }
   }
 
+  // Gate de brand bidding na geração. A proibição do vendor só existia como frase no prompt
+  // ("NUNCA use...") mais o bloqueio por substring exata no lançamento
+  // (lib/launch/google-adapter.ts) — que derruba o lançamento inteiro e não pega variação de
+  // grafia. Aqui o item proibido sai da lista antes, com o motivo no warning.
+  if (args.forbiddenTerms?.length && (result.titles?.length || result.descriptions?.length)) {
+    const blocked = await blockBrandBiddingItems(result, args.forbiddenTerms);
+    if (blocked.length) {
+      result.blockedByBrandGate = blocked.map((b) => b.texto);
+      result.warnings = [
+        ...(result.warnings ?? []),
+        ...blocked.map((b) => `Removido por brand bidding proibido (${args.forbiddenTerms!.join('/')}, p=${b.probability.toFixed(2)}): "${b.texto}"`),
+      ];
+    }
+  }
+
   return result;
+}
+
+/** Remove de `result` os títulos/descrições que citam termo proibido pelo vendor, em qualquer
+ * variação. Devolve o que saiu. Sem chave do TypeSafe, ou com o serviço fora, não remove nada —
+ * o gate determinístico do adapter de lançamento continua valendo como última barreira. */
+async function blockBrandBiddingItems(
+  result: RsaResult,
+  forbiddenTerms: string[],
+): Promise<Array<{ texto: string; probability: number }>> {
+  const titles = result.titles ?? [];
+  const descriptions = result.descriptions ?? [];
+  const judged = await judgeAdCopyBrandBidding([...titles, ...descriptions], forbiddenTerms);
+  if (!judged || judged.length === 0) return [];
+
+  // 'incerto' também sai: um título a menos não custa nada, brand bidding proibido custa a
+  // parceria com o vendor. Assimetria proposital.
+  const reprovados = new Set(judged.filter((j) => j.verdict !== 'passou').map((j) => j.texto));
+  if (reprovados.size === 0) return [];
+
+  result.titles = titles.filter((t) => !reprovados.has(t));
+  result.descriptions = descriptions.filter((d) => !reprovados.has(d));
+  return judged.filter((j) => reprovados.has(j.texto)).map((j) => ({ texto: j.texto, probability: j.probability }));
 }

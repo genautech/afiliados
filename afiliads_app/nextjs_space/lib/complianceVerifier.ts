@@ -3,6 +3,7 @@ import { getGoogleAdsConfig } from './google-ads';
 import type { Campaign, Keyword } from '@prisma/client';
 import { z } from 'zod';
 import { AnalyzedClaimItemSchema, type AnalyzedClaimItem } from './validations/market-research';
+import { shadowBridgeChecklist } from './compliance-shadow';
 import {
   ANTISTRIKE_ITEMS, BRIDGE_CHECKLIST, GOOGLE_ADS_CHECKLIST,
   TRACKING_CHECKLIST_MAXWEB, TRACKING_CHECKLIST_CB, GOLIVE_CHECKLIST,
@@ -102,21 +103,37 @@ export async function verifyAntistrikeItems(_campaign: Campaign): Promise<Record
   return {};
 }
 
-export async function verifyBridgeChecklist(campaign: Campaign): Promise<Record<string, CheckResult>> {
-  const html = await getPresellHtml(campaign);
+/** Os quatro itens do checklist de bridge que dependem do SIGNIFICADO do texto — extraídos pra
+ * poderem ser medidos contra o caminho de julgamento (lib/compliance-judgments.ts) sobre o mesmo
+ * HTML, em scripts/typesafe-compliance-shadow.ts. privacy_policy/ga4/ssl ficam de fora porque são
+ * presença literal de string/HTTP, não interpretação. */
+export function evaluateBridgeHtmlRegex(html: string | null): Record<string, CheckResult> {
   return {
     disclaimer: checkHtml(html, AFFILIATE_DISCLOSURE_RE, 'Disclosure de afiliado não encontrada no HTML'),
-    ssl: await checkSsl(campaign.presellUrl),
     sem_claims: (() => {
       if (!html) return { passed: false, note: 'Sem HTML da presell disponível pra analisar' };
       const found = findBannedClaim(html);
       return found ? { passed: false, note: `Termo de claim proibido encontrado no HTML ("${found}")` } : { passed: true };
     })(),
-    privacy_policy: checkHtml(html, PRIVACY_LINK_RE, 'Link de política de privacidade não encontrado no HTML'),
     faq: checkHtml(html, FAQ_RE, 'Seção de FAQ não encontrada no HTML'),
     resultados_variam: checkHtml(html, RESULTADOS_VARIAM_RE, '"Resultados individuais podem variar" não encontrado no HTML'),
+  };
+}
+
+export async function verifyBridgeChecklist(campaign: Campaign): Promise<Record<string, CheckResult>> {
+  const html = await getPresellHtml(campaign);
+  const results: Record<string, CheckResult> = {
+    ...evaluateBridgeHtmlRegex(html),
+    ssl: await checkSsl(campaign.presellUrl),
+    privacy_policy: checkHtml(html, PRIVACY_LINK_RE, 'Link de política de privacidade não encontrado no HTML'),
     ga4_configurado: checkHtml(html, GA4_TAG_RE, 'Tag do GA4 (gtag config G-...) não encontrada no HTML'),
   };
+
+  // Modo sombra (TYPESAFE_SHADOW=1): mesma presell julgada por perguntas fechadas, só pra medir
+  // divergência contra as regex acima. Não altera nenhum resultado — ver lib/compliance-shadow.ts.
+  await shadowBridgeChecklist(html, results, campaign.id);
+
+  return results;
 }
 
 export async function verifyGoogleAdsChecklist(campaign: Campaign): Promise<Record<string, CheckResult>> {

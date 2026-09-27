@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveErrorCauses, CAUSE_LABEL } from '@/lib/error-cause';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -83,18 +84,19 @@ export async function GET(_request: NextRequest) {
       take: 100,
       select: { agent: true, provider: true, error: true, createdAt: true },
     });
-    const problemMap = new Map<string, { agent: string; provider: string; cause: string; count: number; lastAt: Date }>();
+    // Causa por julgamento sobre as mensagens distintas (lib/error-cause.ts). A cadeia de
+    // includes() que ficava aqui usava os primeiros 120 caracteres do erro como "causa" quando
+    // nada casava — cada variação de texto virava um problema separado, e o agrupamento por
+    // agente+causa não agrupava nada. O rótulo mostrado continua vindo de código (CAUSE_LABEL).
+    const causaPorMensagem = await resolveErrorCauses(recentFailures.map((f) => f.error ?? 'erro desconhecido'));
+    const problemMap = new Map<string, { agent: string; provider: string; cause: string; sample: string; count: number; lastAt: Date }>();
     for (const f of recentFailures) {
       const raw = f.error ?? 'erro desconhecido';
-      const cause = raw.includes('insufficient_quota') || raw.includes('no remaining credits') ? 'Provedor sem crédito'
-        : raw.includes('validação') || raw.includes('valida') ? `Validação de output: ${raw.slice(0, 120)}`
-        : raw.includes('429') ? 'Rate limit do provedor'
-        : raw.includes('401') || raw.includes('API Key') ? 'Chave de API inválida/ausente'
-        : raw.slice(0, 120);
+      const cause = CAUSE_LABEL[causaPorMensagem.get(raw.trim()) ?? 'outro'];
       const key = `${f.agent}|${f.provider}|${cause}`;
       const prev = problemMap.get(key);
       if (prev) { prev.count++; }
-      else problemMap.set(key, { agent: f.agent, provider: f.provider, cause, count: 1, lastAt: f.createdAt });
+      else problemMap.set(key, { agent: f.agent, provider: f.provider, cause, sample: raw.slice(0, 160), count: 1, lastAt: f.createdAt });
     }
     const problems = Array.from(problemMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
 

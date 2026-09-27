@@ -1116,3 +1116,34 @@ model PresellProposal {
   @@index([injectedKnowledgeId])
   @@index([presellId])
 }
+
+// Modo sombra do julgamento (TypeSafe / System One): cada comparação entre a heurística que decide
+// hoje e o julgamento roda aqui como linha, não só como log. Log de console no Railway é efêmero e
+// não agrega — e a decisão de promover o julgamento a autoridade precisa de contagem sobre campanha
+// real, não de impressão. Ver lib/compliance-shadow.ts, lib/strategy-shadow.ts e o relatório em
+// scripts/typesafe-shadow-report.ts.
+//
+// Sem relação com User de propósito: é telemetria de decisão, não dado de usuário, e precisa
+// sobreviver a exclusão de campanha/produto (por isso contextId é String solta, não FK).
+model JudgmentShadow {
+  id           String   @id @default(cuid())
+  /** bridge-checklist | claim-reuse | sales-page | vendor-proibicao | normalizacao */
+  scope        String
+  /** Item comparado dentro do escopo (itemKey do checklist, campo normalizado, índice da claim). */
+  item         String
+  /** Veredito da heurística que hoje é autoridade. */
+  heuristic    String
+  /** Veredito do julgamento; 'incerto'/'confianca_baixa' quando não atingiu o piso. */
+  judgment     String
+  agrees       Boolean
+  /** noul, ou confidence do choice. */
+  probability  Float?
+  /** campaignId / productId / url — o que identifica o caso pra auditoria depois. */
+  contextId    String?
+  note         String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([scope, agrees])
+  @@index([createdAt])
+  @@index([contextId])
+}

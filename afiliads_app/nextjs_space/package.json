@@ -16,7 +16,12 @@
     "subsidios:build": "tsx scripts/build-subsidios.ts",
     "subsidios:check": "tsx scripts/build-subsidios.ts && tsx scripts/subsidios-manifest.ts && git diff --exit-code lib/generated/catalogo.ts lib/generated/catalogo-conhecimento.ts",
     "subsidios:manifest": "tsx scripts/subsidios-manifest.ts --write",
-    "subsidios:dados": "tsx scripts/export-dados-campanha.ts"
+    "subsidios:dados": "tsx scripts/export-dados-campanha.ts",
+    "tracking:doctor": "tsx --require dotenv/config scripts/tracking-doctor.ts",
+    "typesafe:shadow": "tsx --require dotenv/config scripts/typesafe-compliance-shadow.ts",
+    "typesafe:strategy": "tsx --require dotenv/config scripts/typesafe-strategy-shadow.ts",
+    "typesafe:normalizacao": "tsx --require dotenv/config scripts/typesafe-normalization-shadow.ts",
+    "typesafe:report": "tsx --require dotenv/config scripts/typesafe-shadow-report.ts"
   },
   "prisma": {
     "seed": "tsx --require dotenv/config scripts/safe-seed.ts"
@@ -85,6 +90,7 @@
     "@radix-ui/react-tooltip": "1.1.2",
     "@tanstack/react-query": "5.0.0",
     "@types/cheerio": "^0.22.35",
+    "@typesafe-ai/sdk": "^0.6.0",
     "autoprefixer": "10.4.15",
     "basic-ftp": "^6.0.2",
     "bcryptjs": "2.4.3",

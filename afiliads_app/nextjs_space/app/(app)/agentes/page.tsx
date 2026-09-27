@@ -309,6 +309,9 @@ export default function AgentesPage() {
                   <span className="text-white font-medium">{agentName(p.agent)}</span>
                   <span className="text-slate-500 text-xs"> via {p.provider || '?'}</span>
                   <p className="text-slate-300 text-xs mt-0.5">{p.cause}</p>
+                  {/* A causa agora é um rótulo fechado (agrupa de verdade); o texto original do
+                      erro fica aqui como amostra, que antes ia embutido na própria causa. */}
+                  {p.sample && <p className="text-slate-500 text-[11px] mt-0.5 font-mono break-all">{p.sample}</p>}
                 </div>
                 <Badge className="bg-red-500/20 text-red-400 shrink-0">{p.count}×</Badge>
               </div>
