@@ -9,6 +9,7 @@ import { enforceCompliance, getAnalyzedClaims } from './complianceVerifier';
 import { shadowClaimReuse } from './compliance-shadow';
 import type { AnalyzedClaimItem } from './validations/market-research';
 import { PRESELL_PAGE_TYPES } from './presell-types';
+import { normalizeTrackingId } from './tracking-id';
 
 export interface PresellContent {
   categoria: string;
@@ -1521,11 +1522,11 @@ export async function generatePresell(userId: string, args: {
   }
   if (!content) throw new Error('Presell Builder retornou conteúdo inválido');
 
-  // Hoplink com TID (tracking da campanha) se informado.
-  // ClickBank TID: só a-z/0-9/_, até 100 chars — hífen quebra o tracking.
+  // Hoplink com TID (tracking da campanha) se informado. A normalização vive em
+  // lib/tracking-id.ts porque lib/clickbank.ts precisa da MESMA regra pra casar a venda de volta.
   let finalHop = hopLink;
   if (args.trackingId && !/[?&]tid=/i.test(hopLink)) {
-    const tid = args.trackingId.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 100);
+    const tid = normalizeTrackingId(args.trackingId);
     finalHop += (hopLink.includes('?') ? '&' : '?') + 'tid=' + encodeURIComponent(tid);
   }
 

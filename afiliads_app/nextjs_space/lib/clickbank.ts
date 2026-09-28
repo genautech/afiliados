@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { indexCampaignsByTrackingId, normalizeTrackingId } from './tracking-id';
 import { readIntegrationFieldValue } from './integration-secrets';
 
 const CB_API = 'https://api.clickbank.com/rest/1.3';
@@ -108,20 +109,18 @@ export async function syncClickbank(userId: string, days = 3): Promise<CbSyncRes
     agg.set(key, cur);
   }
 
-  // Casa trackingId com campanha (utmCampaign ou name, case-insensitive)
+  // Casa trackingId com campanha pela forma canônica do TID (lib/tracking-id.ts) — a MESMA que
+  // lib/presell.ts usa ao montar ?tid= no hoplink. Comparar strings cruas aqui fazia toda campanha
+  // com espaço/hífen/acento no nome perder a própria venda.
   const campaigns = await prisma.campaign.findMany({ where: { userId } });
-  const byTid = new Map<string, (typeof campaigns)[number]>();
-  for (const c of campaigns) {
-    if (c.utmCampaign) byTid.set(c.utmCampaign.toLowerCase(), c);
-    byTid.set(c.name.toLowerCase(), c);
-  }
+  const byTid = indexCampaignsByTrackingId(campaigns);
 
   const matched: CbSyncResult['matched'] = [];
   const unmatchedTids: CbSyncResult['unmatchedTids'] = {};
 
   for (const [key, v] of agg) {
     const [tid, day] = key.split('|');
-    const campaign = byTid.get(tid.toLowerCase());
+    const campaign = byTid.get(normalizeTrackingId(tid));
     if (!campaign) {
       if (v.sales > 0 || v.refunds > 0) {
         const u = unmatchedTids[tid || '(sem tid)'] ?? { sales: 0, revenue: 0 };
@@ -153,6 +152,18 @@ export async function syncClickbank(userId: string, days = 3): Promise<CbSyncRes
     where: { userId_serviceName_fieldName: { userId, serviceName: 'clickbank', fieldName: 'last_sync' } },
     update: { fieldValue: new Date().toISOString() },
     create: { userId, serviceName: 'clickbank', fieldName: 'last_sync', fieldValue: new Date().toISOString() },
+  });
+
+  // Venda que não casou com campanha nenhuma era devolvida só no JSON da rota, que nenhuma tela
+  // lê — sintoma invisível de tracking quebrado. Persiste pra virar alerta no dashboard.
+  const unmatchedPayload = JSON.stringify({
+    at: new Date().toISOString(),
+    tids: Object.entries(unmatchedTids).map(([tid, v]) => ({ tid, sales: v.sales, revenue: Math.round(v.revenue * 100) / 100 })),
+  });
+  await prisma.integration.upsert({
+    where: { userId_serviceName_fieldName: { userId, serviceName: 'clickbank', fieldName: 'last_sync_unmatched' } },
+    update: { fieldValue: unmatchedPayload },
+    create: { userId, serviceName: 'clickbank', fieldName: 'last_sync_unmatched', fieldValue: unmatchedPayload },
   });
 
   return { ok: true, period, transactions: txns.length, testTransactionsIgnored: testesIgnorados, matched, unmatchedTids };

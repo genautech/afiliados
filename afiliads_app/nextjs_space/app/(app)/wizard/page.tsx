@@ -1082,7 +1082,10 @@ export default function WizardPage() {
           videoUrl: pageType === 'vsl' ? videoUrl : undefined,
           channel,
           geo,
-          trackingId: name || undefined,
+          // utmCampaign (gerado em formato seguro) e não `name`: o nome é texto livre que o
+          // usuário renomeia, e o TID do hoplink precisa continuar casando com o que o
+          // syncClickbank procura. Ver lib/tracking-id.ts.
+          trackingId: campaignNameGen || name || undefined,
           context: ctxToPass,
         }),
       });

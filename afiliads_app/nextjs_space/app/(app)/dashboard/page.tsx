@@ -196,21 +196,30 @@ export default function DashboardPage() {
               <div key={i} className={`p-3 rounded-lg text-sm transition-colors ${
                 alert?.type === 'warning' ? 'bg-yellow-500/10 text-yellow-300' : 'bg-orange-500/10 text-orange-300'
               }`}>
-                <Link href={`/campanhas/${alert?.campaignId ?? ''}`} className="hover:underline">
-                  <span className="font-medium">{alert?.campaignName ?? 'Campanha'}</span>
-                </Link>
+                {/* Alerta de tracking (venda sem campanha casada) não tem campanha: link para
+                    /campanhas/ e "rodar loop" sem id não fazem sentido, então só aparecem quando
+                    o alerta pertence a uma campanha. */}
+                {alert?.campaignId ? (
+                  <Link href={`/campanhas/${alert.campaignId}`} className="hover:underline">
+                    <span className="font-medium">{alert?.campaignName ?? 'Campanha'}</span>
+                  </Link>
+                ) : (
+                  <span className="font-medium">Tracking</span>
+                )}
                 <p className="text-xs mt-0.5 opacity-80">{alert?.message ?? ''}</p>
-                <button
-                  className="text-[11px] mt-1.5 px-2 py-0.5 rounded bg-[#0f172a] border border-[#334155] text-slate-300 hover:text-white hover:border-green-500/40"
-                  onClick={async () => {
-                    const res = await fetch('/api/loop/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: alert?.campaignId }) });
-                    const data = await res.json();
-                    if (res.ok) toast.success(`Loop ${alert?.campaignName}: ${data?.decision}`);
-                    else toast.error(data?.error ?? 'Erro ao rodar loop');
-                  }}
-                >
-                  ▶ Rodar loop agora
-                </button>
+                {alert?.campaignId && (
+                  <button
+                    className="text-[11px] mt-1.5 px-2 py-0.5 rounded bg-[#0f172a] border border-[#334155] text-slate-300 hover:text-white hover:border-green-500/40"
+                    onClick={async () => {
+                      const res = await fetch('/api/loop/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignId: alert?.campaignId }) });
+                      const data = await res.json();
+                      if (res.ok) toast.success(`Loop ${alert?.campaignName}: ${data?.decision}`);
+                      else toast.error(data?.error ?? 'Erro ao rodar loop');
+                    }}
+                  >
+                    ▶ Rodar loop agora
+                  </button>
+                )}
               </div>
             ))}
             {(d?.alerts?.length ?? 0) === 0 && (

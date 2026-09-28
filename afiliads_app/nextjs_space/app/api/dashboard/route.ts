@@ -57,6 +57,31 @@ export async function GET() {
       }
     }
 
+    // Venda do ClickBank que não casou com nenhuma campanha (gravado por syncClickbank). É o
+    // sintoma de tracking quebrado: a comissão entrou, mas nenhuma campanha recebeu o crédito, e
+    // o loop decide SCALE/KILL por EPC — campanha vendendo com revenue 0 vira KILL.
+    try {
+      const unmatchedRow = await prisma.integration.findFirst({
+        where: { userId, serviceName: 'clickbank', fieldName: 'last_sync_unmatched' },
+      });
+      if (unmatchedRow?.fieldValue) {
+        const parsed = JSON.parse(unmatchedRow.fieldValue) as { at?: string; tids?: Array<{ tid: string; sales: number; revenue: number }> };
+        const tids = (parsed.tids ?? []).filter((t) => (t?.sales ?? 0) > 0 || (t?.revenue ?? 0) > 0);
+        if (tids.length > 0) {
+          const receita = tids.reduce((acc, t) => acc + (t.revenue ?? 0), 0);
+          const vendas = tids.reduce((acc, t) => acc + (t.sales ?? 0), 0);
+          alerts.unshift({
+            type: 'tracking',
+            message: `${vendas} venda(s) do ClickBank ($${receita.toFixed(2)}) não casaram com nenhuma campanha — TID: ${tids.slice(0, 3).map((t) => t.tid).join(', ')}${tids.length > 3 ? '…' : ''}. Confira o utmCampaign da campanha e o ?tid= do hoplink.`,
+            campaignId: '',
+            campaignName: '',
+          });
+        }
+      }
+    } catch {
+      // Alerta de diagnóstico não pode derrubar o dashboard.
+    }
+
     const epcMedio = totalClicks > 0 ? totalRevenue / totalClicks : 0;
     const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
 

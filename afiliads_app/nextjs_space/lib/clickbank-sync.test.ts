@@ -95,3 +95,72 @@ describe('M01 — syncClickbank ignora transação de teste', () => {
     expect(mocks.dailyLogUpsert.mock.calls[0][0].update.refunds).toBe(0);
   });
 });
+
+describe('atribuição por TID normalizado', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.integrationFindMany.mockResolvedValue([
+      { fieldName: 'api_key', fieldValue: 'cb-key-real' },
+      { fieldName: 'account_nickname', fieldValue: 'nick' },
+    ]);
+    mocks.dailyLogUpsert.mockResolvedValue({});
+    mocks.integrationUpsert.mockResolvedValue({});
+  });
+
+  function mockOrdersWithTid(tid: string) {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ orderData: [{ ...txn('SALE', 50), trackingId: tid }] }),
+    } as any);
+  }
+
+  it('venda casa com a campanha cujo NOME tem hífen e espaço', async () => {
+    // O hoplink levou tid="alpilean_us___search_v1"; antes o sync procurava
+    // "alpilean us - search v1" e a venda ia pra unmatchedTids.
+    mocks.campaignFindMany.mockResolvedValue([
+      { id: 'c1', name: 'Alpilean US - Search v1', utmCampaign: 'CB_WL_US_SEARCH_BRIDGE_v1' },
+    ]);
+    mockOrdersWithTid('alpilean_us___search_v1');
+
+    const res = await syncClickbank('user-1', 3);
+    expect(res.matched).toHaveLength(1);
+    expect(res.matched[0].revenue).toBe(50);
+    expect(res.unmatchedTids).toEqual({});
+  });
+
+  it('venda casa com a campanha cujo nome tem acento', async () => {
+    mocks.campaignFindMany.mockResolvedValue([
+      { id: 'c1', name: 'Emagrecimento Rápido BR', utmCampaign: null },
+    ]);
+    mockOrdersWithTid('emagrecimento_r_pido_br');
+
+    const res = await syncClickbank('user-1', 3);
+    expect(res.matched).toHaveLength(1);
+    expect(mocks.dailyLogUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('TID de campanha inexistente continua em unmatchedTids', async () => {
+    mocks.campaignFindMany.mockResolvedValue([{ id: 'c1', name: 'Outra', utmCampaign: 'outra' }]);
+    mockOrdersWithTid('campanha_que_nao_existe');
+
+    const res = await syncClickbank('user-1', 3);
+    expect(res.matched).toHaveLength(0);
+    expect(res.unmatchedTids).toHaveProperty('campanha_que_nao_existe');
+    expect(res.unmatchedTids['campanha_que_nao_existe'].revenue).toBe(50);
+  });
+
+  it('grava o resumo de unmatched pra virar alerta no dashboard', async () => {
+    mocks.campaignFindMany.mockResolvedValue([{ id: 'c1', name: 'Outra', utmCampaign: 'outra' }]);
+    mockOrdersWithTid('sem_campanha');
+
+    await syncClickbank('user-1', 3);
+    const chamada = mocks.integrationUpsert.mock.calls.find(
+      (c: any) => c[0]?.create?.fieldName === 'last_sync_unmatched',
+    );
+    expect(chamada).toBeDefined();
+    const payload = JSON.parse(chamada[0].update.fieldValue);
+    expect(payload.tids[0]).toMatchObject({ tid: 'sem_campanha', sales: 1, revenue: 50 });
+  });
+});
+
